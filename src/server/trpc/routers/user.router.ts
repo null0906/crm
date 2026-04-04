@@ -138,4 +138,29 @@ export const userRouter = router({
     .query(async () => {
       return db.select().from(roles).orderBy(asc(roles.name));
     }),
+
+  updateRole: protectedProcedure
+    .use(requirePermission('roles', 'manage'))
+    .input(z.object({
+      id: z.string().uuid(),
+      permissions: z.record(z.string(), z.unknown()),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const [updated] = await db
+        .update(roles)
+        .set({ permissions: input.permissions as never, updatedAt: new Date() })
+        .where(eq(roles.id, input.id))
+        .returning();
+
+      await writeAuditLog({
+        userId: ctx.user!.id,
+        userEmail: ctx.user!.email,
+        action: 'permission_change',
+        entityType: 'user',
+        entityId: input.id,
+        entityName: updated?.name,
+      });
+
+      return updated;
+    }),
 });
