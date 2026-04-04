@@ -125,7 +125,7 @@ async function seed() {
 
   const userData: schema.NewUser[] = [
     {
-      email: 'sanil@seccomply.com',
+      email: 'sanil@seccomply.net',
       passwordHash: defaultPassword,
       firstName: 'Sanil',
       lastName: 'Nadkarni',
@@ -133,7 +133,7 @@ async function seed() {
       status: 'active',
     },
     {
-      email: 'atharva@seccomply.com',
+      email: 'atharva@seccomply.net',
       passwordHash: defaultPassword,
       firstName: 'Atharva',
       lastName: 'Sardesai',
@@ -141,7 +141,7 @@ async function seed() {
       status: 'active',
     },
     {
-      email: 'shivani@seccomply.com',
+      email: 'shivani@seccomply.net',
       passwordHash: defaultPassword,
       firstName: 'Shivani',
       lastName: 'Nadkarni',
@@ -381,9 +381,9 @@ async function seed() {
   console.log('✅ Seed complete!');
   console.log('');
   console.log('Admin credentials:');
-  console.log('  sanil@seccomply.com    → SecComply@2026');
-  console.log('  atharva@seccomply.com  → SecComply@2026');
-  console.log('  shivani@seccomply.com  → SecComply@2026');
+  console.log('  sanil@seccomply.net    → SecComply@2026');
+  console.log('  atharva@seccomply.net  → SecComply@2026');
+  console.log('  shivani@seccomply.net  → SecComply@2026');
 
   await pool.end();
 }
