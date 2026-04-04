@@ -1,14 +1,20 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronLeft, Plus, LayoutGrid } from 'lucide-react';
+import { ChevronLeft, Plus, LayoutGrid, Pencil, Trash2, ChevronDown, ChevronUp, GripVertical, Check, X } from 'lucide-react';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { toast } from 'sonner';
+
+const STAGE_COLORS = [
+  '#6B7280', '#3B82F6', '#8B5CF6', '#EC4899',
+  '#F59E0B', '#F97316', '#10B981', '#EF4444', '#06B6D4',
+];
 
 export default function PipelinesSettingsPage() {
   const utils = trpc.useUtils();
@@ -70,6 +76,7 @@ export default function PipelinesSettingsPage() {
                 placeholder="e.g. Enterprise Sales"
                 className="h-8"
                 autoFocus
+                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
               />
             </div>
             <Button size="sm" onClick={handleCreate} disabled={!newPipelineName.trim() || createPipeline.isPending}>
@@ -100,33 +107,317 @@ export default function PipelinesSettingsPage() {
 }
 
 function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
-  const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery({ id: pipeline.id as string });
+  const utils = trpc.useUtils();
+  const [expanded, setExpanded] = useState(false);
+  const [addingStage, setAddingStage] = useState(false);
+  const [newStageName, setNewStageName] = useState('');
+  const [newStageColor, setNewStageColor] = useState('#3B82F6');
+  const [newStageType, setNewStageType] = useState<'active' | 'won' | 'lost'>('active');
+  const [newStageProbability, setNewStageProbability] = useState(50);
+  const [deleteStageId, setDeleteStageId] = useState<string | null>(null);
+
+  const pipelineId = pipeline.id as string;
+
+  const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery({ id: pipelineId });
   const stages = (pipelineData?.stages as Array<Record<string, unknown>>) ?? [];
 
+  const addStage = trpc.pipelines.addStage.useMutation({
+    onSuccess: () => {
+      toast.success('Stage added');
+      setAddingStage(false);
+      setNewStageName('');
+      setNewStageColor('#3B82F6');
+      setNewStageType('active');
+      setNewStageProbability(50);
+      void utils.pipelines.getWithStages.invalidate({ id: pipelineId });
+    },
+    onError: (err) => toast.error('Failed to add stage', { description: err.message }),
+  });
+
+  const deleteStage = trpc.pipelines.deleteStage.useMutation({
+    onSuccess: () => {
+      toast.success('Stage deleted');
+      setDeleteStageId(null);
+      void utils.pipelines.getWithStages.invalidate({ id: pipelineId });
+    },
+    onError: (err) => toast.error('Failed to delete stage', { description: err.message }),
+  });
+
+  function handleAddStage() {
+    if (!newStageName.trim()) return;
+    addStage.mutate({
+      pipelineId,
+      name: newStageName.trim(),
+      color: newStageColor,
+      stageType: newStageType,
+      defaultProbability: newStageProbability,
+      position: stages.length,
+    });
+  }
+
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-800">{pipeline.name as string}</h3>
-          {!!pipeline.description && (
-            <p className="text-xs text-slate-400 mt-0.5">{pipeline.description as string}</p>
-          )}
-        </div>
-        <Badge variant={pipeline.isActive ? 'success' : 'secondary'} className="text-xs">
-          {pipeline.isActive ? 'Active' : 'Inactive'}
-        </Badge>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">
-        {stages.map((stage, i) => (
-          <div key={stage.id as string} className="flex items-center gap-1.5">
-            <div
-              className="w-2.5 h-2.5 rounded-full"
-              style={{ backgroundColor: (stage.color as string) ?? '#6B7280' }}
-            />
-            <span className="text-xs text-slate-600">{stage.name as string}</span>
-            {i < stages.length - 1 && <span className="text-slate-300 text-xs">→</span>}
+    <>
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        {/* Pipeline header */}
+        <div className="flex items-center justify-between px-5 py-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-slate-400 hover:text-slate-600"
+            >
+              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">{pipeline.name as string}</h3>
+              {!!pipeline.description && (
+                <p className="text-xs text-slate-400 mt-0.5">{pipeline.description as string}</p>
+              )}
+            </div>
           </div>
-        ))}
+          <div className="flex items-center gap-2">
+            <Badge variant={pipeline.isActive ? 'success' : 'secondary'} className="text-xs">
+              {pipeline.isActive ? 'Active' : 'Inactive'}
+            </Badge>
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+            >
+              {expanded ? 'Hide stages' : 'Edit stages'}
+            </button>
+          </div>
+        </div>
+
+        {/* Stage pills preview (when collapsed) */}
+        {!expanded && (
+          <div className="flex items-center gap-2 flex-wrap px-5 pb-4">
+            {stages.map((stage, i) => (
+              <div key={stage.id as string} className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: (stage.color as string) ?? '#6B7280' }} />
+                <span className="text-xs text-slate-600">{stage.name as string}</span>
+                {i < stages.length - 1 && <span className="text-slate-300 text-xs">→</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Expanded stage editor */}
+        {expanded && (
+          <div className="border-t border-slate-100 px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Stages</p>
+              <button
+                onClick={() => setAddingStage(true)}
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 font-medium"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Stage
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              {stages.map((stage) => (
+                <StageRow
+                  key={stage.id as string}
+                  stage={stage}
+                  pipelineId={pipelineId}
+                  onDelete={() => setDeleteStageId(stage.id as string)}
+                />
+              ))}
+            </div>
+
+            {/* Add stage form */}
+            {addingStage && (
+              <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <p className="text-xs font-semibold text-slate-600 mb-3">New Stage</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Name</Label>
+                    <Input
+                      value={newStageName}
+                      onChange={(e) => setNewStageName(e.target.value)}
+                      placeholder="e.g. Discovery"
+                      className="h-8 text-sm"
+                      autoFocus
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddStage()}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Type</Label>
+                    <select
+                      value={newStageType}
+                      onChange={(e) => setNewStageType(e.target.value as 'active' | 'won' | 'lost')}
+                      className="flex h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="active">Active</option>
+                      <option value="won">Won</option>
+                      <option value="lost">Lost</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Probability (%)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={newStageProbability}
+                      onChange={(e) => setNewStageProbability(Number(e.target.value))}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Color</Label>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {STAGE_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => setNewStageColor(c)}
+                          className="w-5 h-5 rounded-full border-2 transition-transform hover:scale-110"
+                          style={{
+                            backgroundColor: c,
+                            borderColor: newStageColor === c ? '#1e40af' : 'transparent',
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <Button size="sm" onClick={handleAddStage} disabled={!newStageName.trim() || addStage.isPending}>
+                    {addStage.isPending ? 'Adding...' : 'Add Stage'}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => { setAddingStage(false); setNewStageName(''); }}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Delete stage confirm */}
+      <ConfirmDialog
+        open={!!deleteStageId}
+        onOpenChange={(open) => { if (!open) setDeleteStageId(null); }}
+        title="Delete stage?"
+        description="This will remove the stage. Deals in this stage will not be deleted."
+        confirmLabel="Delete"
+        destructive
+        loading={deleteStage.isPending}
+        onConfirm={() => deleteStageId && deleteStage.mutate({ id: deleteStageId })}
+      />
+    </>
+  );
+}
+
+function StageRow({ stage, pipelineId, onDelete }: {
+  stage: Record<string, unknown>;
+  pipelineId: string;
+  onDelete: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(stage.name as string);
+  const [color, setColor] = useState((stage.color as string) ?? '#6B7280');
+  const [probability, setProbability] = useState((stage.defaultProbability as number) ?? 0);
+
+  const updateStage = trpc.pipelines.updateStage.useMutation({
+    onSuccess: () => {
+      toast.success('Stage updated');
+      setEditing(false);
+      void utils.pipelines.getWithStages.invalidate({ id: pipelineId });
+    },
+    onError: (err) => toast.error('Failed to update stage', { description: err.message }),
+  });
+
+  const isSystem = stage.isSystemStage as boolean;
+  const stageType = stage.stageType as string;
+
+  const typeColor = stageType === 'won' ? 'text-green-600' : stageType === 'lost' ? 'text-red-500' : 'text-slate-400';
+
+  if (editing) {
+    return (
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="h-8 text-sm"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Probability (%)</Label>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={probability}
+              onChange={(e) => setProbability(Number(e.target.value))}
+              className="h-8 text-sm"
+            />
+          </div>
+          <div className="col-span-2 space-y-1">
+            <Label className="text-xs">Color</Label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {STAGE_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setColor(c)}
+                  className="w-5 h-5 rounded-full border-2 transition-transform hover:scale-110"
+                  style={{
+                    backgroundColor: c,
+                    borderColor: color === c ? '#1e40af' : 'transparent',
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2 mt-3">
+          <Button
+            size="sm"
+            onClick={() => updateStage.mutate({ id: stage.id as string, name, color, defaultProbability: probability })}
+            disabled={!name.trim() || updateStage.isPending}
+          >
+            <Check className="w-3.5 h-3.5 mr-1" />
+            {updateStage.isPending ? 'Saving...' : 'Save'}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => { setEditing(false); setName(stage.name as string); setColor((stage.color as string) ?? '#6B7280'); }}>
+            <X className="w-3.5 h-3.5 mr-1" />
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 group">
+      <GripVertical className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+      <span className="text-sm text-slate-700 flex-1">{name}</span>
+      <span className={`text-xs font-medium capitalize ${typeColor}`}>{stageType}</span>
+      <span className="text-xs text-slate-400">{probability}%</span>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={() => setEditing(true)}
+          className="p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"
+          title="Edit stage"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+        {!isSystem && (
+          <button
+            onClick={onDelete}
+            className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors"
+            title="Delete stage"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );
