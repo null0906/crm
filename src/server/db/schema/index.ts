@@ -11,3 +11,6 @@ export * from './dashboards';
 export * from './audit-log';
 export * from './saved-views';
 export * from './notifications';
+export * from './telegram-users';
+export * from './digest-schedules';
+export * from './telegram-message-log';

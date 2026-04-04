@@ -104,6 +104,8 @@ export interface RolePermissions {
   tags?: { manage?: boolean };
   users?: { manage?: boolean };
   roles?: { manage?: boolean };
+  telegram?: { manage?: boolean };
+  digests?: { manage?: boolean };
 }
 
 // Session user type

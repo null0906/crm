@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Tag, Users, LayoutGrid, FileText, Shield, ChevronRight } from 'lucide-react';
+import { Tag, Users, LayoutGrid, FileText, Shield, ChevronRight, Bot, CalendarClock } from 'lucide-react';
 import Link from 'next/link';
 
 const settingsSections = [
@@ -18,6 +18,13 @@ const settingsSections = [
     items: [
       { label: 'Users & Roles', description: 'Manage team members and permissions', href: '/settings/users', icon: Users },
       { label: 'Audit Log', description: 'View all system activity and changes', href: '/settings/audit-log', icon: Shield },
+    ],
+  },
+  {
+    title: 'Integrations',
+    items: [
+      { label: 'Telegram Bot', description: 'Add contacts and log activities from Telegram', href: '/settings/telegram', icon: Bot },
+      { label: 'Digest Schedules', description: 'Send scheduled dashboard reports via email & Telegram', href: '/settings/digests', icon: CalendarClock },
     ],
   },
 ];

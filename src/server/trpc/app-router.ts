@@ -13,6 +13,8 @@ import { auditLogRouter } from './routers/audit-log.router';
 import { notificationRouter } from './routers/notification.router';
 import { savedViewRouter } from './routers/saved-view.router';
 import { importRouter } from './routers/import.router';
+import { telegramRouter } from './routers/telegram.router';
+import { digestRouter } from './routers/digest.router';
 
 export const appRouter = router({
   contacts: contactRouter,
@@ -29,6 +31,8 @@ export const appRouter = router({
   notifications: notificationRouter,
   savedViews: savedViewRouter,
   import: importRouter,
+  telegram: telegramRouter,
+  digests: digestRouter,
 });
 
 export type AppRouter = typeof appRouter;

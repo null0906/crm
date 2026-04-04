@@ -31,6 +31,8 @@ async function seed() {
         tags: { manage: true },
         users: { manage: true },
         roles: { manage: true },
+        telegram: { manage: true },
+        digests: { manage: true },
       },
     },
     {
@@ -51,6 +53,8 @@ async function seed() {
         tags: { manage: true },
         users: { manage: false },
         roles: { manage: false },
+        telegram: { manage: true },
+        digests: { manage: true },
       },
     },
     {

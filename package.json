@@ -60,6 +60,8 @@
     "mitt": "^3.0.1",
     "next": "16.2.2",
     "next-auth": "^5.0.0-beta.30",
+    "node-cron": "^4.2.1",
+    "nodemailer": "^7.0.13",
     "pg": "^8.20.0",
     "pg-pool": "^3.13.0",
     "react": "19.2.4",
@@ -77,6 +79,8 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20.19.37",
+    "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^8.0.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.0.1",
