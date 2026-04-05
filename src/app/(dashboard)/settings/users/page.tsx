@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, ChevronLeft, Users, Pencil, Shield, ChevronDown, ChevronUp, Check, X } from 'lucide-react';
+import { Plus, ChevronLeft, Users, Pencil, Shield, ChevronDown, ChevronUp, Check, X, KeyRound, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
@@ -133,7 +133,10 @@ export default function UsersSettingsPage() {
   const utils = trpc.useUtils();
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<Record<string, unknown> | null>(null);
+  const [resetUser, setResetUser] = useState<Record<string, unknown> | null>(null);
   const [rolesOpen, setRolesOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   const { data: users = [], isLoading } = trpc.users.list.useQuery();
   const { data: roles = [] } = trpc.users.listRoles.useQuery();
@@ -142,9 +145,19 @@ export default function UsersSettingsPage() {
     onSuccess: () => {
       toast.success('User created');
       setCreateOpen(false);
+      form.reset({ roleId: roles[0]?.id ?? '' });
       void utils.users.list.invalidate();
     },
     onError: (err) => toast.error('Failed to create user', { description: err.message }),
+  });
+
+  const resetPassword = trpc.users.resetPassword.useMutation({
+    onSuccess: () => {
+      toast.success('Password reset successfully');
+      setResetUser(null);
+      setNewPassword('');
+    },
+    onError: (err) => toast.error('Failed to reset password', { description: err.message }),
   });
 
   const updateUser = trpc.users.update.useMutation({
@@ -214,13 +227,22 @@ export default function UsersSettingsPage() {
               </div>
               <Badge variant="secondary" className="text-xs">{user.role.name}</Badge>
               <span className="text-xs text-slate-400">{formatDate(user.createdAt)}</span>
-              <button
-                onClick={() => setEditUser(user as Record<string, unknown>)}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-all"
-                title="Edit user"
-              >
-                <Pencil className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                <button
+                  onClick={() => { setResetUser(user as Record<string, unknown>); setNewPassword(''); setShowNewPassword(false); }}
+                  className="p-1 rounded hover:bg-amber-50 text-slate-400 hover:text-amber-600 transition-colors"
+                  title="Reset password"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setEditUser(user as Record<string, unknown>)}
+                  className="p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"
+                  title="Edit user"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           ))
         )}
@@ -353,6 +375,8 @@ export default function UsersSettingsPage() {
               <Label>Role</Label>
               <select
                 {...form.register('roleId')}
+                value={form.watch('roleId')}
+                onChange={(e) => form.setValue('roleId', e.target.value)}
                 className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 {roles.map((r) => (
@@ -362,7 +386,7 @@ export default function UsersSettingsPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Temporary Password</Label>
-              <Input type="password" {...form.register('password')} placeholder="Minimum 8 characters" />
+              <Input type="text" {...form.register('password')} placeholder="Minimum 8 characters" />
               {form.formState.errors.password && (
                 <p className="text-xs text-red-500">{form.formState.errors.password.message}</p>
               )}
@@ -376,6 +400,63 @@ export default function UsersSettingsPage() {
           </form>
         </div>
       </SlideOverPanel>
+
+      {/* Reset Password panel */}
+      {resetUser && (
+        <SlideOverPanel open={!!resetUser} onClose={() => { setResetUser(null); setNewPassword(''); }} title="Reset Password" width="md">
+          <div className="p-6 space-y-5">
+            <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
+              <Avatar className="w-10 h-10">
+                <AvatarFallback className="bg-amber-100 text-amber-700">
+                  {getInitials(resetUser.firstName as string, resetUser.lastName as string)}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{resetUser.firstName as string} {resetUser.lastName as string}</p>
+                <p className="text-xs text-slate-500 font-mono">{resetUser.email as string}</p>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-amber-50 border border-amber-100 px-4 py-3">
+              <p className="text-xs text-amber-700 font-medium">You are setting a new password for this user. Share it with them securely — they will be able to log in immediately.</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>New Password</Label>
+              <div className="relative">
+                <Input
+                  type={showNewPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Minimum 8 characters"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {newPassword.length > 0 && newPassword.length < 8 && (
+                <p className="text-xs text-red-500">Password must be at least 8 characters</p>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" className="flex-1" onClick={() => { setResetUser(null); setNewPassword(''); }}>Cancel</Button>
+              <Button
+                className="flex-1"
+                disabled={newPassword.length < 8 || resetPassword.isPending}
+                onClick={() => resetPassword.mutate({ id: resetUser.id as string, newPassword })}
+              >
+                {resetPassword.isPending ? 'Resetting...' : 'Reset Password'}
+              </Button>
+            </div>
+          </div>
+        </SlideOverPanel>
+      )}
     </div>
   );
 }

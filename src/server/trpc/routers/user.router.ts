@@ -139,6 +139,37 @@ export const userRouter = router({
       return db.select().from(roles).orderBy(asc(roles.name));
     }),
 
+  resetPassword: protectedProcedure
+    .use(requirePermission('users', 'manage'))
+    .input(z.object({
+      id: z.string().uuid(),
+      newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const bcryptRounds = Number(process.env.BCRYPT_ROUNDS) || 12;
+      const passwordHash = await bcrypt.hash(input.newPassword, bcryptRounds);
+
+      const [updated] = await db
+        .update(users)
+        .set({ passwordHash, updatedAt: new Date() })
+        .where(eq(users.id, input.id))
+        .returning({ id: users.id, email: users.email, firstName: users.firstName, lastName: users.lastName });
+
+      if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+
+      await writeAuditLog({
+        userId: ctx.user!.id,
+        userEmail: ctx.user!.email,
+        action: 'update',
+        entityType: 'user',
+        entityId: input.id,
+        entityName: `${updated.firstName} ${updated.lastName}`,
+        metadata: { action: 'password_reset' },
+      });
+
+      return { success: true };
+    }),
+
   updateRole: protectedProcedure
     .use(requirePermission('roles', 'manage'))
     .input(z.object({
