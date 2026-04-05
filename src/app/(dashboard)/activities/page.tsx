@@ -1,10 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Phone, Mail, MessageSquare, Users, FileText, CheckSquare, Activity } from 'lucide-react';
+import { Phone, Mail, MessageSquare, Users, FileText, CheckSquare, Activity, Plus } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
+import { LogActivityPanel } from '@/components/activities/LogActivityPanel';
 import { formatRelative, getInitials } from '@/lib/formatters';
 import { ACTIVITY_TYPES } from '@/lib/constants';
 
@@ -28,6 +31,7 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
 
 export default function ActivitiesPage() {
   const [typeFilter, setTypeFilter] = useState('');
+  const [logOpen, setLogOpen] = useState(false);
 
   const { data, isLoading } = trpc.activities.list.useQuery({
     activityType: typeFilter || undefined,
@@ -39,9 +43,15 @@ export default function ActivitiesPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-100 bg-white">
-        <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Activity Feed</h1>
-        <p className="text-xs text-slate-400 mt-0.5">All recent activities across your CRM</p>
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
+        <div>
+          <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Activity Feed</h1>
+          <p className="text-xs text-slate-400 mt-0.5">All recent activities across your CRM</p>
+        </div>
+        <Button size="sm" onClick={() => setLogOpen(true)}>
+          <Plus className="w-4 h-4" />
+          Log Activity
+        </Button>
       </div>
 
       {/* Filters */}
@@ -143,6 +153,13 @@ export default function ActivitiesPage() {
           </div>
         )}
       </div>
+
+      <SlideOverPanel open={logOpen} onClose={() => setLogOpen(false)} title="Log Activity" width="md">
+        <LogActivityPanel
+          onSuccess={() => setLogOpen(false)}
+          onCancel={() => setLogOpen(false)}
+        />
+      </SlideOverPanel>
     </div>
   );
 }
