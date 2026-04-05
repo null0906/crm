@@ -25,6 +25,13 @@ export const dealRouter = router({
       });
     }),
 
+  byContact: protectedProcedure
+    .use(requirePermission('deals', 'read'))
+    .input(z.object({ contactId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      return dealService.getDealsByContact(ctx.user!, input.contactId);
+    }),
+
   byStage: protectedProcedure
     .use(requirePermission('deals', 'read'))
     .input(z.object({ pipelineId: z.string().uuid() }))

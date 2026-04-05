@@ -245,9 +245,7 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
                 </TabsContent>
 
                 <TabsContent value="deals" className="mt-4">
-                  <div className="text-sm text-slate-500 text-center py-8">
-                    Deals associated with this contact will appear here.
-                  </div>
+                  <ContactDeals contactId={contactId} />
                 </TabsContent>
               </Tabs>
             </div>
@@ -292,6 +290,59 @@ function InfoField({ label, value, mono = false }: { label: string; value: strin
     <div>
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
       <p className={`text-sm text-slate-800 ${mono ? 'font-mono' : ''}`}>{value}</p>
+    </div>
+  );
+}
+
+function ContactDeals({ contactId }: { contactId: string }) {
+  const { data: deals = [], isLoading } = trpc.deals.byContact.useQuery({ contactId });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="skeleton h-14 rounded-lg" />
+        ))}
+      </div>
+    );
+  }
+
+  if (deals.length === 0) {
+    return (
+      <div className="text-center py-10 text-slate-400">
+        <p className="text-sm">No deals linked to this contact yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {deals.map((deal) => {
+        const d = deal as Record<string, unknown>;
+        return (
+          <div key={d.id as string} className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-slate-100 bg-slate-50 hover:bg-white hover:border-slate-200 transition-colors">
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-slate-800 truncate">{d.title as string}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                {!!d.stageName && (
+                  <span className="text-[11px] text-slate-400">{d.stageName as string}</span>
+                )}
+                {!!d.companyName && (
+                  <span className="text-[11px] text-slate-400">· {d.companyName as string}</span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+              {d.amount != null && (
+                <span className="text-[13px] font-semibold text-slate-700 tabular-nums">
+                  {Number(d.amount).toLocaleString('en-IN', { style: 'currency', currency: (d.currency as string) || 'INR', maximumFractionDigits: 0 })}
+                </span>
+              )}
+              <Badge variant="secondary" className="capitalize text-[10px]">{d.status as string}</Badge>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -115,6 +115,37 @@ export async function listContacts(
   return { items: items as Record<string, unknown>[], nextCursor, hasMore };
 }
 
+export async function getContactsByCompany(
+  user: SessionUser,
+  companyId: string
+): Promise<Record<string, unknown>[]> {
+  const readLevel = getPermissionLevel(user.role.permissions, 'contacts', 'read');
+  if (!readLevel) return [];
+
+  const conditions = [
+    isNull(contacts.deletedAt),
+    eq(contacts.companyId, companyId),
+    ...(readLevel === 'own' ? [eq(contacts.ownerId, user.id)] : []),
+  ];
+
+  const rows = await db
+    .select({
+      id: contacts.id,
+      firstName: contacts.firstName,
+      lastName: contacts.lastName,
+      email: contacts.email,
+      phone: contacts.phone,
+      jobTitle: contacts.jobTitle,
+      status: contacts.status,
+      createdAt: contacts.createdAt,
+    })
+    .from(contacts)
+    .where(and(...conditions))
+    .orderBy(desc(contacts.createdAt));
+
+  return rows as Record<string, unknown>[];
+}
+
 export async function getContactById(
   user: SessionUser,
   id: string

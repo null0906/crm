@@ -24,6 +24,13 @@ export const contactRouter = router({
       });
     }),
 
+  byCompany: protectedProcedure
+    .use(requirePermission('contacts', 'read'))
+    .input(z.object({ companyId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      return contactService.getContactsByCompany(ctx.user!, input.companyId);
+    }),
+
   getById: protectedProcedure
     .use(requirePermission('contacts', 'read'))
     .input(z.object({ id: z.string().uuid() }))

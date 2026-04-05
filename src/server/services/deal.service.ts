@@ -320,6 +320,73 @@ export async function deleteDeal(user: SessionUser, id: string): Promise<void> {
   });
 }
 
+export async function getDealsByContact(
+  user: SessionUser,
+  contactId: string
+): Promise<Record<string, unknown>[]> {
+  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
+  if (!readLevel) return [];
+
+  // Deals linked via primaryContactId or via the dealContacts join table
+  const primaryRows = await db
+    .select({
+      id: deals.id,
+      title: deals.title,
+      amount: deals.amount,
+      currency: deals.currency,
+      status: deals.status,
+      stageId: deals.stageId,
+      expectedCloseDate: deals.expectedCloseDate,
+      createdAt: deals.createdAt,
+      companyName: companies.name,
+      stageName: pipelineStages.name,
+      stageColor: pipelineStages.color,
+    })
+    .from(deals)
+    .leftJoin(companies, eq(deals.companyId, companies.id))
+    .leftJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
+    .where(and(
+      isNull(deals.deletedAt),
+      eq(deals.primaryContactId, contactId),
+      ...(readLevel === 'own' ? [eq(deals.ownerId, user.id)] : [])
+    ));
+
+  const linkedRows = await db
+    .select({
+      id: deals.id,
+      title: deals.title,
+      amount: deals.amount,
+      currency: deals.currency,
+      status: deals.status,
+      stageId: deals.stageId,
+      expectedCloseDate: deals.expectedCloseDate,
+      createdAt: deals.createdAt,
+      companyName: companies.name,
+      stageName: pipelineStages.name,
+      stageColor: pipelineStages.color,
+    })
+    .from(dealContacts)
+    .innerJoin(deals, eq(dealContacts.dealId, deals.id))
+    .leftJoin(companies, eq(deals.companyId, companies.id))
+    .leftJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
+    .where(and(
+      isNull(deals.deletedAt),
+      eq(dealContacts.contactId, contactId),
+      ...(readLevel === 'own' ? [eq(deals.ownerId, user.id)] : [])
+    ));
+
+  // Deduplicate by id
+  const seen = new Set<string>();
+  const combined: Record<string, unknown>[] = [];
+  for (const row of [...primaryRows, ...linkedRows]) {
+    if (!seen.has(row.id)) {
+      seen.add(row.id);
+      combined.push(row as Record<string, unknown>);
+    }
+  }
+  return combined;
+}
+
 export async function addDealTags(user: SessionUser, dealId: string, tagIds: string[]): Promise<void> {
   for (const tagId of tagIds) {
     await db.insert(dealTags).values({ dealId, tagId, taggedBy: user.id }).onConflictDoNothing();

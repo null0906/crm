@@ -216,9 +216,7 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
                 </TabsContent>
 
                 <TabsContent value="contacts" className="mt-4">
-                  <div className="text-sm text-slate-500 text-center py-8">
-                    Contacts associated with this company will appear here.
-                  </div>
+                  <CompanyContacts companyId={companyId} />
                 </TabsContent>
               </Tabs>
             </div>
@@ -263,6 +261,54 @@ function InfoField({ label, value, mono = false }: { label: string; value: strin
     <div>
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
       <p className={`text-sm text-slate-800 ${mono ? 'font-mono' : ''}`}>{value}</p>
+    </div>
+  );
+}
+
+function CompanyContacts({ companyId }: { companyId: string }) {
+  const { data: contacts = [], isLoading } = trpc.contacts.byCompany.useQuery({ companyId });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="skeleton h-12 rounded-lg" />
+        ))}
+      </div>
+    );
+  }
+
+  if (contacts.length === 0) {
+    return (
+      <div className="text-center py-10 text-slate-400">
+        <p className="text-sm">No contacts linked to this company yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {contacts.map((contact) => {
+        const c = contact as Record<string, unknown>;
+        return (
+          <div key={c.id as string} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-slate-100 bg-slate-50 hover:bg-white hover:border-slate-200 transition-colors">
+            <Avatar className="w-8 h-8 flex-shrink-0">
+              <AvatarFallback className="text-[11px] bg-blue-100 text-blue-700">
+                {String(c.firstName ?? '').charAt(0)}{String(c.lastName ?? '').charAt(0)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium text-slate-800 truncate">
+                {c.firstName as string} {c.lastName as string}
+              </p>
+              <p className="text-[11px] text-slate-400 truncate">
+                {c.jobTitle ? `${c.jobTitle as string}` : ''}{c.jobTitle && c.email ? ' · ' : ''}{c.email as string ?? ''}
+              </p>
+            </div>
+            <Badge variant="secondary" className="capitalize text-[10px] flex-shrink-0">{c.status as string}</Badge>
+          </div>
+        );
+      })}
     </div>
   );
 }
