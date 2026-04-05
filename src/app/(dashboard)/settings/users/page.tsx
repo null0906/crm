@@ -175,8 +175,8 @@ export default function UsersSettingsPage() {
             <ChevronLeft className="w-4 h-4" />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">Users & Roles</h1>
-            <p className="text-sm text-slate-500">Manage team members and their permissions.</p>
+            <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Users & Roles</h1>
+            <p className="text-xs text-slate-400 mt-0.5">Manage team members and their permissions.</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

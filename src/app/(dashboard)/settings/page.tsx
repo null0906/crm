@@ -31,33 +31,33 @@ const settingsSections = [
 
 export default function SettingsPage() {
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
-        <p className="text-sm text-slate-500 mt-1">Manage your CRM configuration and preferences.</p>
+    <div className="max-w-2xl mx-auto px-6 py-8">
+      <div className="mb-7">
+        <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Settings</h1>
+        <p className="text-xs text-slate-400 mt-0.5">Manage your CRM configuration and preferences.</p>
       </div>
 
-      <div className="space-y-8">
+      <div className="space-y-6">
         {settingsSections.map((section) => (
           <div key={section.title}>
-            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">{section.title}</h2>
-            <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+            <h2 className="text-[10px] font-semibold text-slate-400 uppercase tracking-[0.06em] mb-2 px-1">{section.title}</h2>
+            <div className="bg-white border border-slate-200/80 rounded-xl divide-y divide-slate-100 shadow-[0_1px_4px_rgba(16,24,40,0.04)]">
               {section.items.map((item) => {
                 const Icon = item.icon;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors group"
+                    className="flex items-center gap-3.5 px-4 py-3.5 hover:bg-slate-50/80 transition-colors duration-100 group first:rounded-t-xl last:rounded-b-xl"
                   >
-                    <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors">
-                      <Icon className="w-4 h-4 text-slate-600 group-hover:text-blue-600 transition-colors" />
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-50 transition-colors duration-100">
+                      <Icon className="w-3.5 h-3.5 text-slate-500 group-hover:text-blue-600 transition-colors duration-100" strokeWidth={1.75} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-900">{item.label}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{item.description}</p>
+                      <p className="text-[13px] font-medium text-slate-800">{item.label}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">{item.description}</p>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-300 flex-shrink-0 group-hover:text-slate-500 transition-colors duration-100" />
                   </Link>
                 );
               })}

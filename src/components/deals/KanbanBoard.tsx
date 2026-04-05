@@ -45,36 +45,36 @@ function KanbanColumn({ stage, deals, onAddDeal, onDealClick }: KanbanColumnProp
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col w-72 flex-shrink-0 rounded-xl transition-colors ${isOver ? 'bg-blue-50' : 'bg-slate-50'}`}
+      className={`flex flex-col w-[272px] flex-shrink-0 rounded-xl transition-colors duration-150 ${isOver ? 'bg-blue-50/60' : 'bg-slate-50/80'}`}
     >
       {/* Column header */}
-      <div className="flex items-center justify-between px-3 py-2.5">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-3 pt-3 pb-2">
+        <div className="flex items-center gap-2 min-w-0">
           <div
-            className="w-2.5 h-2.5 rounded-full"
-            style={{ backgroundColor: stage.color ?? '#6B7280' }}
+            className="w-2 h-2 rounded-full flex-shrink-0"
+            style={{ backgroundColor: stage.color ?? '#94A3B8' }}
           />
-          <span className="text-sm font-semibold text-slate-700">{stage.name}</span>
-          <span className="text-xs text-slate-400 bg-slate-200 rounded-full px-1.5 py-0.5 min-w-[20px] text-center">
+          <span className="text-[12px] font-semibold text-slate-600 truncate">{stage.name}</span>
+          <span className="text-[10px] font-semibold text-slate-400 bg-slate-200/80 rounded-full px-1.5 py-0.5 min-w-[18px] text-center flex-shrink-0">
             {deals.length}
           </span>
         </div>
         <button
           onClick={() => onAddDeal(stage.id)}
-          className="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+          className="w-5 h-5 rounded-md flex items-center justify-center text-slate-300 hover:text-blue-600 hover:bg-blue-50 transition-colors"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
         </button>
       </div>
 
       {totalValue > 0 && (
-        <div className="px-3 pb-2 text-xs text-slate-500 font-medium">
+        <div className="px-3 pb-2 text-[11px] text-slate-400 font-semibold font-data">
           {formatCurrency(totalValue)}
         </div>
       )}
 
       {/* Cards */}
-      <div className="flex-1 px-2 pb-3 space-y-2 min-h-[120px]">
+      <div className="flex-1 px-2 pb-3 space-y-2 min-h-[100px]">
         <SortableContext items={deals.map((d) => d.id as string)} strategy={verticalListSortingStrategy}>
           {deals.map((deal) => (
             <DealCard key={deal.id as string} deal={deal} onClick={() => onDealClick(deal)} />
@@ -82,8 +82,8 @@ function KanbanColumn({ stage, deals, onAddDeal, onDealClick }: KanbanColumnProp
         </SortableContext>
 
         {deals.length === 0 && (
-          <div className="h-20 flex items-center justify-center text-xs text-slate-400 border-2 border-dashed border-slate-200 rounded-lg">
-            Drop deals here
+          <div className="h-16 flex items-center justify-center text-[11px] text-slate-300 border border-dashed border-slate-200 rounded-lg">
+            Drop here
           </div>
         )}
       </div>

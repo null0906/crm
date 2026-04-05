@@ -311,7 +311,7 @@ export default function DigestsPage() {
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Digest Schedules</h1>
+          <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Digest Schedules</h1>
           <p className="text-sm text-slate-500 mt-1">Send scheduled dashboard snapshots via email and Telegram.</p>
         </div>
         <Button onClick={() => { setEditSchedule(null); setFormOpen(true); }}>

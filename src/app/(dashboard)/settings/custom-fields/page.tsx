@@ -78,14 +78,14 @@ export default function CustomFieldsSettingsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-4 border-b border-slate-200 bg-white flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-slate-100 bg-white flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Link href="/settings" className="text-slate-400 hover:text-slate-600">
             <ChevronLeft className="w-4 h-4" />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">Custom Fields</h1>
-            <p className="text-sm text-slate-500">Add fields to contacts, companies, and deals.</p>
+            <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Custom Fields</h1>
+            <p className="text-xs text-slate-400 mt-0.5">Add fields to contacts, companies, and deals.</p>
           </div>
         </div>
         <Button size="sm" onClick={() => { form.setValue('entityType', entityType); setCreateOpen(true); }}>

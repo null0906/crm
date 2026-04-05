@@ -54,8 +54,8 @@ export default function PipelinesSettingsPage() {
             <ChevronLeft className="w-4 h-4" />
           </Link>
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">Pipelines</h1>
-            <p className="text-sm text-slate-500">Configure your sales pipelines and stages.</p>
+            <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Pipelines</h1>
+            <p className="text-xs text-slate-400 mt-0.5">Configure your sales pipelines and stages.</p>
           </div>
         </div>
         <Button size="sm" onClick={() => setCreating(!creating)}>

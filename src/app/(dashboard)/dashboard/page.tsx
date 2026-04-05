@@ -97,15 +97,15 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white flex-shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white flex-shrink-0">
         <div className="flex items-center gap-3">
           {/* Dashboard tabs */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5 bg-slate-100/80 border border-slate-200/60 rounded-lg p-1">
             {(dashboardList as unknown as Dashboard[]).map((d) => (
               <button
                 key={d.id}
                 onClick={() => { setActiveDashboardId(d.id); setEditMode(false); }}
-                className={`text-sm px-3 py-1.5 rounded-md transition-colors ${activeDashboardId === d.id ? 'bg-slate-900 text-white font-medium' : 'text-slate-600 hover:bg-slate-100'}`}
+                className={`text-[13px] px-3 py-1 rounded-md transition-all duration-150 ${activeDashboardId === d.id ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-medium' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 {d.name}
               </button>
@@ -215,7 +215,7 @@ export default function DashboardPage() {
             {widgets.map((widget) => (
               <div
                 key={widget.id}
-                className={`bg-white border border-slate-200 rounded-xl p-4 relative group ${WIDGET_COL_SPAN[widget.widgetType] ?? 'col-span-1'}`}
+                className={`bg-white border border-slate-200/80 rounded-xl p-4 relative group shadow-[0_1px_4px_rgba(16,24,40,0.04)] ${WIDGET_COL_SPAN[widget.widgetType] ?? 'col-span-1'}`}
               >
                 {editMode && (
                   <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">

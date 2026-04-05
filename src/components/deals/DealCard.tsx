@@ -36,40 +36,40 @@ export function DealCard({ deal, onClick }: DealCardProps) {
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+      className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-[0_1px_3px_rgba(16,24,40,0.06),_0_1px_2px_rgba(16,24,40,0.04)] hover:shadow-[0_4px_12px_rgba(16,24,40,0.08),_0_2px_4px_rgba(16,24,40,0.04)] hover:border-slate-300 transition-all duration-150 cursor-pointer group"
     >
-      <p className="text-sm font-medium text-slate-900 leading-snug mb-2 group-hover:text-blue-600 transition-colors">
+      <p className="text-[13px] font-medium text-slate-800 leading-snug mb-2.5 group-hover:text-blue-600 transition-colors">
         {deal.title as string}
       </p>
 
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         {amount !== null && amount !== undefined && (
-          <div className="flex items-center gap-1.5 text-xs text-slate-600">
-            <DollarSign className="w-3 h-3 text-slate-400 flex-shrink-0" />
-            <span className="font-medium">{formatCurrency(amount)}</span>
+          <div className="flex items-center gap-1.5">
+            <DollarSign className="w-3 h-3 text-slate-300 flex-shrink-0" />
+            <span className="text-[12px] font-semibold text-slate-700 font-data">{formatCurrency(amount)}</span>
             {probability !== null && probability !== undefined && (
-              <Badge variant="outline" className="text-xs ml-auto">{probability}%</Badge>
+              <Badge variant="secondary" className="ml-auto text-[10px]">{probability}%</Badge>
             )}
           </div>
         )}
 
         {primaryContactName && (
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <User className="w-3 h-3 flex-shrink-0" />
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <User className="w-3 h-3 flex-shrink-0" strokeWidth={1.75} />
             <span className="truncate">{primaryContactName}</span>
           </div>
         )}
 
         {companyName && (
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <Building2 className="w-3 h-3 flex-shrink-0" />
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <Building2 className="w-3 h-3 flex-shrink-0" strokeWidth={1.75} />
             <span className="truncate">{companyName}</span>
           </div>
         )}
 
         {expectedCloseDate && (
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <Calendar className="w-3 h-3 flex-shrink-0" />
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <Calendar className="w-3 h-3 flex-shrink-0" strokeWidth={1.75} />
             <span>{formatDate(new Date(expectedCloseDate))}</span>
           </div>
         )}

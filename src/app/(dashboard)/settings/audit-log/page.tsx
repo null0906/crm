@@ -29,13 +29,13 @@ export default function AuditLogPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-4 border-b border-slate-200 bg-white flex items-center gap-2">
+      <div className="px-6 py-4 border-b border-slate-100 bg-white flex items-center gap-2">
         <Link href="/settings" className="text-slate-400 hover:text-slate-600">
           <ChevronLeft className="w-4 h-4" />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Audit Log</h1>
-          <p className="text-sm text-slate-500">Track all changes and access across the system.</p>
+          <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Audit Log</h1>
+          <p className="text-xs text-slate-400 mt-0.5">Track all changes and access across the system.</p>
         </div>
       </div>
 

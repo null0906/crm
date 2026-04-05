@@ -62,16 +62,16 @@ function MetricCard({ widget }: { widget: Widget }) {
     <div className="h-full flex flex-col justify-between p-1">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-slate-500">{widget.title}</p>
-          {widget.subtitle && <p className="text-xs text-slate-400 mt-0.5">{widget.subtitle}</p>}
+          <p className="text-[12px] font-medium text-slate-500 uppercase tracking-wide">{widget.title}</p>
+          {widget.subtitle && <p className="text-[11px] text-slate-400 mt-0.5">{widget.subtitle}</p>}
         </div>
-        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${iconColor}20` }}>
-          <TrendingUp className="w-4 h-4" style={{ color: iconColor }} />
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${iconColor}18` }}>
+          <TrendingUp className="w-3.5 h-3.5" style={{ color: iconColor }} strokeWidth={1.75} />
         </div>
       </div>
       <div>
-        <p className="text-2xl font-bold text-slate-900">{value}</p>
-        {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+        <p className="text-[26px] font-semibold text-slate-900 tracking-tight font-data leading-none mt-3">{value}</p>
+        {subtitle && <p className="text-[11px] text-slate-400 mt-1.5">{subtitle}</p>}
       </div>
     </div>
   );

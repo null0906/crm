@@ -70,19 +70,19 @@ export default function DealsPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-white flex-shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white flex-shrink-0">
         <div className="flex items-center gap-4">
-          <h1 className="text-xl font-semibold text-slate-900">Deals</h1>
+          <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Deals</h1>
 
           {/* Pipeline tabs */}
-          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+          <div className="flex items-center gap-0.5 bg-slate-100/80 border border-slate-200/60 rounded-lg p-1">
             {pipelines.map((pipeline) => (
               <button
                 key={String(pipeline.id)}
-                className={`text-sm px-3 py-1.5 rounded-md transition-colors ${
+                className={`text-[13px] px-3 py-1 rounded-md transition-all duration-150 ${
                   selectedPipelineId === String(pipeline.id)
-                    ? 'bg-white text-slate-900 shadow-sm font-medium'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-medium'
+                    : 'text-slate-500 hover:text-slate-700'
                 }`}
                 onClick={() => setSelectedPipelineId(String(pipeline.id))}
               >
@@ -94,20 +94,20 @@ export default function DealsPage() {
 
         <div className="flex items-center gap-2">
           {/* View toggle */}
-          <div className="flex items-center bg-slate-100 rounded-lg p-1">
+          <div className="flex items-center bg-slate-100/80 border border-slate-200/60 rounded-lg p-1">
             <button
               onClick={() => setViewMode('kanban')}
-              className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-white shadow-sm text-slate-900 border border-slate-200/80' : 'text-slate-400 hover:text-slate-600'}`}
               title="Kanban view"
             >
-              <LayoutGrid className="w-4 h-4" />
+              <LayoutGrid className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-md transition-colors ${viewMode === 'table' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'table' ? 'bg-white shadow-sm text-slate-900 border border-slate-200/80' : 'text-slate-400 hover:text-slate-600'}`}
               title="Table view"
             >
-              <List className="w-4 h-4" />
+              <List className="w-3.5 h-3.5" />
             </button>
           </div>
 

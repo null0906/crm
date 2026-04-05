@@ -7,6 +7,7 @@ import { Shield, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 function LoginForm() {
   const router = useRouter();
@@ -41,14 +42,22 @@ function LoginForm() {
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-2xl p-8">
-      <h2 className="text-xl font-semibold text-slate-900 mb-1">Sign in</h2>
-      <p className="text-sm text-slate-500 mb-6">Use your SecComply account credentials</p>
+    <div
+      className={cn(
+        'bg-white rounded-2xl p-10',
+        'border border-slate-200/60',
+        'shadow-[0_20px_60px_rgba(16,24,40,0.10),_0_4px_16px_rgba(16,24,40,0.06)]',
+      )}
+    >
+      <div className="mb-7">
+        <h2 className="text-[1.125rem] font-semibold text-slate-900 tracking-tight">Welcome back</h2>
+        <p className="text-sm text-slate-400 mt-0.5">Sign in to your SecComply account</p>
+      </div>
 
       {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error}
+        <div className="flex items-start gap-2.5 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3.5 py-2.5 mb-5">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-px" />
+          <span>{error}</span>
         </div>
       )}
 
@@ -82,16 +91,18 @@ function LoginForm() {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
         </div>
 
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? 'Signing in...' : 'Sign in'}
-        </Button>
+        <div className="pt-1">
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign in'}
+          </Button>
+        </div>
       </form>
     </div>
   );
@@ -99,21 +110,48 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-500 mb-4">
-            <Shield className="w-7 h-7 text-white" />
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{
+        background: 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(67,97,238,0.08) 0%, transparent 60%), linear-gradient(160deg, #F7F8FA 0%, #EFF1F5 100%)',
+      }}
+    >
+      {/* Subtle grid pattern */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: 'linear-gradient(rgba(148,163,184,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.07) 1px, transparent 1px)',
+          backgroundSize: '32px 32px',
+        }}
+      />
+
+      <div className="relative w-full max-w-[400px]">
+        {/* Logo mark */}
+        <div className="flex flex-col items-center mb-8">
+          <div
+            className={cn(
+              'flex items-center justify-center w-11 h-11 rounded-xl mb-4',
+              'bg-blue-600',
+              'shadow-[0_4px_16px_rgba(67,97,238,0.30),_0_1px_3px_rgba(67,97,238,0.20)]',
+            )}
+          >
+            <Shield className="w-5 h-5 text-white" strokeWidth={1.75} />
           </div>
-          <h1 className="text-2xl font-bold text-white">SecComply</h1>
-          <p className="text-sm text-slate-400 mt-1">Command Center</p>
+          <h1 className="text-lg font-semibold text-slate-900 tracking-tight">SecComply</h1>
+          <p className="text-xs text-slate-400 font-medium tracking-wide mt-0.5">COMMAND CENTER</p>
         </div>
 
-        <Suspense fallback={<div className="bg-white rounded-xl shadow-2xl p-8 text-center text-slate-400 text-sm">Loading...</div>}>
+        <Suspense
+          fallback={
+            <div className="bg-white rounded-2xl p-10 border border-slate-200/60 shadow-[0_20px_60px_rgba(16,24,40,0.10)] text-center text-slate-400 text-sm">
+              Loading...
+            </div>
+          }
+        >
           <LoginForm />
         </Suspense>
 
-        <p className="text-center text-sm text-slate-500 mt-6">
+        <p className="text-center text-[11px] text-slate-400 mt-6 tracking-wide">
           Access restricted to authorised team members only.
         </p>
       </div>

@@ -3,7 +3,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
 
 interface SlideOverPanelProps {
   open: boolean;
@@ -22,7 +21,6 @@ export function SlideOverPanel({
   footer,
   width = 'lg',
 }: SlideOverPanelProps) {
-  // Close on Escape
   React.useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -37,26 +35,36 @@ export function SlideOverPanel({
     <div className="fixed inset-0 z-50 flex items-stretch justify-end">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/40 animate-fade-in"
+        className="absolute inset-0 bg-black/25 backdrop-blur-[2px] animate-fade-in"
         onClick={onClose}
       />
 
       {/* Panel */}
       <div
         className={cn(
-          'relative flex flex-col bg-white shadow-2xl animate-slide-in-right h-full overflow-hidden',
+          'relative flex flex-col bg-white h-full overflow-hidden animate-slide-in-right',
+          'shadow-[0_24px_64px_rgba(16,24,40,0.12),_0_8px_24px_rgba(16,24,40,0.06)]',
+          'border-l border-slate-200',
           width === 'md' && 'w-full max-w-lg',
-          width === 'lg' && 'w-full max-w-3xl',
-          width === 'xl' && 'w-full max-w-5xl',
+          width === 'lg' && 'w-full max-w-2xl',
+          width === 'xl' && 'w-full max-w-4xl',
         )}
       >
         {/* Header */}
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 flex-shrink-0">
-            <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="w-4 h-4" />
-            </Button>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
+            <h2 className="text-base font-semibold text-slate-900 tracking-tight">{title}</h2>
+            <button
+              onClick={onClose}
+              className={cn(
+                'flex items-center justify-center w-7 h-7 rounded-lg',
+                'text-slate-400 hover:text-slate-700 hover:bg-slate-100',
+                'transition-colors duration-100',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+              )}
+            >
+              <X className="w-4 h-4" strokeWidth={2} />
+            </button>
           </div>
         )}
 
@@ -67,7 +75,7 @@ export function SlideOverPanel({
 
         {/* Footer */}
         {footer && (
-          <div className="flex-shrink-0 border-t border-slate-200 px-6 py-4 bg-slate-50">
+          <div className="flex-shrink-0 border-t border-slate-100 px-6 py-4 bg-slate-50/60">
             {footer}
           </div>
         )}

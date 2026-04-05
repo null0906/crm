@@ -50,8 +50,8 @@ export default function TagsSettingsPage() {
           <ChevronLeft className="w-4 h-4" />
         </Link>
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Tags</h1>
-          <p className="text-sm text-slate-500">Organize contacts, companies, and deals with tags.</p>
+          <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Tags</h1>
+          <p className="text-xs text-slate-400 mt-0.5">Organize contacts, companies, and deals with tags.</p>
         </div>
       </div>
 

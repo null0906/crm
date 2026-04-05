@@ -4,22 +4,62 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  [
+    'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg',
+    'text-sm font-medium tracking-[-0.01em]',
+    'transition-all duration-150 ease-out',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2',
+    'disabled:pointer-events-none disabled:opacity-50',
+    'select-none',
+  ].join(' '),
   {
     variants: {
       variant: {
-        default: 'bg-blue-500 text-white hover:bg-blue-600',
-        destructive: 'bg-red-500 text-white hover:bg-red-600',
-        outline: 'border border-slate-200 bg-white hover:bg-slate-50 text-slate-900',
-        secondary: 'bg-slate-100 text-slate-900 hover:bg-slate-200',
-        ghost: 'hover:bg-slate-100 text-slate-700',
-        link: 'text-blue-500 underline-offset-4 hover:underline',
+        default: [
+          'bg-blue-500 text-white',
+          'shadow-[0_1px_2px_rgba(16,24,40,0.08)]',
+          'hover:bg-blue-600 hover:shadow-[0_1px_3px_rgba(16,24,40,0.12)]',
+          'active:bg-blue-700 active:shadow-none',
+        ].join(' '),
+
+        destructive: [
+          'bg-red-500 text-white',
+          'shadow-[0_1px_2px_rgba(16,24,40,0.08)]',
+          'hover:bg-red-600',
+          'active:bg-red-700',
+        ].join(' '),
+
+        outline: [
+          'border border-slate-200 bg-white text-slate-700',
+          'shadow-[0_1px_2px_rgba(16,24,40,0.04)]',
+          'hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900',
+          'active:bg-slate-100',
+        ].join(' '),
+
+        secondary: [
+          'bg-slate-100 text-slate-700',
+          'hover:bg-slate-200 hover:text-slate-900',
+          'active:bg-slate-200',
+        ].join(' '),
+
+        ghost: [
+          'text-slate-600',
+          'hover:bg-slate-100 hover:text-slate-900',
+          'active:bg-slate-200',
+        ].join(' '),
+
+        link: [
+          'text-blue-500 underline-offset-4',
+          'hover:underline hover:text-blue-600',
+        ].join(' '),
       },
+
       size: {
         default: 'h-9 px-4 py-2',
-        sm: 'h-7 rounded px-3 text-xs',
-        lg: 'h-11 rounded-md px-8',
-        icon: 'h-9 w-9',
+        sm:      'h-8 px-3 text-xs rounded-md',
+        lg:      'h-10 px-5',
+        icon:    'h-9 w-9 p-0',
+        'icon-sm': 'h-7 w-7 p-0 rounded-md',
       },
     },
     defaultVariants: {

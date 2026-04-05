@@ -39,15 +39,15 @@ export default function ActivitiesPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-200 bg-white">
-        <h1 className="text-xl font-semibold text-slate-900">Activity Feed</h1>
-        <p className="text-sm text-slate-500">All recent activities across your CRM</p>
+      <div className="px-6 py-4 border-b border-slate-100 bg-white">
+        <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Activity Feed</h1>
+        <p className="text-xs text-slate-400 mt-0.5">All recent activities across your CRM</p>
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-2 px-6 py-3 bg-white border-b border-slate-200 overflow-x-auto">
+      <div className="flex items-center gap-1.5 px-6 py-2.5 bg-white border-b border-slate-100 overflow-x-auto">
         <button
-          className={`text-xs px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${!typeFilter ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          className={`text-[11px] font-medium px-2.5 py-1 rounded-md whitespace-nowrap transition-colors ${!typeFilter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
           onClick={() => setTypeFilter('')}
         >
           All
@@ -55,7 +55,7 @@ export default function ActivitiesPage() {
         {ACTIVITY_TYPES.slice(0, 8).map((t) => (
           <button
             key={t.value}
-            className={`text-xs px-2.5 py-1 rounded-full whitespace-nowrap transition-colors ${typeFilter === t.value ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            className={`text-[11px] font-medium px-2.5 py-1 rounded-md whitespace-nowrap transition-colors ${typeFilter === t.value ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
             onClick={() => setTypeFilter(typeFilter === t.value ? '' : t.value)}
           >
             {t.label}
@@ -86,50 +86,50 @@ export default function ActivitiesPage() {
         ) : (
           <div className="max-w-2xl">
             <div className="relative">
-              <div className="absolute left-5 top-0 bottom-0 w-px bg-slate-200" />
-              <div className="space-y-4">
+              <div className="absolute left-[19px] top-0 bottom-0 w-px bg-slate-100" />
+              <div className="space-y-1">
                 {activities.map((activity) => {
                   const Icon = ACTIVITY_ICONS[activity.activityType] ?? Activity;
                   const performerFirst = activity.performerFirstName as string | undefined;
                   const performerLast = activity.performerLastName as string | undefined;
 
                   return (
-                    <div key={activity.id} className="flex gap-4 relative">
-                      <div className="relative z-10 flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-white border-2 border-slate-200">
-                        <Icon className="w-4 h-4 text-slate-500" />
+                    <div key={activity.id} className="flex gap-3.5 relative group">
+                      <div className="relative z-10 flex-shrink-0 flex items-center justify-center w-[38px] h-[38px] rounded-full bg-white border border-slate-200 shadow-[0_1px_3px_rgba(16,24,40,0.06)]">
+                        <Icon className="w-3.5 h-3.5 text-slate-400" strokeWidth={1.75} />
                       </div>
-                      <div className="flex-1 pb-3 min-w-0">
+                      <div className="flex-1 py-2 min-w-0">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
-                            <span className="text-sm font-medium text-slate-900">
+                            <span className="text-[13px] font-medium text-slate-800">
                               {activity.subject || (activity.activityType as string).replace(/_/g, ' ')}
                             </span>
                             {activity.isAutomated && (
-                              <span className="ml-2 text-xs text-slate-400">(automated)</span>
+                              <span className="ml-2 text-[11px] text-slate-400">(automated)</span>
                             )}
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            <Badge variant="secondary" className="text-xs capitalize">
+                            <Badge variant="secondary" className="capitalize">
                               {(activity.activityType as string).replace(/_/g, ' ')}
                             </Badge>
-                            <span className="text-xs text-slate-400">
+                            <span className="text-[11px] text-slate-400 tabular-nums">
                               {formatRelative(activity.occurredAt as unknown as Date)}
                             </span>
                           </div>
                         </div>
 
                         {activity.body && (
-                          <p className="text-sm text-slate-600 mt-1 line-clamp-2">{activity.body as string}</p>
+                          <p className="text-[13px] text-slate-500 mt-0.5 line-clamp-2">{activity.body as string}</p>
                         )}
 
                         {performerFirst && (
-                          <div className="flex items-center gap-1.5 mt-1.5">
+                          <div className="flex items-center gap-1.5 mt-1">
                             <Avatar className="w-4 h-4">
-                              <AvatarFallback className="text-xs bg-slate-200">
+                              <AvatarFallback className="text-[9px] bg-slate-100 text-slate-500">
                                 {getInitials(performerFirst, performerLast)}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="text-xs text-slate-500">
+                            <span className="text-[11px] text-slate-400">
                               {performerFirst} {performerLast}
                             </span>
                           </div>
