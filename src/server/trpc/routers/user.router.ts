@@ -139,6 +139,34 @@ export const userRouter = router({
       return db.select().from(roles).orderBy(asc(roles.name));
     }),
 
+  delete: protectedProcedure
+    .use(requirePermission('users', 'manage'))
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.id === ctx.user!.id) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'You cannot delete your own account.' });
+      }
+
+      const [deleted] = await db
+        .update(users)
+        .set({ status: 'inactive', updatedAt: new Date() })
+        .where(eq(users.id, input.id))
+        .returning({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email });
+
+      if (!deleted) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+
+      await writeAuditLog({
+        userId: ctx.user!.id,
+        userEmail: ctx.user!.email,
+        action: 'delete',
+        entityType: 'user',
+        entityId: input.id,
+        entityName: `${deleted.firstName} ${deleted.lastName}`,
+      });
+
+      return { success: true };
+    }),
+
   resetPassword: protectedProcedure
     .use(requirePermission('users', 'manage'))
     .input(z.object({

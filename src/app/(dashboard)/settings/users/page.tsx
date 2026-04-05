@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, ChevronLeft, Users, Pencil, Shield, ChevronDown, ChevronUp, Check, X, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { Plus, ChevronLeft, Users, Pencil, Shield, ChevronDown, ChevronUp, Check, X, KeyRound, Eye, EyeOff, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDate, getInitials } from '@/lib/formatters';
 import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
@@ -134,6 +135,8 @@ export default function UsersSettingsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<Record<string, unknown> | null>(null);
   const [resetUser, setResetUser] = useState<Record<string, unknown> | null>(null);
+  const [deleteUserId, setDeleteUserId] = useState<string>('');
+  const [deleteUserName, setDeleteUserName] = useState<string>('');
   const [rolesOpen, setRolesOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -158,6 +161,16 @@ export default function UsersSettingsPage() {
       setNewPassword('');
     },
     onError: (err) => toast.error('Failed to reset password', { description: err.message }),
+  });
+
+  const deleteUser = trpc.users.delete.useMutation({
+    onSuccess: () => {
+      toast.success('User removed');
+      setDeleteUserId('');
+      setDeleteUserName('');
+      void utils.users.list.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
   });
 
   const updateUser = trpc.users.update.useMutation({
@@ -241,6 +254,13 @@ export default function UsersSettingsPage() {
                   title="Edit user"
                 >
                   <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => { setDeleteUserId(user.id as string); setDeleteUserName(`${user.firstName as string} ${user.lastName as string}`); }}
+                  className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors"
+                  title="Delete user"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
@@ -400,6 +420,18 @@ export default function UsersSettingsPage() {
           </form>
         </div>
       </SlideOverPanel>
+
+      {/* Delete confirm */}
+      <ConfirmDialog
+        open={!!deleteUserId}
+        onOpenChange={(open) => { if (!open) { setDeleteUserId(''); setDeleteUserName(''); } }}
+        title={`Remove ${deleteUserName}?`}
+        description="This will deactivate the account. The user will no longer be able to log in. Their data and history will be preserved."
+        confirmLabel="Remove User"
+        destructive
+        loading={deleteUser.isPending}
+        onConfirm={() => deleteUser.mutate({ id: deleteUserId })}
+      />
 
       {/* Reset Password panel */}
       {resetUser && (
