@@ -8,7 +8,8 @@ import { eq, desc, count } from 'drizzle-orm';
 import { getBotInfo } from '@/server/lib/telegram-bot';
 import { paginationSchema } from '@/server/lib/validators';
 
-const requireTelegramManage = requirePermission('telegram' as never, 'manage');
+// Telegram settings require admin-level access (same as user management)
+const requireTelegramManage = requirePermission('users', 'manage');
 
 export const telegramRouter = router({
   /** List all authorized Telegram users */

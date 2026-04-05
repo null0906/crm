@@ -7,7 +7,8 @@ import { digestSchedules, dashboards } from '@/server/db/schema';
 import { eq, desc, asc } from 'drizzle-orm';
 import { sendDigest } from '@/server/services/digest.service';
 
-const requireDigestsManage = requirePermission('digests' as never, 'manage');
+// Digest settings require admin-level access (same as user management)
+const requireDigestsManage = requirePermission('users', 'manage');
 
 const scheduleInputSchema = z.object({
   name: z.string().min(1).max(255),
