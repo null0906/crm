@@ -18,6 +18,7 @@ export const contacts = pgTable(
     // Professional context
     jobTitle: varchar('job_title', { length: 150 }),
     department: varchar('department', { length: 100 }),
+    companyName: varchar('company_name', { length: 255 }),
     companyId: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
     linkedinUrl: text('linkedin_url'),
     // CRM metadata

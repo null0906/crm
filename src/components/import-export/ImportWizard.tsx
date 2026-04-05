@@ -22,6 +22,7 @@ const CONTACT_FIELDS = [
   { value: 'secondaryEmail', label: 'Secondary Email', mandatory: false },
   { value: 'phone', label: 'Phone', mandatory: false },
   { value: 'mobile', label: 'Mobile', mandatory: false },
+  { value: 'companyName', label: 'Company Name', mandatory: false },
   { value: 'jobTitle', label: 'Job Title', mandatory: false },
   { value: 'department', label: 'Department', mandatory: false },
   { value: 'linkedinUrl', label: 'LinkedIn URL', mandatory: false },
@@ -65,8 +66,8 @@ function downloadTemplate(entityType: 'contact' | 'company') {
   const exampleRow = fields.map((f) => {
     const examples: Record<string, string> = {
       firstName: 'John', lastName: 'Doe', email: 'john@example.com', secondaryEmail: '',
-      phone: '+91 98765 43210', mobile: '+91 91234 56789', jobTitle: 'CISO',
-      department: 'Security', linkedinUrl: 'https://linkedin.com/in/johndoe',
+      phone: '+91 98765 43210', mobile: '+91 91234 56789', companyName: 'Acme Corp',
+      jobTitle: 'CISO', department: 'Security', linkedinUrl: 'https://linkedin.com/in/johndoe',
       source: 'manual', status: 'new', leadScore: '50',
       addressLine1: '123 MG Road', addressLine2: 'Floor 4', city: 'Mumbai',
       state: 'Maharashtra', postalCode: '400001', country: 'India',

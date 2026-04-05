@@ -99,6 +99,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = user.id;
         token.firstName = (user as Record<string, unknown>).firstName as string;
         token.lastName = (user as Record<string, unknown>).lastName as string;
+        token.companyName = (user as Record<string, unknown>).companyName as string | undefined;
         token.roleId = (user as Record<string, unknown>).roleId as string;
         token.role = (user as Record<string, unknown>).role;
       }
@@ -108,6 +109,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.id = token.id as string;
       (session.user as unknown as Record<string, unknown>).firstName = token.firstName as string;
       (session.user as unknown as Record<string, unknown>).lastName = token.lastName as string;
+      (session.user as unknown as Record<string, unknown>).companyName = token.companyName as string | undefined;
       (session.user as unknown as Record<string, unknown>).roleId = token.roleId as string;
       (session.user as unknown as Record<string, unknown>).role = token.role;
       return session;

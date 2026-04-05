@@ -94,7 +94,7 @@ export async function listContacts(
       updatedAt: contacts.updatedAt,
       ownerFirstName: users.firstName,
       ownerLastName: users.lastName,
-      companyName: companies.name,
+      companyName: sql<string | null>`COALESCE(${companies.name}, ${contacts.companyName})`,
     })
     .from(contacts)
     .leftJoin(users, eq(contacts.ownerId, users.id))

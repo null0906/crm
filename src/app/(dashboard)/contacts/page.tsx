@@ -449,6 +449,7 @@ export default function ContactsPage() {
                 lastName: String(editContact.lastName ?? ''),
                 email: String(editContact.email ?? ''),
                 phone: String(editContact.phone ?? ''),
+                companyName: String(editContact.companyName ?? ''),
                 jobTitle: String(editContact.jobTitle ?? ''),
                 status: (editContact.status as 'new' | 'contacted' | 'qualified' | 'unqualified' | 'nurturing' | 'converted' | 'lost' | 'archived') ?? 'new',
                 ownerId: String(editContact.ownerId ?? ''),

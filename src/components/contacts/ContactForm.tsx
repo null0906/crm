@@ -140,6 +140,11 @@ export function ContactForm({ onSuccess, onCancel, defaultValues, compact = fals
         )}
       </div>
 
+      <div className="space-y-1.5">
+        <Label htmlFor="companyName">Company Name</Label>
+        <Input id="companyName" {...form.register('companyName')} placeholder="Acme Corp" />
+      </div>
+
       <div className={compact ? 'space-y-3' : 'grid grid-cols-2 gap-4'}>
         <div className="space-y-1.5">
           <Label htmlFor="phone">Phone</Label>

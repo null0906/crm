@@ -18,6 +18,7 @@ export const contactCreateSchema = z.object({
   mobile: z.string().max(30).optional().nullable(),
   jobTitle: z.string().max(150).optional().nullable(),
   department: z.string().max(100).optional().nullable(),
+  companyName: z.string().max(255).optional().nullable(),
   companyId: optionalUuid,
   linkedinUrl: optionalUrl,
   source: z.preprocess(emptyToUndefined, z.enum(['apollo', 'manual', 'website', 'referral', 'event', 'cold_outreach']).optional()),

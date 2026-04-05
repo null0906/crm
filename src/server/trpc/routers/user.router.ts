@@ -48,6 +48,7 @@ export const userRouter = router({
           firstName: users.firstName,
           lastName: users.lastName,
           avatarUrl: users.avatarUrl,
+          phone: users.phone,
           status: users.status,
           roleId: users.roleId,
           role: {
