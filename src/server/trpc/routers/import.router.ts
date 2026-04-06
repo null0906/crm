@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { router, protectedProcedure } from '../router';
 import * as contactService from '@/server/services/contact.service';
 import * as companyService from '@/server/services/company.service';
+import * as dealService from '@/server/services/deal.service';
 import { db } from '@/server/db';
-import { contacts } from '@/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { contacts, companies, pipelineStages } from '@/server/db/schema';
+import { eq, ilike, and, asc } from 'drizzle-orm';
 
 const contactRowSchema = z.object({
   firstName: z.string().min(1),
@@ -142,6 +143,105 @@ export const importRouter = router({
             status: 'active',
             customFields: {},
           });
+          created++;
+        } catch (err) {
+          errors.push({ row: i + 2, message: err instanceof Error ? err.message : 'Unknown error' });
+          skipped++;
+        }
+      }
+
+      return { created, skipped, errors };
+    }),
+
+  deals: protectedProcedure
+    .input(z.object({
+      rows: z.array(z.record(z.string(), z.string())).min(1).max(1000),
+      columnMap: z.record(z.string(), z.string()),
+      pipelineId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      let created = 0;
+      let skipped = 0;
+      const errors: Array<{ row: number; message: string }> = [];
+
+      // Pre-fetch all stages for this pipeline once
+      const allStages = await db
+        .select({ id: pipelineStages.id, name: pipelineStages.name, position: pipelineStages.position, defaultProbability: pipelineStages.defaultProbability })
+        .from(pipelineStages)
+        .where(eq(pipelineStages.pipelineId, input.pipelineId))
+        .orderBy(asc(pipelineStages.position));
+
+      if (allStages.length === 0) {
+        return { created: 0, skipped: input.rows.length, errors: [{ row: 0, message: 'Pipeline has no stages' }] };
+      }
+
+      const defaultStage = allStages[0]!;
+
+      for (let i = 0; i < input.rows.length; i++) {
+        const raw = input.rows[i]!;
+        const mapped: Record<string, string> = {};
+        for (const [csvCol, dealField] of Object.entries(input.columnMap)) {
+          if (raw[csvCol] !== undefined) mapped[dealField] = raw[csvCol]!;
+        }
+
+        const title = mapped.title?.trim();
+        if (!title) {
+          errors.push({ row: i + 2, message: 'Title is required' });
+          skipped++;
+          continue;
+        }
+
+        // Resolve stage by name (case-insensitive), fall back to first stage
+        let resolvedStageId = defaultStage.id;
+        let resolvedProbability = defaultStage.defaultProbability ?? 0;
+        if (mapped.stageName?.trim()) {
+          const match = allStages.find(
+            (s) => s.name.toLowerCase() === mapped.stageName!.trim().toLowerCase()
+          );
+          if (match) {
+            resolvedStageId = match.id;
+            resolvedProbability = match.defaultProbability ?? 0;
+          }
+        }
+
+        // Resolve company by name (case-insensitive), optional
+        let resolvedCompanyId: string | undefined;
+        if (mapped.companyName?.trim()) {
+          const [found] = await db
+            .select({ id: companies.id })
+            .from(companies)
+            .where(ilike(companies.name, mapped.companyName.trim()))
+            .limit(1);
+          if (found) resolvedCompanyId = found.id;
+        }
+
+        // Parse amount
+        const amountRaw = mapped.amount?.replace(/[^0-9.]/g, '');
+        const amount = amountRaw ? parseFloat(amountRaw) : undefined;
+
+        // Parse probability
+        const probabilityRaw = mapped.probability ? parseInt(mapped.probability, 10) : undefined;
+        const probability = probabilityRaw !== undefined && !isNaN(probabilityRaw)
+          ? Math.min(100, Math.max(0, probabilityRaw))
+          : resolvedProbability;
+
+        // Parse close date
+        const expectedCloseDate = mapped.expectedCloseDate?.trim() || undefined;
+
+        try {
+          await dealService.createDeal(ctx.user!, {
+            title,
+            pipelineId: input.pipelineId,
+            stageId: resolvedStageId,
+            amount: amount !== undefined ? String(amount) : undefined,
+            currency: (mapped.currency?.trim() || 'INR') as string,
+            probability,
+            expectedCloseDate: expectedCloseDate ?? null,
+            status: 'open',
+            companyId: resolvedCompanyId ?? null,
+            description: mapped.description?.trim() || null,
+            customFields: {},
+          } as Parameters<typeof dealService.createDeal>[1]);
           created++;
         } catch (err) {
           errors.push({ row: i + 2, message: err instanceof Error ? err.message : 'Unknown error' });

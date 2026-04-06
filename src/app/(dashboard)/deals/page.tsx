@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, LayoutGrid, List } from 'lucide-react';
+import { Plus, LayoutGrid, List, Upload } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
@@ -9,6 +9,7 @@ import { KanbanBoard } from '@/components/deals/KanbanBoard';
 import { DealTable } from '@/components/deals/DealTable';
 import { DealForm } from '@/components/deals/DealForm';
 import { DealDetail } from '@/components/deals/DealDetail';
+import { ImportWizard } from '@/components/import-export/ImportWizard';
 
 interface Stage {
   id: string;
@@ -25,6 +26,7 @@ export default function DealsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createStageId, setCreateStageId] = useState<string>('');
   const [selectedDealId, setSelectedDealId] = useState<string>('');
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data: pipelines = [], isLoading: pipelinesLoading } = trpc.pipelines.list.useQuery();
 
@@ -111,6 +113,10 @@ export default function DealsPage() {
             </button>
           </div>
 
+          <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="w-4 h-4" />
+            Import
+          </Button>
           <Button size="sm" onClick={() => { setCreateStageId(stages[0]?.id ?? ''); setCreateOpen(true); }}>
             <Plus className="w-4 h-4" />
             Add Deal
@@ -157,6 +163,18 @@ export default function DealsPage() {
             />
           )}
         </div>
+      </SlideOverPanel>
+
+      {/* Import Wizard */}
+      <SlideOverPanel open={importOpen} onClose={() => setImportOpen(false)} title="Import Deals" width="lg">
+        {importOpen && (
+          <ImportWizard
+            entityType="deal"
+            pipelineId={selectedPipelineId}
+            pipelineName={String(pipelines.find((p) => String(p.id) === selectedPipelineId)?.name ?? '')}
+            onClose={() => setImportOpen(false)}
+          />
+        )}
       </SlideOverPanel>
 
       {/* Deal Detail */}

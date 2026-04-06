@@ -6,7 +6,7 @@ import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
-type EntityType = 'contact' | 'company';
+type EntityType = 'contact' | 'company' | 'deal';
 type Step = 'upload' | 'map' | 'preview' | 'done';
 
 interface ImportResult {
@@ -38,6 +38,17 @@ const CONTACT_FIELDS = [
   { value: 'description', label: 'Notes', mandatory: false },
 ];
 
+const DEAL_FIELDS = [
+  { value: 'title', label: 'Deal Title *', mandatory: true },
+  { value: 'stageName', label: 'Stage Name', mandatory: false },
+  { value: 'amount', label: 'Amount', mandatory: false },
+  { value: 'currency', label: 'Currency', mandatory: false },
+  { value: 'probability', label: 'Probability (%)', mandatory: false },
+  { value: 'expectedCloseDate', label: 'Expected Close Date', mandatory: false },
+  { value: 'companyName', label: 'Company Name', mandatory: false },
+  { value: 'description', label: 'Notes', mandatory: false },
+];
+
 const COMPANY_FIELDS = [
   { value: 'name', label: 'Company Name *', mandatory: true },
   { value: 'domain', label: 'Domain', mandatory: false },
@@ -60,8 +71,8 @@ const COMPANY_FIELDS = [
   { value: 'description', label: 'Notes', mandatory: false },
 ];
 
-function downloadTemplate(entityType: 'contact' | 'company') {
-  const fields = entityType === 'contact' ? CONTACT_FIELDS : COMPANY_FIELDS;
+function downloadTemplate(entityType: 'contact' | 'company' | 'deal') {
+  const fields = entityType === 'contact' ? CONTACT_FIELDS : entityType === 'company' ? COMPANY_FIELDS : DEAL_FIELDS;
   const headers = fields.map((f) => f.mandatory ? `${f.label.replace(' *', '')} (mandatory)` : f.label);
   const exampleRow = fields.map((f) => {
     const examples: Record<string, string> = {
@@ -76,6 +87,9 @@ function downloadTemplate(entityType: 'contact' | 'company') {
       industry: 'Financial Services', subIndustry: 'Banking',
       companySize: '51-200', companyType: 'prospect', annualRevenueRange: '₹10Cr–₹50Cr',
       twitterUrl: 'https://twitter.com/acmecorp',
+      title: 'Acme — GRC Platform', stageName: 'Proposal Sent',
+      amount: '500000', currency: 'INR', probability: '40',
+      expectedCloseDate: '2026-06-30',
     };
     return examples[f.value] ?? '';
   });
@@ -92,6 +106,10 @@ function downloadTemplate(entityType: 'contact' | 'company') {
 interface ImportWizardProps {
   entityType: EntityType;
   onClose: () => void;
+  /** Required when entityType === 'deal'. Pass the currently selected pipeline id. */
+  pipelineId?: string;
+  /** Display name of the pipeline for the info banner. */
+  pipelineName?: string;
 }
 
 function parseCSV(text: string): { headers: string[]; rows: Record<string, string>[] } {
@@ -109,7 +127,7 @@ function parseCSV(text: string): { headers: string[]; rows: Record<string, strin
   return { headers, rows };
 }
 
-export function ImportWizard({ entityType, onClose }: ImportWizardProps) {
+export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: ImportWizardProps) {
   const [step, setStep] = useState<Step>('upload');
   const [csvText, setCsvText] = useState('');
   const [headers, setHeaders] = useState<string[]>([]);
@@ -118,7 +136,7 @@ export function ImportWizard({ entityType, onClose }: ImportWizardProps) {
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [result, setResult] = useState<ImportResult | null>(null);
 
-  const fields = entityType === 'contact' ? CONTACT_FIELDS : COMPANY_FIELDS;
+  const fields = entityType === 'contact' ? CONTACT_FIELDS : entityType === 'company' ? COMPANY_FIELDS : DEAL_FIELDS;
 
   const importContacts = trpc.import.contacts.useMutation({
     onSuccess: (data) => { setResult(data); setStep('done'); },
@@ -128,8 +146,12 @@ export function ImportWizard({ entityType, onClose }: ImportWizardProps) {
     onSuccess: (data) => { setResult(data); setStep('done'); },
     onError: (err) => toast.error('Import failed', { description: err.message }),
   });
+  const importDeals = trpc.import.deals.useMutation({
+    onSuccess: (data) => { setResult(data); setStep('done'); },
+    onError: (err) => toast.error('Import failed', { description: err.message }),
+  });
 
-  const isPending = importContacts.isPending || importCompanies.isPending;
+  const isPending = importContacts.isPending || importCompanies.isPending || importDeals.isPending;
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -190,8 +212,11 @@ export function ImportWizard({ entityType, onClose }: ImportWizardProps) {
     const trimmedRows = rows.slice(0, 1000);
     if (entityType === 'contact') {
       importContacts.mutate({ rows: trimmedRows, columnMap, skipDuplicates });
-    } else {
+    } else if (entityType === 'company') {
       importCompanies.mutate({ rows: trimmedRows, columnMap, skipDuplicates });
+    } else {
+      if (!pipelineId) { toast.error('No pipeline selected'); return; }
+      importDeals.mutate({ rows: trimmedRows, columnMap, pipelineId });
     }
   }
 
@@ -222,8 +247,14 @@ export function ImportWizard({ entityType, onClose }: ImportWizardProps) {
           <div>
             <h3 className="text-base font-semibold text-slate-900 mb-1">Upload CSV File</h3>
             <p className="text-sm text-slate-500 mb-4">
-              Import {entityType === 'contact' ? 'contacts' : 'companies'} from a CSV file. Max 1,000 rows per import.
+              Import {entityType === 'contact' ? 'contacts' : entityType === 'company' ? 'companies' : 'deals'} from a CSV file. Max 1,000 rows per import.
             </p>
+
+            {entityType === 'deal' && pipelineName && (
+              <div className="mb-4 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-xs text-indigo-700">
+                Deals will be imported into pipeline: <span className="font-semibold">{pipelineName}</span>. Use the <span className="font-semibold">Stage Name</span> column to assign stages — unrecognised values default to the first stage.
+              </div>
+            )}
 
             <div
               onDrop={handleDrop}
@@ -270,7 +301,7 @@ export function ImportWizard({ entityType, onClose }: ImportWizardProps) {
           <div>
             <h3 className="text-base font-semibold text-slate-900 mb-1">Map Columns</h3>
             <p className="text-sm text-slate-500 mb-4">
-              Match your CSV columns to {entityType} fields. {rows.length} rows detected.
+              Match your CSV columns to {entityType === 'deal' ? 'deal' : entityType} fields. {rows.length} rows detected.
             </p>
 
             <div className="space-y-2">
@@ -306,16 +337,18 @@ export function ImportWizard({ entityType, onClose }: ImportWizardProps) {
               </div>
             )}
 
-            <div className="mt-4 flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="skip-dup"
-                checked={skipDuplicates}
-                onChange={(e) => setSkipDuplicates(e.target.checked)}
-                className="rounded"
-              />
-              <label htmlFor="skip-dup" className="text-sm text-slate-700">Skip duplicate emails</label>
-            </div>
+            {entityType !== 'deal' && (
+              <div className="mt-4 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="skip-dup"
+                  checked={skipDuplicates}
+                  onChange={(e) => setSkipDuplicates(e.target.checked)}
+                  className="rounded"
+                />
+                <label htmlFor="skip-dup" className="text-sm text-slate-700">Skip duplicate emails</label>
+              </div>
+            )}
           </div>
         )}
 
@@ -324,7 +357,7 @@ export function ImportWizard({ entityType, onClose }: ImportWizardProps) {
           <div>
             <h3 className="text-base font-semibold text-slate-900 mb-1">Preview Import</h3>
             <p className="text-sm text-slate-500 mb-4">
-              Importing {Math.min(rows.length, 1000)} {entityType}s with {Object.keys(columnMap).length} mapped columns.
+              Importing {Math.min(rows.length, 1000)} {entityType === 'deal' ? 'deals' : `${entityType}s`} with {Object.keys(columnMap).length} mapped columns.
             </p>
 
             <div className="overflow-x-auto border border-slate-200 rounded-lg">
