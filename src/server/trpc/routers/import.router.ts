@@ -215,6 +215,23 @@ export const importRouter = router({
           if (found) resolvedCompanyId = found.id;
         }
 
+        // Resolve primary contact by full name (case-insensitive), optional
+        let resolvedContactId: string | undefined;
+        if (mapped.contactName?.trim()) {
+          const parts = mapped.contactName.trim().split(/\s+/);
+          const firstName = parts[0] ?? '';
+          const lastName = parts.slice(1).join(' ');
+          const [found] = await db
+            .select({ id: contacts.id })
+            .from(contacts)
+            .where(and(
+              ilike(contacts.firstName, firstName),
+              lastName ? ilike(contacts.lastName, lastName) : ilike(contacts.firstName, firstName)
+            ))
+            .limit(1);
+          if (found) resolvedContactId = found.id;
+        }
+
         // Parse amount
         const amountRaw = mapped.amount?.replace(/[^0-9.]/g, '');
         const amount = amountRaw ? parseFloat(amountRaw) : undefined;
@@ -239,6 +256,7 @@ export const importRouter = router({
             expectedCloseDate: expectedCloseDate ?? null,
             status: 'open',
             companyId: resolvedCompanyId ?? null,
+            primaryContactId: resolvedContactId ?? null,
             description: mapped.description?.trim() || null,
             customFields: {},
           } as Parameters<typeof dealService.createDeal>[1]);

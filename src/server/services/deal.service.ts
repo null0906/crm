@@ -58,6 +58,8 @@ export async function listDeals(
     } catch { /* ignore */ }
   }
 
+  const contactsAlias = contacts;
+
   const rows = await db
     .select({
       id: deals.id,
@@ -82,11 +84,13 @@ export async function listDeals(
       companyName: companies.name,
       stageName: pipelineStages.name,
       stageColor: pipelineStages.color,
+      primaryContactName: sql<string | null>`NULLIF(TRIM(CONCAT(${contactsAlias.firstName}, ' ', ${contactsAlias.lastName})), '')`,
     })
     .from(deals)
     .leftJoin(users, eq(deals.ownerId, users.id))
     .leftJoin(companies, eq(deals.companyId, companies.id))
     .leftJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
+    .leftJoin(contactsAlias, eq(deals.primaryContactId, contactsAlias.id))
     .where(and(...conditions))
     .orderBy(sort?.direction === 'asc' ? asc(deals.createdAt) : desc(deals.createdAt), desc(deals.id))
     .limit(limit + 1);
@@ -132,10 +136,12 @@ export async function getDealsByStage(
       ownerLastName: users.lastName,
       ownerAvatarUrl: users.avatarUrl,
       companyName: companies.name,
+      primaryContactName: sql<string | null>`NULLIF(TRIM(CONCAT(${contacts.firstName}, ' ', ${contacts.lastName})), '')`,
     })
     .from(deals)
     .leftJoin(users, eq(deals.ownerId, users.id))
     .leftJoin(companies, eq(deals.companyId, companies.id))
+    .leftJoin(contacts, eq(deals.primaryContactId, contacts.id))
     .where(and(...conditions))
     .orderBy(asc(deals.positionInStage), desc(deals.createdAt));
 
