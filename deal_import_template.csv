@@ -1,2 +1,2 @@
-Deal Title (mandatory),Stage Name,Amount,Currency,Probability (%),Expected Close Date,Company Name,Notes
-Acme — GRC Platform,Proposal Sent,500000,INR,40,2026-06-30,Acme Corp,Met at RSA Conference
+Deal Title (mandatory),Stage Name,Contact Name,Company Name,Amount,Currency,Probability (%),Expected Close Date,Notes
+Acme — GRC Platform,Proposal Sent,John Doe,Acme Corp,500000,INR,40,2026-06-30,Met at RSA Conference
