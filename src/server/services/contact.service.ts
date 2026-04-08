@@ -2,11 +2,112 @@ import { db } from '@/server/db';
 import { contacts, contactTags, tags, companies, users, roles } from '@/server/db/schema';
 import { eq, and, isNull, or, ilike, inArray, sql, lt, desc, asc } from 'drizzle-orm';
 import type { NewContact } from '@/server/db/schema';
-import type { FilterConfig, PaginatedResult, SessionUser } from '@/lib/types';
+import type { CompanyType, ContactSource, ContactStatus, FilterConfig, PaginatedResult, SessionUser } from '@/lib/types';
 import { writeAuditLog, buildChangeDiff } from './audit.service';
 import eventBus from '@/server/lib/event-bus';
 import { getPermissionLevel } from '@/server/lib/permissions';
 import { buildFilterWhere } from './filter.service';
+
+function normalizeCompanyName(name?: string | null): string | null {
+  const normalized = name?.trim().replace(/\s+/g, ' ');
+  return normalized ? normalized : null;
+}
+
+function inferCompanyTypeFromContact(status?: ContactStatus | null, source?: ContactSource | null): CompanyType {
+  if (status === 'converted') return 'customer';
+  if (source === 'referral') return 'partner';
+  return 'prospect';
+}
+
+function shouldPromoteCompanyType(
+  existingType: CompanyType | null | undefined,
+  inferredType: CompanyType
+): boolean {
+  if (!existingType) return true;
+  if (existingType === inferredType) return false;
+  if (inferredType === 'prospect') return false;
+  return existingType === 'prospect' || existingType === 'other';
+}
+
+async function resolveCompanyForContact(
+  user: SessionUser,
+  data: Pick<NewContact, 'companyId' | 'companyName' | 'status' | 'source'>
+): Promise<{ companyId: string | null; companyName: string | null }> {
+  const normalizedCompanyName = normalizeCompanyName(data.companyName);
+  const inferredCompanyType = inferCompanyTypeFromContact(
+    data.status as ContactStatus | null | undefined,
+    data.source as ContactSource | null | undefined
+  );
+
+  if (data.companyId) {
+    const [existingCompany] = await db
+      .select({
+        id: companies.id,
+        name: companies.name,
+        companyType: companies.companyType,
+      })
+      .from(companies)
+      .where(and(eq(companies.id, data.companyId), isNull(companies.deletedAt)))
+      .limit(1);
+
+    if (!existingCompany) {
+      throw new Error('Selected company was not found');
+    }
+
+    if (shouldPromoteCompanyType(existingCompany.companyType as CompanyType | null | undefined, inferredCompanyType)) {
+      await db
+        .update(companies)
+        .set({ companyType: inferredCompanyType, updatedAt: new Date() })
+        .where(eq(companies.id, existingCompany.id));
+    }
+
+    return { companyId: existingCompany.id, companyName: existingCompany.name };
+  }
+
+  if (!normalizedCompanyName) {
+    return { companyId: null, companyName: null };
+  }
+
+  const [matchedCompany] = await db
+    .select({
+      id: companies.id,
+      name: companies.name,
+      companyType: companies.companyType,
+    })
+    .from(companies)
+    .where(and(ilike(companies.name, normalizedCompanyName), isNull(companies.deletedAt)))
+    .limit(1);
+
+  if (matchedCompany) {
+    if (shouldPromoteCompanyType(matchedCompany.companyType as CompanyType | null | undefined, inferredCompanyType)) {
+      await db
+        .update(companies)
+        .set({ companyType: inferredCompanyType, updatedAt: new Date() })
+        .where(eq(companies.id, matchedCompany.id));
+    }
+
+    return { companyId: matchedCompany.id, companyName: matchedCompany.name };
+  }
+
+  const [createdCompany] = await db
+    .insert(companies)
+    .values({
+      name: normalizedCompanyName,
+      companyType: inferredCompanyType,
+      status: 'active',
+      createdBy: user.id,
+      ownerId: user.id,
+    })
+    .returning({
+      id: companies.id,
+      name: companies.name,
+    });
+
+  return {
+    companyId: createdCompany!.id,
+    companyName: createdCompany!.name,
+  };
+}
 
 export async function listContacts(
   user: SessionUser,
@@ -154,8 +255,41 @@ export async function getContactById(
   if (!readLevel) return null;
 
   const [contact] = await db
-    .select()
+    .select({
+      id: contacts.id,
+      firstName: contacts.firstName,
+      lastName: contacts.lastName,
+      email: contacts.email,
+      secondaryEmail: contacts.secondaryEmail,
+      phone: contacts.phone,
+      mobile: contacts.mobile,
+      jobTitle: contacts.jobTitle,
+      department: contacts.department,
+      companyName: sql<string | null>`COALESCE(${companies.name}, ${contacts.companyName})`,
+      companyId: contacts.companyId,
+      linkedinUrl: contacts.linkedinUrl,
+      source: contacts.source,
+      status: contacts.status,
+      leadScore: contacts.leadScore,
+      ownerId: contacts.ownerId,
+      addressLine1: contacts.addressLine1,
+      addressLine2: contacts.addressLine2,
+      city: contacts.city,
+      state: contacts.state,
+      postalCode: contacts.postalCode,
+      country: contacts.country,
+      description: contacts.description,
+      customFields: contacts.customFields,
+      lastContactedAt: contacts.lastContactedAt,
+      createdAt: contacts.createdAt,
+      updatedAt: contacts.updatedAt,
+      deletedAt: contacts.deletedAt,
+      ownerFirstName: users.firstName,
+      ownerLastName: users.lastName,
+    })
     .from(contacts)
+    .leftJoin(companies, eq(contacts.companyId, companies.id))
+    .leftJoin(users, eq(contacts.ownerId, users.id))
     .where(and(eq(contacts.id, id), isNull(contacts.deletedAt)))
     .limit(1);
 
@@ -177,9 +311,16 @@ export async function createContact(
   user: SessionUser,
   data: Omit<NewContact, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>
 ): Promise<Record<string, unknown>> {
+  const resolvedCompany = await resolveCompanyForContact(user, data);
+
   const [contact] = await db
     .insert(contacts)
-    .values({ ...data, createdBy: user.id })
+    .values({
+      ...data,
+      companyId: resolvedCompany.companyId,
+      companyName: resolvedCompany.companyName,
+      createdBy: user.id,
+    })
     .returning();
 
   eventBus.emit('contact.created', { contactId: contact!.id, createdBy: user.id });
@@ -212,9 +353,19 @@ export async function updateContact(
     throw new Error('You can only update your own contacts');
   }
 
+  let resolvedCompanyUpdate: Partial<Pick<NewContact, 'companyId' | 'companyName'>> = {};
+  if ('companyId' in data || 'companyName' in data || data.status !== undefined || data.source !== undefined) {
+    resolvedCompanyUpdate = await resolveCompanyForContact(user, {
+      companyId: data.companyId ?? (existing.companyId as string | null | undefined) ?? null,
+      companyName: data.companyName ?? (existing.companyName as string | null | undefined) ?? null,
+      status: (data.status ?? existing.status) as NewContact['status'],
+      source: (data.source ?? existing.source) as NewContact['source'],
+    });
+  }
+
   const [updated] = await db
     .update(contacts)
-    .set({ ...data, updatedAt: new Date() })
+    .set({ ...data, ...resolvedCompanyUpdate, updatedAt: new Date() })
     .where(and(eq(contacts.id, id), isNull(contacts.deletedAt)))
     .returning();
 

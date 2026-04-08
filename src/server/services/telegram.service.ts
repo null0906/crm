@@ -161,31 +161,7 @@ async function handleAdd(
     return { text: '❌ Could not parse name. Use "First Last" format.' };
   }
 
-  // Look up or create company
-  let companyId: string | undefined;
   const companyName = fields['company'];
-  if (companyName) {
-    const [existing] = await db
-      .select({ id: companies.id })
-      .from(companies)
-      .where(and(ilike(companies.name, companyName), isNull(companies.deletedAt)))
-      .limit(1);
-
-    if (existing) {
-      companyId = existing.id;
-    } else {
-      const [created] = await db
-        .insert(companies)
-        .values({
-          name: companyName,
-          createdBy: sessionUser.id,
-          status: 'active',
-        })
-        .returning({ id: companies.id });
-      companyId = created?.id;
-    }
-  }
-
   const email = fields['email'];
   if (email && !validateEmail(email)) {
     return { text: `❌ Invalid email address: ${email}` };
@@ -219,7 +195,7 @@ async function handleAdd(
     phone,
     jobTitle: fields['title'] ?? fields['job title'],
     description: fields['notes'] ?? fields['note'],
-    companyId,
+    companyName,
     ownerId: sessionUser.id,
     status,
     source,

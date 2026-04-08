@@ -86,6 +86,7 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
     mobile: mobile ?? '',
     jobTitle: jobTitle ?? '',
     department: department ?? '',
+    companyName: companyName ?? '',
     status: (status as 'new' | 'contacted' | 'qualified' | 'unqualified' | 'nurturing' | 'converted' | 'lost' | 'archived') ?? 'new',
     source: (source as 'apollo' | 'manual' | 'website' | 'referral' | 'event' | 'cold_outreach') ?? undefined,
     ownerId: ownerId ?? '',
