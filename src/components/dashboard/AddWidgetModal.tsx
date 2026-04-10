@@ -5,9 +5,11 @@ import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { TrendingUp, Activity, BarChart2, PieChart, LayoutGrid, List } from 'lucide-react';
+import type { DashboardDataSource } from '@/lib/types';
 
 interface AddWidgetModalProps {
   dashboardId: string;
+  sourceContext: DashboardDataSource;
   onClose: () => void;
   onAdded: () => void;
 }
@@ -60,7 +62,7 @@ const WIDGET_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899',
 ];
 
-export function AddWidgetModal({ dashboardId, onClose, onAdded }: AddWidgetModalProps) {
+export function AddWidgetModal({ dashboardId, sourceContext, onClose, onAdded }: AddWidgetModalProps) {
   const [selectedType, setSelectedType] = useState(WIDGET_TYPES[0]!);
   const [selectedConfig, setSelectedConfig] = useState(0);
   const [title, setTitle] = useState('');
@@ -83,7 +85,7 @@ export function AddWidgetModal({ dashboardId, onClose, onAdded }: AddWidgetModal
       widgetType: selectedType.type as 'metric_card' | 'bar_chart' | 'line_chart' | 'pie_chart' | 'funnel_chart' | 'table' | 'pipeline_summary' | 'activity_feed' | 'leaderboard' | 'goal_tracker' | 'conversion_rate' | 'time_in_stage' | 'forecast' | 'custom_query',
       title: widgetTitle,
       color,
-      config: cfg as Record<string, unknown>,
+      config: { ...(cfg as Record<string, unknown>), sourceContext },
     });
   }
 

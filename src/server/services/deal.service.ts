@@ -287,9 +287,18 @@ export async function updateDeal(
       activityType: 'stage_change',
       subject: `Stage changed`,
       dealId: id,
+      companyId: (existing.companyId as string | null | undefined) ?? null,
+      contactId: (existing.primaryContactId as string | null | undefined) ?? null,
       performedBy: user.id,
       isAutomated: true,
-      metadata: { fromStageId: existing.stageId, toStageId: data.stageId },
+      occurredAt: new Date(),
+      metadata: {
+        dealTitle: existing.title,
+        fromStageId: existing.stageId,
+        toStageId: data.stageId,
+        companyId: existing.companyId,
+        primaryContactId: existing.primaryContactId,
+      },
     });
   }
 

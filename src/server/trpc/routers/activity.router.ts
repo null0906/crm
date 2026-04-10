@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
-import { activities, users } from '@/server/db/schema';
-import { eq, and, isNull, desc, or } from 'drizzle-orm';
+import { activities, users, contacts, companies, deals, pipelineStages } from '@/server/db/schema';
+import { eq, and, isNull, desc, inArray } from 'drizzle-orm';
 import { activityCreateSchema, paginationSchema } from '@/server/lib/validators';
 import { writeAuditLog } from '@/server/services/audit.service';
 import eventBus from '@/server/lib/event-bus';
@@ -45,6 +45,10 @@ export const activityRouter = router({
           contactId: activities.contactId,
           companyId: activities.companyId,
           dealId: activities.dealId,
+          contactName: contacts.firstName,
+          contactLastName: contacts.lastName,
+          companyName: companies.name,
+          dealTitle: deals.title,
           isAutomated: activities.isAutomated,
           attachments: activities.attachments,
           metadata: activities.metadata,
@@ -57,19 +61,58 @@ export const activityRouter = router({
         })
         .from(activities)
         .leftJoin(users, eq(activities.performedBy, users.id))
+        .leftJoin(contacts, eq(activities.contactId, contacts.id))
+        .leftJoin(companies, eq(activities.companyId, companies.id))
+        .leftJoin(deals, eq(activities.dealId, deals.id))
         .where(and(...conditions))
         .orderBy(desc(activities.occurredAt))
         .limit(input.pagination.limit + 1);
 
       const hasMore = rows.length > input.pagination.limit;
       const items = hasMore ? rows.slice(0, input.pagination.limit) : rows;
+      const stageIds = Array.from(
+        new Set(
+          items.flatMap((item) => {
+            const metadata = (item.metadata as Record<string, unknown> | null) ?? {};
+            return [metadata.fromStageId, metadata.toStageId]
+              .filter((value): value is string => typeof value === 'string' && value.length > 0);
+          })
+        )
+      );
+
+      let stageNameMap = new Map<string, string>();
+      if (stageIds.length > 0) {
+        const stageRows = await db
+          .select({ id: pipelineStages.id, name: pipelineStages.name })
+          .from(pipelineStages)
+          .where(inArray(pipelineStages.id, stageIds));
+        stageNameMap = new Map(stageRows.map((stage) => [stage.id, stage.name]));
+      }
+
+      const enrichedItems = items.map((item) => {
+        const metadata = ((item.metadata as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
+        const contactFullName = [item.contactName, item.contactLastName].filter(Boolean).join(' ').trim() || null;
+        const fromStageId = typeof metadata.fromStageId === 'string' ? metadata.fromStageId : null;
+        const toStageId = typeof metadata.toStageId === 'string' ? metadata.toStageId : null;
+
+        return {
+          ...item,
+          contactFullName,
+          metadata: {
+            ...metadata,
+            fromStageName: fromStageId ? stageNameMap.get(fromStageId) ?? null : null,
+            toStageName: toStageId ? stageNameMap.get(toStageId) ?? null : null,
+          },
+        };
+      });
+
       let nextCursor: string | null = null;
       if (hasMore && items.length > 0) {
         const last = items[items.length - 1]!;
         nextCursor = `${last.occurredAt.toISOString()}__${last.id}`;
       }
 
-      return { items, nextCursor, hasMore };
+      return { items: enrichedItems, nextCursor, hasMore };
     }),
 
   create: protectedProcedure

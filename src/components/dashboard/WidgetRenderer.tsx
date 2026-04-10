@@ -8,7 +8,7 @@ import {
 import { trpc } from '@/lib/trpc';
 import { formatCurrency, formatRelative } from '@/lib/formatters';
 import { TrendingUp, Users, Building2, Activity, Phone, Mail } from 'lucide-react';
-import type { WidgetType } from '@/lib/types';
+import type { DashboardDataSource, WidgetType } from '@/lib/types';
 
 interface Widget {
   id: string;
@@ -16,44 +16,153 @@ interface Widget {
   title: string;
   subtitle: string | null;
   color: string | null;
-  config: unknown;
+  config: Record<string, unknown>;
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
+function getWidgetSource(widget: Widget): DashboardDataSource {
+  const source = widget.config?.sourceContext;
+  return source === 'partner' || source === 'enterprise' ? source : 'client';
+}
+
+function isCompanyInSource(company: Record<string, unknown>, source: DashboardDataSource): boolean {
+  const companyType = company.companyType as string | null | undefined;
+  const companySize = company.companySize as string | null | undefined;
+
+  if (source === 'partner') return companyType === 'partner';
+  if (source === 'enterprise') return companySize === '1001-5000' || companySize === '5000+';
+  return companyType === 'customer';
+}
+
+function getPipelineKeywords(source: DashboardDataSource): string[] {
+  if (source === 'partner') return ['partner'];
+  if (source === 'enterprise') return ['enterprise'];
+  return ['sales', 'client'];
+}
+
+function resolvePipelineForSource(
+  pipelines: Array<Record<string, unknown>>,
+  source: DashboardDataSource
+): Record<string, unknown> | undefined {
+  const keywords = getPipelineKeywords(source);
+  return pipelines.find((pipeline) => {
+    const name = String(pipeline.name ?? '').toLowerCase();
+    return keywords.some((keyword) => name.includes(keyword));
+  }) ?? pipelines[0];
+}
+
+function filterDealsByPipelineSource(
+  deals: Array<Record<string, unknown>>,
+  pipelines: Array<Record<string, unknown>>,
+  source: DashboardDataSource
+): Array<Record<string, unknown>> {
+  const pipeline = resolvePipelineForSource(pipelines, source);
+  if (!pipeline?.id) return [];
+  return deals.filter((deal) => String(deal.pipelineId ?? '') === String(pipeline.id));
+}
+
+function filterRecordsBySource<T extends Record<string, unknown>>(
+  records: T[],
+  companies: Array<Record<string, unknown>>,
+  source: DashboardDataSource,
+  companyIdField: string,
+  companyNameField?: string
+): T[] {
+  const matchingCompanyIds = new Set(
+    companies
+      .filter((company) => isCompanyInSource(company, source))
+      .map((company) => String(company.id))
+  );
+  const matchingCompanyNames = new Set(
+    companies
+      .filter((company) => isCompanyInSource(company, source))
+      .map((company) => String(company.name))
+  );
+
+  return records.filter((record) => {
+    const companyId = record[companyIdField];
+    if (companyId && matchingCompanyIds.has(String(companyId))) return true;
+    if (companyNameField) {
+      const companyName = record[companyNameField];
+      if (companyName && matchingCompanyNames.has(String(companyName))) return true;
+    }
+    return false;
+  });
+}
+
+function WidgetState({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) {
+  return (
+    <div className="h-full flex flex-col items-center justify-center text-center px-4">
+      <p className="text-sm font-semibold text-slate-700">{title}</p>
+      <p className="text-xs text-slate-400 mt-1">{message}</p>
+    </div>
+  );
+}
+
 function MetricCard({ widget }: { widget: Widget }) {
   const config = widget.config as Record<string, unknown>;
   const metric = config.metric as string | undefined;
+  const source = getWidgetSource(widget);
 
   const { data: contactsData } = trpc.contacts.list.useQuery({ pagination: { limit: 1, cursor: undefined } }, { enabled: metric === 'contacts' });
-  const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 1, cursor: undefined } }, { enabled: metric === 'companies' });
+  const { data: allContactsData, error: contactsError } = trpc.contacts.list.useQuery({ pagination: { limit: 500, cursor: undefined } }, { enabled: metric === 'contacts' });
+  const { data: companiesData, error: companiesError } = trpc.dashboards.sourceCompanies.useQuery();
+  const { data: pipelines = [], error: pipelinesError } = trpc.pipelines.list.useQuery(
+    undefined,
+    { enabled: metric === 'pipeline_value' || metric === 'won_value' || metric === 'open_deals' }
+  );
   const { data: dealsData } = trpc.deals.list.useQuery({ pagination: { limit: 500, cursor: undefined } }, { enabled: metric === 'pipeline_value' || metric === 'won_value' || metric === 'open_deals' });
+  const dealsError = trpc.deals.list.useQuery({ pagination: { limit: 1, cursor: undefined } }, { enabled: false }).error;
+
+  const allCompanies = (companiesData ?? []) as Array<Record<string, unknown>>;
+  const filteredCompanies = allCompanies.filter((company) => isCompanyInSource(company, source));
+  const filteredContacts = filterRecordsBySource(
+    ((allContactsData?.items ?? []) as Array<Record<string, unknown>>),
+    allCompanies,
+    source,
+    'companyId',
+    'companyName'
+  );
+  const filteredDeals = filterDealsByPipelineSource(
+    ((dealsData?.items ?? []) as Array<Record<string, unknown>>),
+    (pipelines as Array<Record<string, unknown>>),
+    source
+  );
 
   let value: string | number = '—';
   let subtitle = '';
 
   if (metric === 'contacts') {
-    const total = (contactsData as { total?: number })?.total ?? contactsData?.items?.length ?? '—';
+    const total = filteredContacts.length;
     value = total;
-    subtitle = 'Total contacts';
+    subtitle = `${source} contacts`;
   } else if (metric === 'companies') {
-    const total = (companiesData as { total?: number })?.total ?? companiesData?.items?.length ?? '—';
+    const total = filteredCompanies.length;
     value = total;
-    subtitle = 'Total companies';
+    subtitle = `${source} companies`;
   } else if (metric === 'pipeline_value') {
-    const deals = (dealsData?.items ?? []) as Array<Record<string, unknown>>;
-    const open = deals.filter((d) => d.status === 'open');
+    const open = filteredDeals.filter((d) => d.status === 'open');
     value = formatCurrency(open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0));
-    subtitle = `${open.length} open deals`;
+    subtitle = `${open.length} open ${source} deals`;
   } else if (metric === 'won_value') {
-    const deals = (dealsData?.items ?? []) as Array<Record<string, unknown>>;
-    const won = deals.filter((d) => d.status === 'won');
+    const won = filteredDeals.filter((d) => d.status === 'won');
     value = formatCurrency(won.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0));
-    subtitle = `${won.length} deals won`;
+    subtitle = `${won.length} ${source} deals won`;
   } else if (metric === 'open_deals') {
-    const deals = (dealsData?.items ?? []) as Array<Record<string, unknown>>;
-    value = deals.filter((d) => d.status === 'open').length;
-    subtitle = 'Open deals';
+    value = filteredDeals.filter((d) => d.status === 'open').length;
+    subtitle = `Open ${source} deals`;
+  }
+
+  const queryError = contactsError ?? companiesError ?? dealsError ?? pipelinesError;
+  if (queryError) {
+    return <WidgetState title={widget.title} message={queryError.message} />;
   }
 
   const iconColor = widget.color ?? '#3b82f6';
@@ -81,7 +190,19 @@ function ActivityFeed({ widget }: { widget: Widget }) {
   const config = widget.config as Record<string, unknown>;
   const limit = (config.limit as number) || 8;
   const { data } = trpc.activities.list.useQuery({ pagination: { limit, cursor: undefined } });
-  const items = data?.items ?? [];
+  const { data: companiesData, error: companiesError } = trpc.dashboards.sourceCompanies.useQuery();
+  const source = getWidgetSource(widget);
+  const items = filterRecordsBySource(
+    ((data?.items ?? []) as Array<Record<string, unknown>>),
+    ((companiesData ?? []) as Array<Record<string, unknown>>),
+    source,
+    'companyId',
+    'companyName'
+  );
+
+  if (companiesError) {
+    return <WidgetState title={widget.title} message={companiesError.message} />;
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -116,9 +237,10 @@ function ActivityFeed({ widget }: { widget: Widget }) {
 }
 
 function PipelineSummary({ widget }: { widget: Widget }) {
-  const { data: pipelines = [] } = trpc.pipelines.list.useQuery();
-  const firstPipeline = pipelines[0] as Record<string, unknown> | undefined;
-  const pipelineId = firstPipeline?.id as string | undefined;
+  const source = getWidgetSource(widget);
+  const { data: pipelines = [], error: pipelinesError } = trpc.pipelines.list.useQuery();
+  const sourcePipeline = resolvePipelineForSource(pipelines as Array<Record<string, unknown>>, source);
+  const pipelineId = sourcePipeline?.id as string | undefined;
 
   const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery(
     { id: pipelineId! },
@@ -140,10 +262,19 @@ function PipelineSummary({ widget }: { widget: Widget }) {
   const stageData = byStage
     ? Object.entries(byStage as Record<string, unknown[]>).map(([stageId, deals]) => ({
         name: stageNameMap[stageId] ?? stageId,
-        deals: deals.length,
-        value: (deals as Array<Record<string, unknown>>).reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0),
-      }))
+        deals: (deals as Array<Record<string, unknown>>).length,
+        value: (deals as Array<Record<string, unknown>>)
+          .reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0),
+      })).filter((stage) => stage.deals > 0)
     : [];
+
+  if (pipelinesError) {
+    return <WidgetState title={widget.title} message={pipelinesError.message} />;
+  }
+
+  if (!sourcePipeline) {
+    return <WidgetState title={widget.title} message={`No ${source} pipeline found.`} />;
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -166,8 +297,18 @@ function PipelineSummary({ widget }: { widget: Widget }) {
 }
 
 function DealsBarChart({ widget }: { widget: Widget }) {
+  const source = getWidgetSource(widget);
+  const { data: pipelines = [], error: pipelinesError } = trpc.pipelines.list.useQuery();
   const { data: dealsData } = trpc.deals.list.useQuery({ pagination: { limit: 200, cursor: undefined } });
-  const deals = (dealsData?.items ?? []) as Array<Record<string, unknown>>;
+  const deals = filterDealsByPipelineSource(
+    ((dealsData?.items ?? []) as Array<Record<string, unknown>>),
+    (pipelines as Array<Record<string, unknown>>),
+    source
+  );
+
+  if (pipelinesError) {
+    return <WidgetState title={widget.title} message={pipelinesError.message} />;
+  }
 
   // Group by status
   const byStatus = [
@@ -197,8 +338,20 @@ function DealsBarChart({ widget }: { widget: Widget }) {
 }
 
 function ContactsPieChart({ widget }: { widget: Widget }) {
+  const source = getWidgetSource(widget);
   const { data: contactsData } = trpc.contacts.list.useQuery({ pagination: { limit: 500, cursor: undefined } });
-  const contacts = contactsData?.items ?? [];
+  const { data: companiesData, error: companiesError } = trpc.dashboards.sourceCompanies.useQuery();
+  const contacts = filterRecordsBySource(
+    ((contactsData?.items ?? []) as Array<Record<string, unknown>>),
+    ((companiesData ?? []) as Array<Record<string, unknown>>),
+    source,
+    'companyId',
+    'companyName'
+  );
+
+  if (companiesError) {
+    return <WidgetState title={widget.title} message={companiesError.message} />;
+  }
 
   // Group by status
   const byStatus: Record<string, number> = {};
@@ -207,6 +360,10 @@ function ContactsPieChart({ widget }: { widget: Widget }) {
     byStatus[s] = (byStatus[s] ?? 0) + 1;
   }
   const pieData = Object.entries(byStatus).map(([name, value]) => ({ name, value }));
+
+  if (pieData.length === 0) {
+    return <WidgetState title={widget.title} message={`No ${source} contact data matched this widget.`} />;
+  }
 
   return (
     <div className="h-full flex flex-col">

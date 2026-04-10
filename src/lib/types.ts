@@ -43,6 +43,7 @@ export type AuditAction =
 
 export type DashboardVisibility = 'private' | 'team' | 'everyone';
 export type SavedViewVisibility = 'private' | 'team' | 'everyone';
+export type DashboardDataSource = 'client' | 'partner' | 'enterprise';
 
 export type DealContactRole = 'primary' | 'decision_maker' | 'champion' | 'influencer' | 'stakeholder' | 'blocker';
 

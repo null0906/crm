@@ -3,8 +3,8 @@ import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
-import { dashboards, dashboardWidgets } from '@/server/db/schema';
-import { eq, and, or } from 'drizzle-orm';
+import { dashboards, dashboardWidgets, companies } from '@/server/db/schema';
+import { eq, and, or, isNull } from 'drizzle-orm';
 import { writeAuditLog } from '@/server/services/audit.service';
 import { randomUUID } from 'crypto';
 
@@ -21,6 +21,19 @@ export const dashboardRouter = router({
             eq(dashboards.visibility, 'team')
           )
         );
+    }),
+
+  sourceCompanies: protectedProcedure
+    .query(async () => {
+      return db
+        .select({
+          id: companies.id,
+          name: companies.name,
+          companyType: companies.companyType,
+          companySize: companies.companySize,
+        })
+        .from(companies)
+        .where(isNull(companies.deletedAt));
     }),
 
   getById: protectedProcedure

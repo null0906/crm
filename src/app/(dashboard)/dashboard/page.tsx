@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { WidgetRenderer } from '@/components/dashboard/WidgetRenderer';
 import { AddWidgetModal } from '@/components/dashboard/AddWidgetModal';
 import { toast } from 'sonner';
+import { DASHBOARD_DATA_SOURCES } from '@/lib/constants';
+import type { DashboardDataSource } from '@/lib/types';
 
 interface DashboardWidget {
   id: string;
@@ -14,7 +16,7 @@ interface DashboardWidget {
   title: string;
   subtitle: string | null;
   color: string | null;
-  config: unknown;
+  config: Record<string, unknown>;
 }
 
 interface Dashboard {
@@ -51,7 +53,12 @@ export default function DashboardPage() {
     }
   }, [dashboardList, activeDashboardId]);
 
-  const { data: activeDashboard, refetch: refetchDashboard } = trpc.dashboards.getById.useQuery(
+  const {
+    data: activeDashboard,
+    refetch: refetchDashboard,
+    isLoading: activeDashboardLoading,
+    error: activeDashboardError,
+  } = trpc.dashboards.getById.useQuery(
     { id: activeDashboardId },
     { enabled: !!activeDashboardId }
   );
@@ -84,7 +91,37 @@ export default function DashboardPage() {
     onError: (err) => toast.error('Failed to remove widget', { description: err.message }),
   });
 
+  const updateWidget = trpc.dashboards.updateWidget.useMutation();
+
   const widgets: DashboardWidget[] = (activeDashboard as Dashboard | undefined)?.widgets ?? [];
+  const activeSourceContext = (widgets[0]?.config?.sourceContext as DashboardDataSource | undefined) ?? 'client';
+
+  async function handleSourceChange(nextSource: DashboardDataSource) {
+    if (!widgets.length) {
+      toast.info(`New widgets in this dashboard will use ${nextSource} data.`);
+      return;
+    }
+
+    try {
+      await Promise.all(
+        widgets.map((widget) =>
+          updateWidget.mutateAsync({
+            id: widget.id,
+            config: {
+              ...(widget.config ?? {}),
+              sourceContext: nextSource,
+            },
+          })
+        )
+      );
+      await refetchDashboard();
+      toast.success(`Dashboard source changed to ${nextSource}.`);
+    } catch (err) {
+      toast.error('Failed to change dashboard source', {
+        description: err instanceof Error ? err.message : 'Unknown error',
+      });
+    }
+  }
 
   if (listLoading) {
     return (
@@ -152,6 +189,17 @@ export default function DashboardPage() {
 
         {activeDashboardId && (
           <div className="flex items-center gap-2">
+            <select
+              value={activeSourceContext}
+              onChange={(e) => void handleSourceChange(e.target.value as DashboardDataSource)}
+              className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              {DASHBOARD_DATA_SOURCES.map((source) => (
+                <option key={source.value} value={source.value}>
+                  {source.label} Data
+                </option>
+              ))}
+            </select>
             {editMode && (
               <Button
                 size="sm"
@@ -200,6 +248,18 @@ export default function DashboardPage() {
             <Button onClick={() => setCreatingDashboard(true)}>
               <Plus className="w-4 h-4 mr-1" />
               Create Dashboard
+            </Button>
+          </div>
+        ) : activeDashboardLoading ? (
+          <div className="flex items-center justify-center h-full text-sm text-slate-400">
+            Loading dashboard...
+          </div>
+        ) : activeDashboardError ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <h2 className="text-base font-semibold text-slate-700 mb-1">Dashboard failed to load</h2>
+            <p className="text-sm text-slate-400 mb-4">{activeDashboardError.message}</p>
+            <Button size="sm" variant="outline" onClick={() => void refetchDashboard()}>
+              Retry
             </Button>
           </div>
         ) : widgets.length === 0 && !editMode ? (
@@ -259,6 +319,7 @@ export default function DashboardPage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
             <AddWidgetModal
               dashboardId={activeDashboardId}
+              sourceContext={activeSourceContext}
               onClose={() => setAddWidgetOpen(false)}
               onAdded={() => void refetchDashboard()}
             />
