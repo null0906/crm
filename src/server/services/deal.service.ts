@@ -210,6 +210,19 @@ export async function createDeal(
     movedBy: user.id,
   });
 
+  // Auto-log deal_created activity so it surfaces in contact/company activity feeds
+  await db.insert(activities).values({
+    activityType: 'note',
+    subject: `Deal created: ${deal!.title}`,
+    dealId: deal!.id,
+    companyId: data.companyId ?? null,
+    contactId: data.primaryContactId ?? null,
+    performedBy: user.id,
+    isAutomated: true,
+    occurredAt: new Date(),
+    metadata: { dealTitle: deal!.title, stageId: data.stageId },
+  });
+
   eventBus.emit('deal.created', { dealId: deal!.id, createdBy: user.id });
 
   await writeAuditLog({
@@ -402,6 +415,42 @@ export async function getDealsByContact(
   return combined;
 }
 
+export async function getDealsByCompany(
+  user: SessionUser,
+  companyId: string
+): Promise<Record<string, unknown>[]> {
+  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
+  if (!readLevel) return [];
+
+  const conditions = [
+    isNull(deals.deletedAt),
+    eq(deals.companyId, companyId),
+    ...(readLevel === 'own' ? [eq(deals.ownerId, user.id)] : []),
+  ];
+
+  const rows = await db
+    .select({
+      id: deals.id,
+      title: deals.title,
+      amount: deals.amount,
+      currency: deals.currency,
+      status: deals.status,
+      stageId: deals.stageId,
+      expectedCloseDate: deals.expectedCloseDate,
+      createdAt: deals.createdAt,
+      stageName: pipelineStages.name,
+      stageColor: pipelineStages.color,
+      primaryContactName: sql<string | null>`NULLIF(TRIM(CONCAT(${contacts.firstName}, ' ', ${contacts.lastName})), '')`,
+    })
+    .from(deals)
+    .leftJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
+    .leftJoin(contacts, eq(deals.primaryContactId, contacts.id))
+    .where(and(...conditions))
+    .orderBy(desc(deals.createdAt));
+
+  return rows as Record<string, unknown>[];
+}
+
 export async function addDealTags(user: SessionUser, dealId: string, tagIds: string[]): Promise<void> {
   for (const tagId of tagIds) {
     await db.insert(dealTags).values({ dealId, tagId, taggedBy: user.id }).onConflictDoNothing();
@@ -422,7 +471,12 @@ export async function moveDealToStage(
   user: SessionUser,
   dealId: string,
   toStageId: string,
-  positionInStage?: number
+  positionInStage?: number,
+  lostReason?: string
 ): Promise<Record<string, unknown>> {
-  return updateDeal(user, dealId, { stageId: toStageId, positionInStage: positionInStage ?? 0 });
+  return updateDeal(user, dealId, {
+    stageId: toStageId,
+    positionInStage: positionInStage ?? 0,
+    ...(lostReason ? { lostReason } : {}),
+  });
 }

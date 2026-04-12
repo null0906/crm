@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { TrendingUp, Activity, BarChart2, PieChart, LayoutGrid, List } from 'lucide-react';
+import { TrendingUp, Activity, BarChart2, PieChart, TrendingDown, Filter } from 'lucide-react';
 import type { DashboardDataSource } from '@/lib/types';
 
 interface AddWidgetModalProps {
@@ -18,22 +18,31 @@ const WIDGET_TYPES = [
   {
     type: 'metric_card',
     label: 'Metric Card',
-    description: 'A single KPI number',
+    description: 'Single KPI number with context',
     icon: TrendingUp,
     configs: [
-      { label: 'Total Contacts', metric: 'contacts' },
+      { label: 'Pipeline Value',  metric: 'pipeline_value' },
+      { label: 'Won Revenue',     metric: 'won_value' },
+      { label: 'Win Rate',        metric: 'win_rate' },
+      { label: 'Avg Deal Size',   metric: 'avg_deal_size' },
+      { label: 'Open Deals',      metric: 'open_deals' },
+      { label: 'Total Contacts',  metric: 'contacts' },
       { label: 'Total Companies', metric: 'companies' },
-      { label: 'Pipeline Value', metric: 'pipeline_value' },
-      { label: 'Won Value', metric: 'won_value' },
-      { label: 'Open Deals', metric: 'open_deals' },
     ],
   },
   {
-    type: 'activity_feed',
-    label: 'Activity Feed',
-    description: 'Recent activities stream',
-    icon: Activity,
-    configs: [{ label: 'Recent Activities', limit: 8 }],
+    type: 'line_chart',
+    label: 'Revenue Trend',
+    description: 'Monthly pipeline & revenue area chart',
+    icon: TrendingDown,
+    configs: [{ label: 'Monthly Revenue Trend' }],
+  },
+  {
+    type: 'funnel_chart',
+    label: 'Pipeline Funnel',
+    description: 'Stage-by-stage deal conversion funnel',
+    icon: Filter,
+    configs: [{ label: 'Deal Conversion Funnel' }],
   },
   {
     type: 'pipeline_summary',
@@ -55,6 +64,13 @@ const WIDGET_TYPES = [
     description: 'Donut chart of contact statuses',
     icon: PieChart,
     configs: [{ label: 'Contact Status' }],
+  },
+  {
+    type: 'activity_feed',
+    label: 'Activity Feed',
+    description: 'Live stream of recent activities',
+    icon: Activity,
+    configs: [{ label: 'Recent Activities', limit: 10 }],
   },
 ];
 
@@ -82,7 +98,7 @@ export function AddWidgetModal({ dashboardId, sourceContext, onClose, onAdded }:
     const widgetTitle = title.trim() || cfg?.label || selectedType.label;
     addWidget.mutate({
       dashboardId,
-      widgetType: selectedType.type as 'metric_card' | 'bar_chart' | 'line_chart' | 'pie_chart' | 'funnel_chart' | 'table' | 'pipeline_summary' | 'activity_feed' | 'leaderboard' | 'goal_tracker' | 'conversion_rate' | 'time_in_stage' | 'forecast' | 'custom_query',
+      widgetType: selectedType.type as 'metric_card' | 'bar_chart' | 'line_chart' | 'pie_chart' | 'funnel_chart' | 'pipeline_summary' | 'activity_feed' | 'leaderboard' | 'goal_tracker' | 'conversion_rate' | 'time_in_stage' | 'forecast' | 'table' | 'custom_query',
       title: widgetTitle,
       color,
       config: { ...(cfg as Record<string, unknown>), sourceContext },

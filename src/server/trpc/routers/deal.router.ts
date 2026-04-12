@@ -25,6 +25,13 @@ export const dealRouter = router({
       });
     }),
 
+  byCompany: protectedProcedure
+    .use(requirePermission('deals', 'read'))
+    .input(z.object({ companyId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      return dealService.getDealsByCompany(ctx.user!, input.companyId);
+    }),
+
   byContact: protectedProcedure
     .use(requirePermission('deals', 'read'))
     .input(z.object({ contactId: z.string().uuid() }))
@@ -87,7 +94,7 @@ export const dealRouter = router({
       lostReason: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      return dealService.moveDealToStage(ctx.user!, input.dealId, input.toStageId, input.positionInStage);
+      return dealService.moveDealToStage(ctx.user!, input.dealId, input.toStageId, input.positionInStage, input.lostReason);
     }),
 
   addTags: protectedProcedure

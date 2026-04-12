@@ -28,11 +28,13 @@ interface Dashboard {
 }
 
 const WIDGET_COL_SPAN: Record<string, string> = {
-  metric_card: 'col-span-1',
-  activity_feed: 'col-span-2',
+  metric_card:      'col-span-1',
+  activity_feed:    'col-span-2 row-span-2',
   pipeline_summary: 'col-span-2',
-  bar_chart: 'col-span-2',
-  pie_chart: 'col-span-2',
+  bar_chart:        'col-span-2',
+  pie_chart:        'col-span-2',
+  line_chart:       'col-span-3',
+  funnel_chart:     'col-span-2',
 };
 
 export default function DashboardPage() {
@@ -189,17 +191,21 @@ export default function DashboardPage() {
 
         {activeDashboardId && (
           <div className="flex items-center gap-2">
-            <select
-              value={activeSourceContext}
-              onChange={(e) => void handleSourceChange(e.target.value as DashboardDataSource)}
-              className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            >
+            <div className="flex items-center gap-0.5 bg-slate-100/80 border border-slate-200/60 rounded-lg p-1">
               {DASHBOARD_DATA_SOURCES.map((source) => (
-                <option key={source.value} value={source.value}>
-                  {source.label} Data
-                </option>
+                <button
+                  key={source.value}
+                  onClick={() => void handleSourceChange(source.value as DashboardDataSource)}
+                  className={`text-[12px] px-3 py-1 rounded-md transition-all duration-150 ${
+                    activeSourceContext === source.value
+                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-semibold'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {source.label}
+                </button>
               ))}
-            </select>
+            </div>
             {editMode && (
               <Button
                 size="sm"
@@ -271,11 +277,11 @@ export default function DashboardPage() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-4 gap-4 auto-rows-[180px]">
+          <div className="grid grid-cols-4 gap-4 auto-rows-[210px]">
             {widgets.map((widget) => (
               <div
                 key={widget.id}
-                className={`bg-white border border-slate-200/80 rounded-xl p-4 relative group shadow-[0_1px_4px_rgba(16,24,40,0.04)] ${WIDGET_COL_SPAN[widget.widgetType] ?? 'col-span-1'}`}
+                className={`bg-white border border-slate-200/70 rounded-2xl p-4 relative group shadow-[0_2px_8px_rgba(16,24,40,0.06),_0_0_0_1px_rgba(16,24,40,0.03)] overflow-hidden ${WIDGET_COL_SPAN[widget.widgetType] ?? 'col-span-1'}`}
               >
                 {editMode && (
                   <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">

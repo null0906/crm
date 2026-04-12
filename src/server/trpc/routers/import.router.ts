@@ -206,7 +206,7 @@ export const importRouter = router({
           }
         }
 
-        // Resolve company by name (case-insensitive), optional
+        // Resolve or auto-create company by name
         let resolvedCompanyId: string | undefined;
         if (mapped.companyName?.trim()) {
           const [found] = await db
@@ -214,10 +214,21 @@ export const importRouter = router({
             .from(companies)
             .where(ilike(companies.name, mapped.companyName.trim()))
             .limit(1);
-          if (found) resolvedCompanyId = found.id;
+          if (found) {
+            resolvedCompanyId = found.id;
+          } else {
+            // Auto-create company
+            const created = await companyService.createCompany(ctx.user!, {
+              name: mapped.companyName.trim(),
+              companyType: 'prospect',
+              status: 'active',
+              customFields: {},
+            });
+            resolvedCompanyId = created.id as string;
+          }
         }
 
-        // Resolve primary contact by full name (case-insensitive), optional
+        // Resolve or auto-create primary contact by full name
         let resolvedContactId: string | undefined;
         if (mapped.contactName?.trim()) {
           const parts = mapped.contactName.trim().split(/\s+/);
@@ -231,7 +242,20 @@ export const importRouter = router({
               lastName ? ilike(contacts.lastName, lastName) : ilike(contacts.firstName, firstName)
             ))
             .limit(1);
-          if (found) resolvedContactId = found.id;
+          if (found) {
+            resolvedContactId = found.id;
+          } else if (firstName) {
+            // Auto-create contact, linked to the resolved company if any
+            const created = await contactService.createContact(ctx.user!, {
+              firstName,
+              lastName: lastName || '',
+              companyId: resolvedCompanyId ?? null,
+              companyName: mapped.companyName?.trim() || null,
+              status: 'new',
+              customFields: {},
+            });
+            resolvedContactId = created.id as string;
+          }
         }
 
         // Parse amount

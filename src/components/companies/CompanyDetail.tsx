@@ -184,6 +184,7 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="activity">Activity</TabsTrigger>
                   <TabsTrigger value="contacts">Contacts</TabsTrigger>
+                  <TabsTrigger value="deals">Deals</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="mt-4">
@@ -217,6 +218,10 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
 
                 <TabsContent value="contacts" className="mt-4">
                   <CompanyContacts companyId={companyId} />
+                </TabsContent>
+
+                <TabsContent value="deals" className="mt-4">
+                  <CompanyDeals companyId={companyId} />
                 </TabsContent>
               </Tabs>
             </div>
@@ -261,6 +266,66 @@ function InfoField({ label, value, mono = false }: { label: string; value: strin
     <div>
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
       <p className={`text-sm text-slate-800 ${mono ? 'font-mono' : ''}`}>{value}</p>
+    </div>
+  );
+}
+
+function CompanyDeals({ companyId }: { companyId: string }) {
+  const { data: deals = [], isLoading } = trpc.deals.byCompany.useQuery({ companyId });
+
+  const statusColor: Record<string, string> = {
+    open: 'bg-blue-100 text-blue-700',
+    won: 'bg-emerald-100 text-emerald-700',
+    lost: 'bg-red-100 text-red-700',
+    abandoned: 'bg-slate-100 text-slate-500',
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="skeleton h-12 rounded-lg" />
+        ))}
+      </div>
+    );
+  }
+
+  if (deals.length === 0) {
+    return (
+      <div className="text-center py-10 text-slate-400">
+        <p className="text-sm">No deals linked to this company yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {deals.map((deal) => {
+        const d = deal as Record<string, unknown>;
+        const status = (d.status as string) ?? 'open';
+        const amount = d.amount ? Number(d.amount) : null;
+        return (
+          <div key={d.id as string} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-slate-100 bg-slate-50 hover:bg-white hover:border-slate-200 transition-colors">
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium text-slate-800 truncate">{d.title as string}</p>
+              <p className="text-[11px] text-slate-400 truncate">
+                {!!d.stageName && <span>{d.stageName as string}</span>}
+                {!!d.primaryContactName && <span> · {d.primaryContactName as string}</span>}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {amount !== null && (
+                <span className="text-[12px] font-semibold text-slate-700">
+                  ₹{amount.toLocaleString('en-IN')}
+                </span>
+              )}
+              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full capitalize ${statusColor[status] ?? 'bg-slate-100 text-slate-500'}`}>
+                {status}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
