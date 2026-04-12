@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +30,8 @@ interface ContactFormProps {
 
 export function ContactForm({ onSuccess, onCancel, defaultValues, compact = false, mode = 'create', contactId, existingTags }: ContactFormProps) {
   const utils = trpc.useUtils();
+  const { data: session } = useSession();
+  const currentUserId = (session?.user as Record<string, unknown> | undefined)?.id as string | undefined;
   const [tags, setTags] = React.useState<{ id: string; name: string; color: string }[]>(existingTags ?? []);
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
 
@@ -71,9 +74,17 @@ export function ContactForm({ onSuccess, onCancel, defaultValues, compact = fals
       leadScore: 0,
       customFields: {},
       tagIds: [],
+      ownerId: currentUserId ?? '',
       ...defaultValues,
     },
   });
+
+  // Once session loads, set ownerId to current user if not explicitly provided
+  React.useEffect(() => {
+    if (mode === 'create' && currentUserId && !defaultValues?.ownerId) {
+      form.setValue('ownerId', currentUserId);
+    }
+  }, [currentUserId, mode, defaultValues?.ownerId, form]);
 
   async function onSubmit(data: FormData) {
     if (mode === 'edit' && contactId) {

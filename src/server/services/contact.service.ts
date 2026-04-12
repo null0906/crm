@@ -317,6 +317,7 @@ export async function createContact(
     .insert(contacts)
     .values({
       ...data,
+      ownerId: data.ownerId ?? user.id,
       companyId: resolvedCompany.companyId,
       companyName: resolvedCompany.companyName,
       createdBy: user.id,

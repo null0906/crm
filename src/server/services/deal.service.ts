@@ -1,6 +1,6 @@
 import { db } from '@/server/db';
 import { deals, dealTags, dealContacts, dealStageHistory, tags, companies, contacts, users, pipelineStages, pipelines, activities } from '@/server/db/schema';
-import { eq, and, isNull, or, ilike, sql, lt, desc, asc } from 'drizzle-orm';
+import { eq, and, isNull, or, ilike, sql, lt, desc, asc, inArray } from 'drizzle-orm';
 import type { NewDeal } from '@/server/db/schema';
 import type { FilterConfig, PaginatedResult, SessionUser } from '@/lib/types';
 import { writeAuditLog, buildChangeDiff } from './audit.service';
@@ -162,9 +162,48 @@ export async function getDealById(
   const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
   if (!readLevel) return null;
 
+  // Use aliases to avoid Drizzle column name conflicts
+  const ownerUsers = users;
+  const primaryContacts = contacts;
+
   const [deal] = await db
-    .select()
+    .select({
+      id: deals.id,
+      title: deals.title,
+      description: deals.description,
+      amount: deals.amount,
+      currency: deals.currency,
+      probability: deals.probability,
+      status: deals.status,
+      pipelineId: deals.pipelineId,
+      stageId: deals.stageId,
+      stageEnteredAt: deals.stageEnteredAt,
+      expectedCloseDate: deals.expectedCloseDate,
+      actualCloseDate: deals.actualCloseDate,
+      lostReason: deals.lostReason,
+      wonReason: deals.wonReason,
+      ownerId: deals.ownerId,
+      companyId: deals.companyId,
+      primaryContactId: deals.primaryContactId,
+      customFields: deals.customFields,
+      positionInStage: deals.positionInStage,
+      createdAt: deals.createdAt,
+      updatedAt: deals.updatedAt,
+      createdBy: deals.createdBy,
+      // Joined fields
+      ownerFirstName: ownerUsers.firstName,
+      ownerLastName: ownerUsers.lastName,
+      companyName: companies.name,
+      stageName: pipelineStages.name,
+      stageColor: pipelineStages.color,
+      primaryContactFirstName: primaryContacts.firstName,
+      primaryContactLastName: primaryContacts.lastName,
+    })
     .from(deals)
+    .leftJoin(ownerUsers, eq(deals.ownerId, ownerUsers.id))
+    .leftJoin(companies, eq(deals.companyId, companies.id))
+    .leftJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
+    .leftJoin(primaryContacts, eq(deals.primaryContactId, primaryContacts.id))
     .where(and(eq(deals.id, id), isNull(deals.deletedAt)))
     .limit(1);
 
@@ -186,10 +225,44 @@ export async function getDealById(
     .innerJoin(contacts, eq(dealContacts.contactId, contacts.id))
     .where(eq(dealContacts.dealId, id));
 
+  // Stage history with resolved stage names
+  const stageHistoryRows = await db
+    .select({
+      id: dealStageHistory.id,
+      fromStageId: dealStageHistory.fromStageId,
+      toStageId: dealStageHistory.toStageId,
+      movedAt: dealStageHistory.createdAt,
+    })
+    .from(dealStageHistory)
+    .where(eq(dealStageHistory.dealId, id))
+    .orderBy(asc(dealStageHistory.createdAt));
+
+  // Resolve stage names for history in one go
+  const allStageIds = new Set<string>();
+  for (const h of stageHistoryRows) {
+    if (h.fromStageId) allStageIds.add(h.fromStageId);
+    if (h.toStageId) allStageIds.add(h.toStageId);
+  }
+  const stageNameMap: Record<string, string> = {};
+  if (allStageIds.size > 0) {
+    const stageRows = await db
+      .select({ id: pipelineStages.id, name: pipelineStages.name })
+      .from(pipelineStages)
+      .where(inArray(pipelineStages.id, Array.from(allStageIds)));
+    for (const s of stageRows) stageNameMap[s.id] = s.name;
+  }
+
+  const stageHistory = stageHistoryRows.map((h) => ({
+    ...h,
+    fromStageName: h.fromStageId ? stageNameMap[h.fromStageId] ?? null : null,
+    toStageName: h.toStageId ? stageNameMap[h.toStageId] ?? null : null,
+  }));
+
   return {
     ...deal,
     tags: dealTagRows.map((r) => r.tag),
     contacts: dealContactRows.map((r) => ({ ...r.contact, role: r.role })),
+    stageHistory,
   };
 }
 
@@ -199,7 +272,7 @@ export async function createDeal(
 ): Promise<Record<string, unknown>> {
   const [deal] = await db
     .insert(deals)
-    .values({ ...data, createdBy: user.id })
+    .values({ ...data, ownerId: data.ownerId ?? user.id, createdBy: user.id })
     .returning();
 
   // Create initial stage history

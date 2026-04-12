@@ -4,6 +4,7 @@ import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,8 @@ interface DealFormProps {
 
 export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'create', dealId, defaultValues }: DealFormProps) {
   const utils = trpc.useUtils();
+  const { data: session } = useSession();
+  const currentUserId = (session?.user as Record<string, unknown> | undefined)?.id as string | undefined;
 
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
 
@@ -71,9 +74,16 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
       status: 'open',
       customFields: {},
       tagIds: [],
+      ownerId: currentUserId ?? '',
       ...defaultValues,
     },
   });
+
+  React.useEffect(() => {
+    if (mode === 'create' && currentUserId && !defaultValues?.ownerId) {
+      form.setValue('ownerId', currentUserId);
+    }
+  }, [currentUserId, mode, defaultValues?.ownerId, form]);
 
   // Keep stageId updated when stages load
   React.useEffect(() => {

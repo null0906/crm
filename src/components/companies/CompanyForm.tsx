@@ -4,6 +4,7 @@ import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
+import { useSession } from 'next-auth/react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +29,8 @@ interface CompanyFormProps {
 
 export function CompanyForm({ onSuccess, onCancel, defaultValues, mode = 'create', companyId, existingTags }: CompanyFormProps) {
   const utils = trpc.useUtils();
+  const { data: session } = useSession();
+  const currentUserId = (session?.user as Record<string, unknown> | undefined)?.id as string | undefined;
   const [tags, setTags] = React.useState<{ id: string; name: string; color: string }[]>(existingTags ?? []);
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
 
@@ -64,9 +67,16 @@ export function CompanyForm({ onSuccess, onCancel, defaultValues, mode = 'create
       status: 'active',
       customFields: {},
       tagIds: [],
+      ownerId: currentUserId ?? '',
       ...defaultValues,
     },
   });
+
+  React.useEffect(() => {
+    if (mode === 'create' && currentUserId && !defaultValues?.ownerId) {
+      form.setValue('ownerId', currentUserId);
+    }
+  }, [currentUserId, mode, defaultValues?.ownerId, form]);
 
   async function onSubmit(data: FormData) {
     if (mode === 'edit' && companyId) {

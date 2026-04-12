@@ -104,8 +104,41 @@ export async function getCompanyById(
   if (!readLevel) return null;
 
   const [company] = await db
-    .select()
+    .select({
+      id: companies.id,
+      name: companies.name,
+      domain: companies.domain,
+      website: companies.website,
+      industry: companies.industry,
+      subIndustry: companies.subIndustry,
+      companySize: companies.companySize,
+      annualRevenueRange: companies.annualRevenueRange,
+      companyType: companies.companyType,
+      phone: companies.phone,
+      email: companies.email,
+      addressLine1: companies.addressLine1,
+      addressLine2: companies.addressLine2,
+      city: companies.city,
+      state: companies.state,
+      postalCode: companies.postalCode,
+      country: companies.country,
+      linkedinUrl: companies.linkedinUrl,
+      twitterUrl: companies.twitterUrl,
+      logoUrl: companies.logoUrl,
+      description: companies.description,
+      status: companies.status,
+      ownerId: companies.ownerId,
+      customFields: companies.customFields,
+      lastContactedAt: companies.lastContactedAt,
+      createdAt: companies.createdAt,
+      updatedAt: companies.updatedAt,
+      deletedAt: companies.deletedAt,
+      createdBy: companies.createdBy,
+      ownerFirstName: users.firstName,
+      ownerLastName: users.lastName,
+    })
     .from(companies)
+    .leftJoin(users, eq(companies.ownerId, users.id))
     .where(and(eq(companies.id, id), isNull(companies.deletedAt)))
     .limit(1);
 
@@ -140,7 +173,7 @@ export async function createCompany(
 ): Promise<Record<string, unknown>> {
   const [company] = await db
     .insert(companies)
-    .values({ ...data, createdBy: user.id })
+    .values({ ...data, ownerId: data.ownerId ?? user.id, createdBy: user.id })
     .returning();
 
   eventBus.emit('company.created', { companyId: company!.id, createdBy: user.id });
