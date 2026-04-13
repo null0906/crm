@@ -281,6 +281,33 @@ export default function DashboardPage() {
                 Add Widget
               </Button>
             )}
+            {/* Publish / visibility badge */}
+            {(() => {
+              const currentVis = (activeDashboard as Dashboard | undefined)?.visibility ?? 'private';
+              if (currentVis === 'everyone') {
+                return (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-xs font-medium">
+                    <Globe className="w-3 h-3" />
+                    Published
+                  </div>
+                );
+              }
+              if (!editMode) {
+                return (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-violet-200 text-violet-700 hover:bg-violet-50"
+                    onClick={() => updateDashboard.mutate({ id: activeDashboardId, visibility: 'everyone' })}
+                    disabled={updateDashboard.isPending}
+                  >
+                    <Globe className="w-4 h-4" />
+                    Publish
+                  </Button>
+                );
+              }
+              return null;
+            })()}
             <Button
               size="sm"
               variant={editMode ? 'default' : 'outline'}

@@ -78,11 +78,30 @@ const WIDGET_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899',
 ];
 
+const CHART_TYPE_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
+  pipeline_summary: [
+    { value: 'bar', label: 'Vertical Bar' },
+    { value: 'horizontal_bar', label: 'Horizontal Bar' },
+  ],
+  bar_chart: [
+    { value: 'bar', label: 'Vertical Bar' },
+    { value: 'horizontal_bar', label: 'Horizontal Bar' },
+  ],
+  line_chart: [
+    { value: 'area', label: 'Area' },
+    { value: 'line', label: 'Line' },
+  ],
+};
+
 export function AddWidgetModal({ dashboardId, sourceContext, onClose, onAdded }: AddWidgetModalProps) {
   const [selectedType, setSelectedType] = useState(WIDGET_TYPES[0]!);
   const [selectedConfig, setSelectedConfig] = useState(0);
   const [title, setTitle] = useState('');
   const [color, setColor] = useState(WIDGET_COLORS[0]!);
+  const [showLabels, setShowLabels] = useState(false);
+  const [chartType, setChartType] = useState('');
+
+  const chartTypeOptions = CHART_TYPE_OPTIONS[selectedType.type] ?? [];
 
   const addWidget = trpc.dashboards.addWidget.useMutation({
     onSuccess: () => {
@@ -96,12 +115,17 @@ export function AddWidgetModal({ dashboardId, sourceContext, onClose, onAdded }:
   function handleAdd() {
     const cfg = selectedType.configs[selectedConfig];
     const widgetTitle = title.trim() || cfg?.label || selectedType.label;
+    const resolvedChartType = chartType || (chartTypeOptions[0]?.value ?? '');
     addWidget.mutate({
       dashboardId,
       widgetType: selectedType.type as 'metric_card' | 'bar_chart' | 'line_chart' | 'pie_chart' | 'funnel_chart' | 'pipeline_summary' | 'activity_feed' | 'leaderboard' | 'goal_tracker' | 'conversion_rate' | 'time_in_stage' | 'forecast' | 'table' | 'custom_query',
       title: widgetTitle,
       color,
-      config: { ...(cfg as Record<string, unknown>), sourceContext },
+      config: {
+        ...(cfg as Record<string, unknown>),
+        sourceContext,
+        ...(chartTypeOptions.length > 0 ? { chartType: resolvedChartType, showLabels } : {}),
+      },
     });
   }
 
@@ -117,7 +141,7 @@ export function AddWidgetModal({ dashboardId, sourceContext, onClose, onAdded }:
         {WIDGET_TYPES.map((wt) => (
           <button
             key={wt.type}
-            onClick={() => { setSelectedType(wt); setSelectedConfig(0); setTitle(''); }}
+            onClick={() => { setSelectedType(wt); setSelectedConfig(0); setTitle(''); setChartType(''); setShowLabels(false); }}
             className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-colors ${selectedType.type === wt.type ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}
           >
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${selectedType.type === wt.type ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
@@ -159,6 +183,41 @@ export function AddWidgetModal({ dashboardId, sourceContext, onClose, onAdded }:
           className="w-full text-sm border border-slate-200 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
+
+      {/* Chart type selector (only for chart widgets) */}
+      {chartTypeOptions.length > 0 && (
+        <div>
+          <label className="text-xs font-medium text-slate-700 mb-1.5 block">Chart type</label>
+          <div className="flex items-center gap-2">
+            {chartTypeOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setChartType(opt.value)}
+                className={`text-xs px-3 py-1 rounded-full border transition-colors ${(chartType || chartTypeOptions[0]!.value) === opt.value ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Show data labels (only for chart widgets) */}
+      {chartTypeOptions.length > 0 && (
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-medium text-slate-700">Show data labels</label>
+          <button
+            type="button"
+            onClick={() => setShowLabels(!showLabels)}
+            className={`relative w-9 h-5 rounded-full transition-colors ${showLabels ? 'bg-blue-500' : 'bg-slate-200'}`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${showLabels ? 'translate-x-4' : 'translate-x-0'}`}
+            />
+          </button>
+          <span className="text-xs text-slate-400">{showLabels ? 'On' : 'Off'}</span>
+        </div>
+      )}
 
       {/* Color */}
       <div>

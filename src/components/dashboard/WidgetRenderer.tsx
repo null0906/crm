@@ -4,6 +4,7 @@ import React from 'react';
 import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  LabelList, LineChart, Line,
 } from 'recharts';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency, formatRelative } from '@/lib/formatters';
@@ -309,6 +310,9 @@ function PipelineSummary({ widget }: { widget: Widget }) {
         .filter((s) => s.deals > 0)
     : [];
 
+  const showLabels = Boolean(widget.config.showLabels);
+  const isHorizontal = (widget.config.chartType as string) === 'horizontal_bar';
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-baseline justify-between mb-3">
@@ -319,9 +323,30 @@ function PipelineSummary({ widget }: { widget: Widget }) {
         <div className="flex-1 flex items-center justify-center">
           <p className="text-xs text-slate-400">No pipeline data yet</p>
         </div>
+      ) : isHorizontal ? (
+        <ResponsiveContainer width="100%" height="85%">
+          <BarChart data={stageData} layout="vertical" margin={{ top: 4, right: showLabels ? 32 : 8, left: 4, bottom: 0 }}>
+            <defs>
+              {stageData.map((s) => (
+                <linearGradient key={s.gradId} id={s.gradId} x1="1" y1="0" x2="0" y2="0">
+                  <stop offset="0%" stopColor={s.fill} stopOpacity={1} />
+                  <stop offset="100%" stopColor={s.fill} stopOpacity={0.55} />
+                </linearGradient>
+              ))}
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+            <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <YAxis type="category" dataKey="name" width={72} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <Tooltip content={<DarkTooltip />} />
+            <Bar dataKey="deals" name="Deals" radius={[0, 5, 5, 0]} maxBarSize={32}>
+              {stageData.map((s) => <Cell key={s.gradId} fill={`url(#${s.gradId})`} />)}
+              {showLabels && <LabelList dataKey="deals" position="right" style={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }} />}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
       ) : (
         <ResponsiveContainer width="100%" height="85%">
-          <BarChart data={stageData} margin={{ top: 10, right: 8, left: -22, bottom: 0 }}>
+          <BarChart data={stageData} margin={{ top: showLabels ? 18 : 10, right: 8, left: -22, bottom: 0 }}>
             <defs>
               {stageData.map((s) => (
                 <linearGradient key={s.gradId} id={s.gradId} x1="0" y1="0" x2="0" y2="1">
@@ -335,9 +360,8 @@ function PipelineSummary({ widget }: { widget: Widget }) {
             <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
             <Tooltip content={<DarkTooltip />} />
             <Bar dataKey="deals" name="Deals" radius={[5, 5, 0, 0]} maxBarSize={44}>
-              {stageData.map((s) => (
-                <Cell key={s.gradId} fill={`url(#${s.gradId})`} />
-              ))}
+              {stageData.map((s) => <Cell key={s.gradId} fill={`url(#${s.gradId})`} />)}
+              {showLabels && <LabelList dataKey="deals" position="top" style={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }} />}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -371,6 +395,9 @@ function DealStatusChart({ widget }: { widget: Widget }) {
     [`ds_lost_${widget.id}`]:  ['#ef4444', '#dc2626'],
   };
 
+  const showLabels = Boolean(widget.config.showLabels);
+  const isHorizontal = (widget.config.chartType as string) === 'horizontal_bar';
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-baseline justify-between mb-3">
@@ -378,28 +405,51 @@ function DealStatusChart({ widget }: { widget: Widget }) {
         <p className="text-[11px] text-slate-400">{total} total</p>
       </div>
       <ResponsiveContainer width="100%" height="72%">
-        <BarChart data={byStatus} margin={{ top: 8, right: 8, left: -22, bottom: 0 }}>
-          <defs>
-            {byStatus.map((s) => {
-              const [from, to] = gradPairs[s.gid]!;
-              return (
-                <linearGradient key={s.gid} id={s.gid} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={from} stopOpacity={1} />
-                  <stop offset="100%" stopColor={to} stopOpacity={0.75} />
-                </linearGradient>
-              );
-            })}
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-          <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-          <Tooltip content={<DarkTooltip />} />
-          <Bar dataKey="count" name="Deals" radius={[6, 6, 0, 0]} maxBarSize={64}>
-            {byStatus.map((s) => (
-              <Cell key={s.gid} fill={`url(#${s.gid})`} />
-            ))}
-          </Bar>
-        </BarChart>
+        {isHorizontal ? (
+          <BarChart data={byStatus} layout="vertical" margin={{ top: 4, right: showLabels ? 32 : 8, left: 4, bottom: 0 }}>
+            <defs>
+              {byStatus.map((s) => {
+                const [from, to] = gradPairs[s.gid]!;
+                return (
+                  <linearGradient key={s.gid} id={s.gid} x1="1" y1="0" x2="0" y2="0">
+                    <stop offset="0%" stopColor={from} stopOpacity={1} />
+                    <stop offset="100%" stopColor={to} stopOpacity={0.75} />
+                  </linearGradient>
+                );
+              })}
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+            <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <YAxis type="category" dataKey="name" width={40} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <Tooltip content={<DarkTooltip />} />
+            <Bar dataKey="count" name="Deals" radius={[0, 6, 6, 0]} maxBarSize={40}>
+              {byStatus.map((s) => <Cell key={s.gid} fill={`url(#${s.gid})`} />)}
+              {showLabels && <LabelList dataKey="count" position="right" style={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />}
+            </Bar>
+          </BarChart>
+        ) : (
+          <BarChart data={byStatus} margin={{ top: showLabels ? 18 : 8, right: 8, left: -22, bottom: 0 }}>
+            <defs>
+              {byStatus.map((s) => {
+                const [from, to] = gradPairs[s.gid]!;
+                return (
+                  <linearGradient key={s.gid} id={s.gid} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={from} stopOpacity={1} />
+                    <stop offset="100%" stopColor={to} stopOpacity={0.75} />
+                  </linearGradient>
+                );
+              })}
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <Tooltip content={<DarkTooltip />} />
+            <Bar dataKey="count" name="Deals" radius={[6, 6, 0, 0]} maxBarSize={64}>
+              {byStatus.map((s) => <Cell key={s.gid} fill={`url(#${s.gid})`} />)}
+              {showLabels && <LabelList dataKey="count" position="top" style={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />}
+            </Bar>
+          </BarChart>
+        )}
       </ResponsiveContainer>
 
       {/* summary chips */}
@@ -504,6 +554,9 @@ function RevenueAreaChart({ widget }: { widget: Widget }) {
   const hasData = monthly.some((m) => m.count > 0);
   const gradId = `areaGrad_${widget.id}`;
 
+  const showLabels = Boolean(widget.config.showLabels);
+  const isLine = (widget.config.chartType as string) === 'line';
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-baseline justify-between mb-3">
@@ -514,6 +567,26 @@ function RevenueAreaChart({ widget }: { widget: Widget }) {
         <div className="flex-1 flex items-center justify-center">
           <p className="text-xs text-slate-400">No deal data for this period</p>
         </div>
+      ) : isLine ? (
+        <ResponsiveContainer width="100%" height="85%">
+          <LineChart data={monthly} margin={{ top: showLabels ? 16 : 4, right: 8, left: -26, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <Tooltip content={<DarkTooltip />} />
+            <Line
+              type="monotone"
+              dataKey="pipeline"
+              name="Pipeline Value"
+              stroke={accent}
+              strokeWidth={2.5}
+              dot={{ r: 4, fill: accent, strokeWidth: 0 }}
+              activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff' }}
+            >
+              {showLabels && <LabelList dataKey="pipeline" position="top" style={{ fontSize: 9, fill: '#64748b', fontWeight: 600 }} formatter={(v) => (typeof v === 'number' && v > 0 ? `₹${Math.round(v / 1000)}k` : '')} />}
+            </Line>
+          </LineChart>
+        </ResponsiveContainer>
       ) : (
         <ResponsiveContainer width="100%" height="85%">
           <AreaChart data={monthly} margin={{ top: 4, right: 8, left: -26, bottom: 0 }}>
@@ -536,7 +609,9 @@ function RevenueAreaChart({ widget }: { widget: Widget }) {
               fill={`url(#${gradId})`}
               dot={{ r: 3.5, fill: accent, strokeWidth: 0 }}
               activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff' }}
-            />
+            >
+              {showLabels && <LabelList dataKey="pipeline" position="top" style={{ fontSize: 9, fill: '#64748b', fontWeight: 600 }} formatter={(v) => (typeof v === 'number' && v > 0 ? `₹${Math.round(v / 1000)}k` : '')} />}
+            </Area>
           </AreaChart>
         </ResponsiveContainer>
       )}
