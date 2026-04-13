@@ -27,6 +27,9 @@ type Company = Record<string, unknown>;
 export default function CompaniesPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
+  const [ownerFilter, setOwnerFilter] = useState<string>('');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
   const [pageSize, setPageSize] = useState(50);
   const [cursor, setCursor] = useState<string | undefined>();
   const [createOpen, setCreateOpen] = useState(false);
@@ -37,6 +40,16 @@ export default function CompaniesPage() {
 
   const debouncedSearch = useDebounce(search, 300);
   const utils = trpc.useUtils();
+
+  const { data: usersData } = trpc.users.list.useQuery();
+  const users = usersData ?? [];
+
+  type FilterOp = 'eq' | 'gte' | 'lte';
+  const filterConditions: Array<{ field: string; operator: FilterOp; value: string }> = [];
+  if (typeFilter) filterConditions.push({ field: 'companyType', operator: 'eq', value: typeFilter });
+  if (ownerFilter) filterConditions.push({ field: 'ownerId', operator: 'eq', value: ownerFilter });
+  if (dateFrom) filterConditions.push({ field: 'createdAt', operator: 'gte', value: dateFrom });
+  if (dateTo) filterConditions.push({ field: 'createdAt', operator: 'lte', value: dateTo });
 
   const deleteCompany = trpc.companies.delete.useMutation({
     onSuccess: () => {
@@ -50,8 +63,8 @@ export default function CompaniesPage() {
 
   const { data, isLoading } = trpc.companies.list.useQuery({
     search: debouncedSearch || undefined,
-    filters: typeFilter
-      ? { conditions: [{ field: 'companyType', operator: 'eq', value: typeFilter }], logic: 'AND' }
+    filters: filterConditions.length > 0
+      ? { conditions: filterConditions, logic: 'AND' }
       : undefined,
     pagination: { cursor, limit: pageSize },
   });
@@ -199,6 +212,46 @@ export default function CompaniesPage() {
             </button>
           ))}
         </div>
+
+        {/* Owner filter */}
+        <select
+          value={ownerFilter}
+          onChange={(e) => setOwnerFilter(e.target.value)}
+          className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+        >
+          <option value="">All owners</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+          ))}
+        </select>
+
+        {/* Date range */}
+        <div className="flex items-center gap-1">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            title="Created from"
+          />
+          <span className="text-xs text-slate-400">–</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            title="Created to"
+          />
+        </div>
+
+        {(ownerFilter || dateFrom || dateTo) && (
+          <button
+            onClick={() => { setOwnerFilter(''); setDateFrom(''); setDateTo(''); }}
+            className="text-[11px] text-slate-400 hover:text-slate-600"
+          >
+            Clear
+          </button>
+        )}
 
         <div className="ml-auto flex items-center gap-1">
           <span className="text-xs text-slate-500">Show</span>

@@ -3,7 +3,7 @@ import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
 import { activities, users, contacts, companies, deals, pipelineStages } from '@/server/db/schema';
-import { eq, and, isNull, desc, inArray } from 'drizzle-orm';
+import { eq, and, isNull, desc, inArray, gte, lte } from 'drizzle-orm';
 import { activityCreateSchema, paginationSchema } from '@/server/lib/validators';
 import { writeAuditLog } from '@/server/services/audit.service';
 import eventBus from '@/server/lib/event-bus';
@@ -16,6 +16,9 @@ export const activityRouter = router({
       companyId: z.string().uuid().optional(),
       dealId: z.string().uuid().optional(),
       activityType: z.string().optional(),
+      performedById: z.string().uuid().optional(),
+      dateFrom: z.string().optional(), // ISO date string
+      dateTo: z.string().optional(),   // ISO date string
       pagination: paginationSchema,
     }))
     .query(async ({ ctx, input }) => {
@@ -25,6 +28,13 @@ export const activityRouter = router({
       if (input.companyId) conditions.push(eq(activities.companyId, input.companyId));
       if (input.dealId) conditions.push(eq(activities.dealId, input.dealId));
       if (input.activityType) conditions.push(eq(activities.activityType, input.activityType as import('@/lib/types').ActivityType));
+      if (input.performedById) conditions.push(eq(activities.performedBy, input.performedById));
+      if (input.dateFrom) conditions.push(gte(activities.occurredAt, new Date(input.dateFrom)));
+      if (input.dateTo) {
+        const to = new Date(input.dateTo);
+        to.setHours(23, 59, 59, 999);
+        conditions.push(lte(activities.occurredAt, to));
+      }
 
       const rows = await db
         .select({

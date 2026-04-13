@@ -31,9 +31,18 @@ interface Deal {
   createdAt: string;
 }
 
+type FilterOp = 'eq' | 'neq' | 'gte' | 'lte' | 'gt' | 'lt' | 'contains' | 'in' | 'not_in' | 'is_empty' | 'is_not_empty';
+
+interface FilterCondition {
+  field: string;
+  operator: FilterOp;
+  value: string;
+}
+
 interface DealTableProps {
   pipelineId: string;
   onDealClick: (dealId: string) => void;
+  extraFilters?: FilterCondition[];
 }
 
 const columnHelper = createColumnHelper<Deal>();
@@ -44,7 +53,7 @@ const STATUS_COLORS: Record<string, string> = {
   lost: 'bg-red-50 text-red-700 border border-red-200',
 };
 
-export function DealTable({ pipelineId, onDealClick }: DealTableProps) {
+export function DealTable({ pipelineId, onDealClick, extraFilters }: DealTableProps) {
   const utils = trpc.useUtils();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [cursor, setCursor] = useState<string | undefined>();
@@ -55,6 +64,9 @@ export function DealTable({ pipelineId, onDealClick }: DealTableProps) {
     pagination: { limit, cursor },
     sort: sorting[0]
       ? { field: sorting[0].id, direction: sorting[0].desc ? 'desc' : 'asc' }
+      : undefined,
+    filters: extraFilters && extraFilters.length > 0
+      ? { conditions: extraFilters, logic: 'AND' }
       : undefined,
   });
 

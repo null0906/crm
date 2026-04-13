@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Settings2, Trash2, Edit2, Check, X, GripVertical } from 'lucide-react';
+import { Plus, Settings2, Trash2, Edit2, Check, X, GripVertical, Globe, Lock, Users } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { WidgetRenderer } from '@/components/dashboard/WidgetRenderer';
@@ -44,6 +44,7 @@ export default function DashboardPage() {
   const [addWidgetOpen, setAddWidgetOpen] = useState(false);
   const [creatingDashboard, setCreatingDashboard] = useState(false);
   const [newDashName, setNewDashName] = useState('');
+  const [newDashVisibility, setNewDashVisibility] = useState<'private' | 'team' | 'everyone'>('private');
 
   const { data: dashboardList = [], isLoading: listLoading } = trpc.dashboards.list.useQuery();
 
@@ -72,6 +73,7 @@ export default function DashboardPage() {
       setActiveDashboardId(String(data!.id));
       setCreatingDashboard(false);
       setNewDashName('');
+      setNewDashVisibility('private');
     },
     onError: (err) => toast.error('Failed to create dashboard', { description: err.message }),
   });
@@ -94,6 +96,13 @@ export default function DashboardPage() {
   });
 
   const updateWidget = trpc.dashboards.updateWidget.useMutation();
+  const updateDashboard = trpc.dashboards.update.useMutation({
+    onSuccess: () => {
+      void utils.dashboards.list.invalidate();
+      toast.success('Dashboard updated');
+    },
+    onError: (err) => toast.error('Failed to update dashboard', { description: err.message }),
+  });
 
   const widgets: DashboardWidget[] = (activeDashboard as Dashboard | undefined)?.widgets ?? [];
   const activeSourceContext = (widgets[0]?.config?.sourceContext as DashboardDataSource | undefined) ?? 'client';
@@ -140,15 +149,19 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3">
           {/* Dashboard tabs */}
           <div className="flex items-center gap-0.5 bg-slate-100/80 border border-slate-200/60 rounded-lg p-1">
-            {(dashboardList as unknown as Dashboard[]).map((d) => (
-              <button
-                key={d.id}
-                onClick={() => { setActiveDashboardId(d.id); setEditMode(false); }}
-                className={`text-[13px] px-3 py-1 rounded-md transition-all duration-150 ${activeDashboardId === d.id ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-medium' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                {d.name}
-              </button>
-            ))}
+            {(dashboardList as unknown as Dashboard[]).map((d) => {
+              const VisIcon = d.visibility === 'everyone' ? Globe : d.visibility === 'team' ? Users : Lock;
+              return (
+                <button
+                  key={d.id}
+                  onClick={() => { setActiveDashboardId(d.id); setEditMode(false); }}
+                  className={`flex items-center gap-1 text-[13px] px-3 py-1 rounded-md transition-all duration-150 ${activeDashboardId === d.id ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  <VisIcon className="w-3 h-3 opacity-50" />
+                  {d.name}
+                </button>
+              );
+            })}
           </div>
 
           {/* Create dashboard */}
@@ -159,20 +172,38 @@ export default function DashboardPage() {
                 value={newDashName}
                 onChange={(e) => setNewDashName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newDashName.trim()) createDashboard.mutate({ name: newDashName.trim() });
-                  if (e.key === 'Escape') { setCreatingDashboard(false); setNewDashName(''); }
+                  if (e.key === 'Enter' && newDashName.trim()) createDashboard.mutate({ name: newDashName.trim(), visibility: newDashVisibility });
+                  if (e.key === 'Escape') { setCreatingDashboard(false); setNewDashName(''); setNewDashVisibility('private'); }
                 }}
                 placeholder="Dashboard name..."
                 className="text-sm border border-blue-400 rounded-md px-2.5 py-1 outline-none w-36 focus:ring-2 focus:ring-blue-200"
               />
+              {/* Visibility toggle */}
+              <div className="flex items-center gap-0.5 bg-slate-100 border border-slate-200 rounded-md p-0.5">
+                {([
+                  { value: 'private', icon: Lock, title: 'Private (only me)' },
+                  { value: 'team', icon: Users, title: 'Team (all users)' },
+                  { value: 'everyone', icon: Globe, title: 'Public (pinned for all)' },
+                ] as const).map(({ value, icon: Icon, title }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    title={title}
+                    onClick={() => setNewDashVisibility(value)}
+                    className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${newDashVisibility === value ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    <Icon className="w-3 h-3" />
+                  </button>
+                ))}
+              </div>
               <button
-                onClick={() => newDashName.trim() && createDashboard.mutate({ name: newDashName.trim() })}
+                onClick={() => newDashName.trim() && createDashboard.mutate({ name: newDashName.trim(), visibility: newDashVisibility })}
                 className="w-6 h-6 rounded flex items-center justify-center bg-blue-500 text-white hover:bg-blue-600"
               >
                 <Check className="w-3.5 h-3.5" />
               </button>
               <button
-                onClick={() => { setCreatingDashboard(false); setNewDashName(''); }}
+                onClick={() => { setCreatingDashboard(false); setNewDashName(''); setNewDashVisibility('private'); }}
                 className="w-6 h-6 rounded flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100"
               >
                 <X className="w-3.5 h-3.5" />
@@ -207,19 +238,42 @@ export default function DashboardPage() {
               ))}
             </div>
             {editMode && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-red-600 border-red-200 hover:bg-red-50"
-                onClick={() => {
-                  if (confirm('Delete this dashboard and all its widgets?')) {
-                    deleteDashboard.mutate({ id: activeDashboardId });
-                  }
-                }}
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete dashboard
-              </Button>
+              <>
+                {/* Visibility toggle */}
+                <div className="flex items-center gap-0.5 bg-slate-100/80 border border-slate-200/60 rounded-lg p-1">
+                  {([
+                    { value: 'private', icon: Lock, title: 'Private – only you' },
+                    { value: 'team', icon: Users, title: 'Team – all users' },
+                    { value: 'everyone', icon: Globe, title: 'Public – pinned for all' },
+                  ] as const).map(({ value, icon: Icon, title }) => {
+                    const currentVis = (activeDashboard as Dashboard | undefined)?.visibility ?? 'private';
+                    return (
+                      <button
+                        key={value}
+                        title={title}
+                        onClick={() => updateDashboard.mutate({ id: activeDashboardId, visibility: value })}
+                        className={`flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-md transition-all duration-150 ${currentVis === value ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-semibold' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        <Icon className="w-3 h-3" />
+                        {value === 'private' ? 'Private' : value === 'team' ? 'Team' : 'Public'}
+                      </button>
+                    );
+                  })}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={() => {
+                    if (confirm('Delete this dashboard and all its widgets?')) {
+                      deleteDashboard.mutate({ id: activeDashboardId });
+                    }
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete dashboard
+                </Button>
+              </>
             )}
             {editMode && (
               <Button size="sm" onClick={() => setAddWidgetOpen(true)}>

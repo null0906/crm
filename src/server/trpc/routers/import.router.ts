@@ -91,6 +91,7 @@ export const importRouter = router({
         try {
           await contactService.createContact(ctx.user!, {
             ...parsed.data,
+            ownerId: mapped.ownerId || ctx.user!.id,
             customFields: {},
           });
           created++;
@@ -143,6 +144,7 @@ export const importRouter = router({
           await companyService.createCompany(ctx.user!, {
             ...parsed.data,
             status: 'active',
+            ownerId: mapped.ownerId || ctx.user!.id,
             customFields: {},
           });
           created++;
@@ -258,12 +260,27 @@ export const importRouter = router({
           }
         }
 
-        // Parse amount
+        // Parse amount — reject if it contains non-numeric characters (letters etc)
+        if (mapped.amount?.trim() && /[a-zA-Z]/.test(mapped.amount.trim())) {
+          errors.push({ row: i + 2, message: `Amount must be digits only, got "${mapped.amount.trim()}"` });
+          skipped++;
+          continue;
+        }
         const amountRaw = mapped.amount?.replace(/[^0-9.]/g, '');
         const amount = amountRaw ? parseFloat(amountRaw) : undefined;
+        if (amount !== undefined && isNaN(amount)) {
+          errors.push({ row: i + 2, message: `Amount "${mapped.amount}" is not a valid number` });
+          skipped++;
+          continue;
+        }
 
         // Parse probability
         const probabilityRaw = mapped.probability ? parseInt(mapped.probability, 10) : undefined;
+        if (mapped.probability?.trim() && (probabilityRaw === undefined || isNaN(probabilityRaw))) {
+          errors.push({ row: i + 2, message: `Probability "${mapped.probability}" must be a number between 0 and 100` });
+          skipped++;
+          continue;
+        }
         const probability = probabilityRaw !== undefined && !isNaN(probabilityRaw)
           ? Math.min(100, Math.max(0, probabilityRaw))
           : resolvedProbability;
@@ -284,6 +301,7 @@ export const importRouter = router({
             companyId: resolvedCompanyId ?? null,
             primaryContactId: resolvedContactId ?? null,
             description: mapped.description?.trim() || null,
+            ownerId: mapped.ownerId?.trim() || ctx.user!.id,
             customFields: {},
           } as Parameters<typeof dealService.createDeal>[1]);
           created++;
