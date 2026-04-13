@@ -5,7 +5,7 @@ import {
   useReactTable, getCoreRowModel, flexRender,
   type ColumnDef, type RowSelectionState,
 } from '@tanstack/react-table';
-import { Plus, Search, Users, Download, Upload, Trash2, Pencil } from 'lucide-react';
+import { Plus, Search, Users, Download, Upload, Trash2, Pencil, Link2 } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,8 @@ export default function ContactsPage() {
   const [activeViewId, setActiveViewId] = useState<string>('');
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [relinkOpen, setRelinkOpen] = useState(false);
+  const [relinkResult, setRelinkResult] = useState<{ contactsLinkedByName: number; contactsLinkedByDeal: number; companiesCreated: number } | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string>('');
@@ -73,6 +75,17 @@ export default function ContactsPage() {
       void utils.contacts.list.invalidate();
     },
     onError: (e) => toast.error('Failed to delete', { description: e.message }),
+  });
+
+  const relinkMutation = trpc.import.relinkContactCompanies.useMutation({
+    onSuccess: (result) => {
+      setRelinkResult(result);
+      void utils.contacts.list.invalidate();
+      toast.success('Re-link complete', {
+        description: `${result.contactsLinkedByName + result.contactsLinkedByDeal} contacts linked, ${result.companiesCreated} companies created`,
+      });
+    },
+    onError: (err) => toast.error('Re-link failed', { description: err.message }),
   });
 
   const contacts: Contact[] = (data?.items ?? []) as Contact[];
@@ -253,6 +266,15 @@ export default function ContactsPage() {
           >
             <Download className="w-4 h-4" />
             Export
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => { setRelinkResult(null); setRelinkOpen(true); }}
+            title="Auto-link contacts to companies using existing data"
+          >
+            <Link2 className="w-4 h-4" />
+            Auto Re-link
           </Button>
           <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
             <Upload className="w-4 h-4" />
@@ -471,6 +493,72 @@ export default function ContactsPage() {
       >
         <ImportWizard entityType="contact" onClose={() => { setImportOpen(false); void utils.contacts.list.invalidate(); }} />
       </SlideOverPanel>
+
+      {/* Auto Re-link modal */}
+      {relinkOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+            {!relinkResult ? (
+              <>
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900 mb-1">Auto Re-link Contacts to Companies</h3>
+                  <p className="text-sm text-slate-500 leading-relaxed">
+                    This will scan all contacts and automatically link them to their companies using:
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm text-slate-500 list-disc list-inside">
+                    <li>Company name text already stored on the contact</li>
+                    <li>Company linked to deals where this contact appears</li>
+                  </ul>
+                  <p className="text-sm text-slate-500 mt-2">
+                    Missing companies will be created automatically. No contacts will be deleted or duplicated.
+                  </p>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => setRelinkOpen(false)}
+                    className="flex-1 px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => relinkMutation.mutate()}
+                    disabled={relinkMutation.isPending}
+                    className="flex-1 px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors font-medium"
+                  >
+                    {relinkMutation.isPending ? 'Running...' : 'Run Re-link'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <h3 className="text-base font-semibold text-slate-900 mb-3">Re-link Complete</h3>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center p-3 bg-blue-50 border border-blue-100 rounded-xl">
+                      <p className="text-2xl font-bold text-blue-700">{relinkResult.contactsLinkedByName}</p>
+                      <p className="text-[11px] text-blue-600 mt-0.5 leading-tight">Linked by company name</p>
+                    </div>
+                    <div className="text-center p-3 bg-purple-50 border border-purple-100 rounded-xl">
+                      <p className="text-2xl font-bold text-purple-700">{relinkResult.contactsLinkedByDeal}</p>
+                      <p className="text-[11px] text-purple-600 mt-0.5 leading-tight">Linked via deal</p>
+                    </div>
+                    <div className="text-center p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                      <p className="text-2xl font-bold text-emerald-700">{relinkResult.companiesCreated}</p>
+                      <p className="text-[11px] text-emerald-600 mt-0.5 leading-tight">Companies created</p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setRelinkOpen(false)}
+                  className="w-full px-4 py-2 text-sm rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition-colors font-medium"
+                >
+                  Done
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Delete confirm */}
       <ConfirmDialog

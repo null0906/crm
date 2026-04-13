@@ -5,7 +5,7 @@ import * as companyService from '@/server/services/company.service';
 import * as dealService from '@/server/services/deal.service';
 import { db } from '@/server/db';
 import { contacts, companies, pipelineStages, deals } from '@/server/db/schema';
-import { eq, ilike, and, asc, isNull } from 'drizzle-orm';
+import { eq, ilike, and, asc, isNull, sql } from 'drizzle-orm';
 
 const contactRowSchema = z.object({
   firstName: z.string().min(1),
@@ -420,6 +420,98 @@ export const importRouter = router({
       }
 
       return { linked, companiesCreated, contactsCreated, skipped, errors };
+    }),
+
+  // One-click: scan existing DB data and link contacts → companies automatically
+  relinkContactCompanies: protectedProcedure
+    .mutation(async ({ ctx }) => {
+      let contactsLinkedByName = 0;
+      let contactsLinkedByDeal = 0;
+      let companiesCreated = 0;
+
+      // ── Phase 1: contacts that have companyName text but no companyId FK ──
+      const unlinkedByName = await db
+        .select({
+          id: contacts.id,
+          companyName: contacts.companyName,
+          status: contacts.status,
+          source: contacts.source,
+        })
+        .from(contacts)
+        .where(
+          and(
+            isNull(contacts.deletedAt),
+            isNull(contacts.companyId),
+            sql`${contacts.companyName} IS NOT NULL AND TRIM(${contacts.companyName}) <> ''`
+          )
+        );
+
+      for (const contact of unlinkedByName) {
+        const name = contact.companyName!.trim();
+        const [found] = await db
+          .select({ id: companies.id })
+          .from(companies)
+          .where(and(ilike(companies.name, name), isNull(companies.deletedAt)))
+          .limit(1);
+
+        let companyId: string;
+        if (found) {
+          companyId = found.id;
+        } else {
+          const created = await companyService.createCompany(ctx.user!, {
+            name,
+            companyType: 'prospect',
+            status: 'active',
+            customFields: {},
+          });
+          companyId = created.id as string;
+          companiesCreated++;
+        }
+
+        await db
+          .update(contacts)
+          .set({ companyId, updatedAt: new Date() })
+          .where(eq(contacts.id, contact.id));
+
+        contactsLinkedByName++;
+      }
+
+      // ── Phase 2: contacts that still have no companyId but appear as
+      //    primaryContactId on a deal that does have a companyId ──
+      const stillUnlinked = await db
+        .select({
+          contactId: deals.primaryContactId,
+          companyId: deals.companyId,
+        })
+        .from(deals)
+        .where(
+          and(
+            isNull(deals.deletedAt),
+            sql`${deals.primaryContactId} IS NOT NULL`,
+            sql`${deals.companyId} IS NOT NULL`
+          )
+        );
+
+      for (const row of stillUnlinked) {
+        if (!row.contactId || !row.companyId) continue;
+        // Only patch if contact currently has no companyId
+        const [contact] = await db
+          .select({ id: contacts.id, companyId: contacts.companyId })
+          .from(contacts)
+          .where(and(eq(contacts.id, row.contactId), isNull(contacts.deletedAt)))
+          .limit(1);
+
+        if (!contact || contact.companyId) continue;
+
+        await db
+          .update(contacts)
+          .set({ companyId: row.companyId, updatedAt: new Date() })
+          .where(eq(contacts.id, row.contactId));
+
+        contactsLinkedByDeal++;
+      }
+
+      return { contactsLinkedByName, contactsLinkedByDeal, companiesCreated };
     }),
 
   exportContacts: protectedProcedure
