@@ -4,8 +4,8 @@ import * as contactService from '@/server/services/contact.service';
 import * as companyService from '@/server/services/company.service';
 import * as dealService from '@/server/services/deal.service';
 import { db } from '@/server/db';
-import { contacts, companies, pipelineStages } from '@/server/db/schema';
-import { eq, ilike, and, asc } from 'drizzle-orm';
+import { contacts, companies, pipelineStages, deals } from '@/server/db/schema';
+import { eq, ilike, and, asc, isNull } from 'drizzle-orm';
 
 const contactRowSchema = z.object({
   firstName: z.string().min(1),
@@ -294,6 +294,132 @@ export const importRouter = router({
       }
 
       return { created, skipped, errors };
+    }),
+
+  // Backfill: given the same deals CSV, find-or-create companies/contacts and
+  // patch the FK links on existing deals (matched by title). No new deals created.
+  backfillDealLinks: protectedProcedure
+    .input(z.object({
+      rows: z.array(z.record(z.string(), z.string())).min(1).max(1000),
+      columnMap: z.record(z.string(), z.string()), // csvHeader -> dealField
+      pipelineId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      let linked = 0;
+      let companiesCreated = 0;
+      let contactsCreated = 0;
+      let skipped = 0;
+      const errors: Array<{ row: number; message: string }> = [];
+
+      for (let i = 0; i < input.rows.length; i++) {
+        const raw = input.rows[i]!;
+        const mapped: Record<string, string> = {};
+        for (const [csvCol, dealField] of Object.entries(input.columnMap)) {
+          if (raw[csvCol] !== undefined) mapped[dealField] = raw[csvCol]!;
+        }
+
+        const title = mapped.title?.trim();
+        if (!title) {
+          errors.push({ row: i + 2, message: 'Title is required to match existing deal' });
+          skipped++;
+          continue;
+        }
+
+        // Find existing deal by title + pipeline (case-insensitive)
+        const [existingDeal] = await db
+          .select({ id: deals.id, companyId: deals.companyId, primaryContactId: deals.primaryContactId })
+          .from(deals)
+          .where(and(
+            ilike(deals.title, title),
+            eq(deals.pipelineId, input.pipelineId),
+            isNull(deals.deletedAt),
+          ))
+          .limit(1);
+
+        if (!existingDeal) {
+          errors.push({ row: i + 2, message: `No deal found with title "${title}"` });
+          skipped++;
+          continue;
+        }
+
+        try {
+          // Resolve or create company
+          let resolvedCompanyId: string | null = existingDeal.companyId ?? null;
+          if (mapped.companyName?.trim()) {
+            const [foundCompany] = await db
+              .select({ id: companies.id })
+              .from(companies)
+              .where(ilike(companies.name, mapped.companyName.trim()))
+              .limit(1);
+            if (foundCompany) {
+              resolvedCompanyId = foundCompany.id;
+            } else {
+              const created = await companyService.createCompany(ctx.user!, {
+                name: mapped.companyName.trim(),
+                companyType: 'partner',
+                status: 'active',
+                customFields: {},
+              });
+              resolvedCompanyId = created.id as string;
+              companiesCreated++;
+            }
+          }
+
+          // Resolve or create contact
+          let resolvedContactId: string | null = existingDeal.primaryContactId ?? null;
+          if (mapped.contactName?.trim()) {
+            const parts = mapped.contactName.trim().split(/\s+/);
+            const firstName = parts[0] ?? '';
+            const lastName = parts.slice(1).join(' ');
+            const [foundContact] = await db
+              .select({ id: contacts.id })
+              .from(contacts)
+              .where(and(
+                ilike(contacts.firstName, firstName),
+                lastName ? ilike(contacts.lastName, lastName) : ilike(contacts.firstName, firstName),
+              ))
+              .limit(1);
+            if (foundContact) {
+              resolvedContactId = foundContact.id;
+            } else if (firstName) {
+              const created = await contactService.createContact(ctx.user!, {
+                firstName,
+                lastName: lastName || '',
+                companyId: resolvedCompanyId,
+                companyName: mapped.companyName?.trim() || null,
+                status: 'new',
+                customFields: {},
+              });
+              resolvedContactId = created.id as string;
+              contactsCreated++;
+            }
+          }
+
+          // Patch the deal with resolved FKs
+          const needsUpdate =
+            resolvedCompanyId !== existingDeal.companyId ||
+            resolvedContactId !== existingDeal.primaryContactId;
+
+          if (needsUpdate) {
+            await db
+              .update(deals)
+              .set({
+                ...(resolvedCompanyId !== existingDeal.companyId ? { companyId: resolvedCompanyId } : {}),
+                ...(resolvedContactId !== existingDeal.primaryContactId ? { primaryContactId: resolvedContactId } : {}),
+                updatedAt: new Date(),
+              })
+              .where(eq(deals.id, existingDeal.id));
+            linked++;
+          } else {
+            skipped++;
+          }
+        } catch (err) {
+          errors.push({ row: i + 2, message: err instanceof Error ? err.message : 'Unknown error' });
+          skipped++;
+        }
+      }
+
+      return { linked, companiesCreated, contactsCreated, skipped, errors };
     }),
 
   exportContacts: protectedProcedure

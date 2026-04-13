@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, LayoutGrid, List, Upload } from 'lucide-react';
+import { Plus, LayoutGrid, List, Upload, Link2 } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
@@ -10,6 +10,7 @@ import { DealTable } from '@/components/deals/DealTable';
 import { DealForm } from '@/components/deals/DealForm';
 import { DealDetail } from '@/components/deals/DealDetail';
 import { ImportWizard } from '@/components/import-export/ImportWizard';
+import { BackfillDealLinksWizard } from '@/components/import-export/BackfillDealLinksWizard';
 
 interface Stage {
   id: string;
@@ -27,6 +28,7 @@ export default function DealsPage() {
   const [createStageId, setCreateStageId] = useState<string>('');
   const [selectedDealId, setSelectedDealId] = useState<string>('');
   const [importOpen, setImportOpen] = useState(false);
+  const [backfillOpen, setBackfillOpen] = useState(false);
 
   const { data: pipelines = [], isLoading: pipelinesLoading } = trpc.pipelines.list.useQuery();
 
@@ -113,6 +115,10 @@ export default function DealsPage() {
             </button>
           </div>
 
+          <Button size="sm" variant="outline" onClick={() => setBackfillOpen(true)} title="Re-link contacts & companies from a previous import CSV">
+            <Link2 className="w-4 h-4" />
+            Re-link
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
             <Upload className="w-4 h-4" />
             Import
@@ -173,6 +179,17 @@ export default function DealsPage() {
             pipelineId={selectedPipelineId}
             pipelineName={String(pipelines.find((p) => String(p.id) === selectedPipelineId)?.name ?? '')}
             onClose={() => setImportOpen(false)}
+          />
+        )}
+      </SlideOverPanel>
+
+      {/* Backfill / Re-link Wizard */}
+      <SlideOverPanel open={backfillOpen} onClose={() => setBackfillOpen(false)} title="Re-link Contacts & Companies" width="lg">
+        {backfillOpen && (
+          <BackfillDealLinksWizard
+            pipelineId={selectedPipelineId}
+            pipelineName={String(pipelines.find((p) => String(p.id) === selectedPipelineId)?.name ?? '')}
+            onClose={() => setBackfillOpen(false)}
           />
         )}
       </SlideOverPanel>
