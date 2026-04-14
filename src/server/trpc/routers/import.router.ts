@@ -5,7 +5,7 @@ import * as companyService from '@/server/services/company.service';
 import * as dealService from '@/server/services/deal.service';
 import { db } from '@/server/db';
 import { contacts, companies, pipelineStages, deals } from '@/server/db/schema';
-import { eq, ilike, and, asc, isNull, sql } from 'drizzle-orm';
+import { eq, ilike, and, asc, isNull, sql, or } from 'drizzle-orm';
 
 const contactRowSchema = z.object({
   firstName: z.string().min(1),
@@ -39,10 +39,12 @@ export const importRouter = router({
     .input(z.object({
       rows: z.array(z.record(z.string(), z.string())).min(1).max(1000),
       columnMap: z.record(z.string(), z.string()), // csvHeader -> contactField
-      skipDuplicates: z.boolean().default(true),
+      // 'skip' = ignore duplicates, 'update' = fill in missing fields, 'create' = always create
+      duplicateMode: z.enum(['skip', 'update', 'create']).default('skip'),
     }))
     .mutation(async ({ ctx, input }) => {
       let created = 0;
+      let updated = 0;
       let skipped = 0;
       const errors: Array<{ row: number; message: string }> = [];
 
@@ -75,15 +77,64 @@ export const importRouter = router({
           continue;
         }
 
-        // Duplicate check on email
-        if (input.skipDuplicates && parsed.data.email) {
-          const existing = await db
-            .select({ id: contacts.id })
+        if (input.duplicateMode !== 'create') {
+          // Try to find existing contact by email first, then by first+last name
+          const matchConditions = [];
+          if (parsed.data.email) {
+            matchConditions.push(eq(contacts.email, parsed.data.email));
+          }
+          // Always try name match too
+          matchConditions.push(
+            and(
+              ilike(contacts.firstName, parsed.data.firstName),
+              ilike(contacts.lastName, parsed.data.lastName),
+              isNull(contacts.deletedAt),
+            )!
+          );
+
+          const existingRows = await db
+            .select({
+              id: contacts.id,
+              email: contacts.email,
+              phone: contacts.phone,
+              jobTitle: contacts.jobTitle,
+              department: contacts.department,
+              companyName: contacts.companyName,
+              city: contacts.city,
+              country: contacts.country,
+              description: contacts.description,
+            })
             .from(contacts)
-            .where(eq(contacts.email, parsed.data.email))
+            .where(and(isNull(contacts.deletedAt), or(...matchConditions)))
             .limit(1);
-          if (existing.length > 0) {
-            skipped++;
+
+          if (existingRows.length > 0) {
+            if (input.duplicateMode === 'skip') {
+              skipped++;
+              continue;
+            }
+
+            // mode === 'update': fill in only null/empty fields
+            const existing = existingRows[0]!;
+            const patch: Record<string, string | null> = {};
+            if (!existing.email && parsed.data.email) patch.email = parsed.data.email;
+            if (!existing.phone && parsed.data.phone) patch.phone = parsed.data.phone;
+            if (!existing.jobTitle && parsed.data.jobTitle) patch.jobTitle = parsed.data.jobTitle;
+            if (!existing.department && parsed.data.department) patch.department = parsed.data.department;
+            if (!existing.companyName && parsed.data.companyName) patch.companyName = parsed.data.companyName;
+            if (!existing.city && parsed.data.city) patch.city = parsed.data.city;
+            if (!existing.country && parsed.data.country) patch.country = parsed.data.country;
+            if (!existing.description && parsed.data.description) patch.description = parsed.data.description;
+
+            if (Object.keys(patch).length > 0) {
+              await db
+                .update(contacts)
+                .set({ ...patch, updatedAt: new Date() })
+                .where(eq(contacts.id, existing.id));
+              updated++;
+            } else {
+              skipped++;
+            }
             continue;
           }
         }
@@ -101,17 +152,18 @@ export const importRouter = router({
         }
       }
 
-      return { created, skipped, errors };
+      return { created, updated, skipped, errors };
     }),
 
   companies: protectedProcedure
     .input(z.object({
       rows: z.array(z.record(z.string(), z.string())).min(1).max(1000),
       columnMap: z.record(z.string(), z.string()),
-      skipDuplicates: z.boolean().default(true),
+      duplicateMode: z.enum(['skip', 'update', 'create']).default('skip'),
     }))
     .mutation(async ({ ctx, input }) => {
       let created = 0;
+      let updated = 0;
       let skipped = 0;
       const errors: Array<{ row: number; message: string }> = [];
 
@@ -140,6 +192,52 @@ export const importRouter = router({
           continue;
         }
 
+        if (input.duplicateMode !== 'create') {
+          // Match by name (case-insensitive)
+          const [existingCompany] = await db
+            .select({
+              id: companies.id,
+              domain: companies.domain,
+              website: companies.website,
+              industry: companies.industry,
+              city: companies.city,
+              country: companies.country,
+              phone: companies.phone,
+              description: companies.description,
+            })
+            .from(companies)
+            .where(and(ilike(companies.name, parsed.data.name), isNull(companies.deletedAt)))
+            .limit(1);
+
+          if (existingCompany) {
+            if (input.duplicateMode === 'skip') {
+              skipped++;
+              continue;
+            }
+
+            // mode === 'update': fill in only null/empty fields
+            const patch: Record<string, string | null> = {};
+            if (!existingCompany.domain && parsed.data.domain) patch.domain = parsed.data.domain;
+            if (!existingCompany.website && parsed.data.website) patch.website = parsed.data.website;
+            if (!existingCompany.industry && parsed.data.industry) patch.industry = parsed.data.industry;
+            if (!existingCompany.phone && parsed.data.phone) patch.phone = parsed.data.phone;
+            if (!existingCompany.city && parsed.data.city) patch.city = parsed.data.city;
+            if (!existingCompany.country && parsed.data.country) patch.country = parsed.data.country;
+            if (!existingCompany.description && parsed.data.description) patch.description = parsed.data.description;
+
+            if (Object.keys(patch).length > 0) {
+              await db
+                .update(companies)
+                .set({ ...patch, updatedAt: new Date() })
+                .where(eq(companies.id, existingCompany.id));
+              updated++;
+            } else {
+              skipped++;
+            }
+            continue;
+          }
+        }
+
         try {
           await companyService.createCompany(ctx.user!, {
             ...parsed.data,
@@ -154,7 +252,7 @@ export const importRouter = router({
         }
       }
 
-      return { created, skipped, errors };
+      return { created, updated, skipped, errors };
     }),
 
   deals: protectedProcedure

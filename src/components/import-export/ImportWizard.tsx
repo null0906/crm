@@ -11,6 +11,7 @@ type Step = 'upload' | 'map' | 'preview' | 'done';
 
 interface ImportResult {
   created: number;
+  updated?: number;
   skipped: number;
   errors: Array<{ row: number; message: string }>;
 }
@@ -193,7 +194,7 @@ export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: 
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [columnMap, setColumnMap] = useState<Record<string, string>>({});
-  const [skipDuplicates, setSkipDuplicates] = useState(true);
+  const [duplicateMode, setDuplicateMode] = useState<'skip' | 'update' | 'create'>('skip');
   const [result, setResult] = useState<ImportResult | null>(null);
 
   // Fetch pipeline stages for deal template
@@ -280,9 +281,9 @@ export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: 
   function handleImport() {
     const trimmedRows = rows.slice(0, 1000);
     if (entityType === 'contact') {
-      importContacts.mutate({ rows: trimmedRows, columnMap, skipDuplicates });
+      importContacts.mutate({ rows: trimmedRows, columnMap, duplicateMode });
     } else if (entityType === 'company') {
-      importCompanies.mutate({ rows: trimmedRows, columnMap, skipDuplicates });
+      importCompanies.mutate({ rows: trimmedRows, columnMap, duplicateMode });
     } else {
       if (!pipelineId) { toast.error('No pipeline selected'); return; }
       importDeals.mutate({ rows: trimmedRows, columnMap, pipelineId });
@@ -481,15 +482,34 @@ export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: 
             )}
 
             {entityType !== 'deal' && (
-              <div className="mt-4 flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="skip-dup"
-                  checked={skipDuplicates}
-                  onChange={(e) => setSkipDuplicates(e.target.checked)}
-                  className="rounded"
-                />
-                <label htmlFor="skip-dup" className="text-sm text-slate-700">Skip duplicate emails</label>
+              <div className="mt-4">
+                <p className="text-xs font-medium text-slate-600 mb-2">If a matching record already exists:</p>
+                <div className="flex flex-col gap-1.5">
+                  {([
+                    { value: 'skip', label: 'Skip it', desc: 'Leave the existing record untouched' },
+                    { value: 'update', label: 'Fill in missing fields', desc: 'Add email, phone, etc. — never overwrite existing data' },
+                    { value: 'create', label: 'Always create new', desc: 'May create duplicates' },
+                  ] as const).map(({ value, label, desc }) => (
+                    <label
+                      key={value}
+                      className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${duplicateMode === value ? 'border-blue-400 bg-blue-50' : 'border-slate-200 hover:border-slate-300'}`}
+                    >
+                      <input
+                        type="radio"
+                        name="dupMode"
+                        value={value}
+                        checked={duplicateMode === value}
+                        onChange={() => setDuplicateMode(value)}
+                        className="mt-0.5 accent-blue-500"
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">{label}</p>
+                        <p className="text-xs text-slate-400">{desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2">Match is by email first, then by first + last name.</p>
               </div>
             )}
           </div>
@@ -583,6 +603,12 @@ export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: 
                 <p className="text-2xl font-bold text-green-600">{result.created}</p>
                 <p className="text-xs text-slate-500">Created</p>
               </div>
+              {result.updated !== undefined && result.updated > 0 && (
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-blue-600">{result.updated}</p>
+                  <p className="text-xs text-slate-500">Updated</p>
+                </div>
+              )}
               <div className="text-center">
                 <p className="text-2xl font-bold text-slate-400">{result.skipped}</p>
                 <p className="text-xs text-slate-500">Skipped</p>
