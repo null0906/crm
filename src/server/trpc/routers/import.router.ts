@@ -11,11 +11,19 @@ const contactRowSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   email: z.string().email().optional().nullable(),
+  secondaryEmail: z.string().email().optional().nullable(),
   phone: z.string().optional().nullable(),
+  mobile: z.string().optional().nullable(),
   companyName: z.string().optional().nullable(),
   jobTitle: z.string().optional().nullable(),
   department: z.string().optional().nullable(),
+  linkedinUrl: z.string().optional().nullable(),
+  leadScore: z.number().int().min(0).max(100).optional().nullable(),
+  addressLine1: z.string().optional().nullable(),
+  addressLine2: z.string().optional().nullable(),
   city: z.string().optional().nullable(),
+  state: z.string().optional().nullable(),
+  postalCode: z.string().optional().nullable(),
   country: z.string().optional().nullable(),
   status: z.enum(['new', 'contacted', 'qualified', 'unqualified', 'nurturing', 'converted', 'lost', 'archived']).default('new'),
   source: z.enum(['apollo', 'manual', 'website', 'referral', 'event', 'cold_outreach']).optional(),
@@ -39,8 +47,8 @@ export const importRouter = router({
     .input(z.object({
       rows: z.array(z.record(z.string(), z.string())).min(1).max(1000),
       columnMap: z.record(z.string(), z.string()), // csvHeader -> contactField
-      // 'skip' = ignore duplicates, 'update' = fill in missing fields, 'create' = always create
-      duplicateMode: z.enum(['skip', 'update', 'create']).default('skip'),
+      // 'skip' = ignore duplicates, 'update' = fill in missing fields, 'overwrite' = replace all fields from CSV, 'create' = always create new
+      duplicateMode: z.enum(['skip', 'update', 'overwrite', 'create']).default('skip'),
     }))
     .mutation(async ({ ctx, input }) => {
       let created = 0;
@@ -56,15 +64,24 @@ export const importRouter = router({
           if (raw[csvCol] !== undefined) mapped[contactField] = raw[csvCol]!;
         }
 
+        const leadScoreRaw = mapped.leadScore ? parseInt(mapped.leadScore, 10) : undefined;
         const parsed = contactRowSchema.safeParse({
           firstName: mapped.firstName ?? '',
           lastName: mapped.lastName ?? '',
           email: mapped.email || null,
+          secondaryEmail: mapped.secondaryEmail || null,
           phone: mapped.phone || null,
+          mobile: mapped.mobile || null,
           companyName: mapped.companyName || null,
           jobTitle: mapped.jobTitle || null,
           department: mapped.department || null,
+          linkedinUrl: mapped.linkedinUrl || null,
+          leadScore: !isNaN(leadScoreRaw as number) ? leadScoreRaw : null,
+          addressLine1: mapped.addressLine1 || null,
+          addressLine2: mapped.addressLine2 || null,
           city: mapped.city || null,
+          state: mapped.state || null,
+          postalCode: mapped.postalCode || null,
           country: mapped.country || null,
           status: mapped.status || 'new',
           source: (mapped.source as 'manual') || 'manual',
@@ -78,12 +95,11 @@ export const importRouter = router({
         }
 
         if (input.duplicateMode !== 'create') {
-          // Try to find existing contact by email first, then by first+last name
+          // Match by email first, then by first+last name
           const matchConditions = [];
           if (parsed.data.email) {
             matchConditions.push(eq(contacts.email, parsed.data.email));
           }
-          // Always try name match too
           matchConditions.push(
             and(
               ilike(contacts.firstName, parsed.data.firstName),
@@ -97,12 +113,20 @@ export const importRouter = router({
               id: contacts.id,
               email: contacts.email,
               phone: contacts.phone,
+              mobile: contacts.mobile,
+              secondaryEmail: contacts.secondaryEmail,
               jobTitle: contacts.jobTitle,
               department: contacts.department,
+              linkedinUrl: contacts.linkedinUrl,
               companyName: contacts.companyName,
+              addressLine1: contacts.addressLine1,
+              addressLine2: contacts.addressLine2,
               city: contacts.city,
+              state: contacts.state,
+              postalCode: contacts.postalCode,
               country: contacts.country,
               description: contacts.description,
+              leadScore: contacts.leadScore,
             })
             .from(contacts)
             .where(and(isNull(contacts.deletedAt), or(...matchConditions)))
@@ -114,17 +138,46 @@ export const importRouter = router({
               continue;
             }
 
-            // mode === 'update': fill in only null/empty fields
             const existing = existingRows[0]!;
-            const patch: Record<string, string | null> = {};
-            if (!existing.email && parsed.data.email) patch.email = parsed.data.email;
-            if (!existing.phone && parsed.data.phone) patch.phone = parsed.data.phone;
-            if (!existing.jobTitle && parsed.data.jobTitle) patch.jobTitle = parsed.data.jobTitle;
-            if (!existing.department && parsed.data.department) patch.department = parsed.data.department;
-            if (!existing.companyName && parsed.data.companyName) patch.companyName = parsed.data.companyName;
-            if (!existing.city && parsed.data.city) patch.city = parsed.data.city;
-            if (!existing.country && parsed.data.country) patch.country = parsed.data.country;
-            if (!existing.description && parsed.data.description) patch.description = parsed.data.description;
+            const patch: Record<string, unknown> = {};
+
+            if (input.duplicateMode === 'overwrite') {
+              // Replace every non-empty field from CSV
+              if (parsed.data.email) patch.email = parsed.data.email;
+              if (parsed.data.secondaryEmail) patch.secondaryEmail = parsed.data.secondaryEmail;
+              if (parsed.data.phone) patch.phone = parsed.data.phone;
+              if (parsed.data.mobile) patch.mobile = parsed.data.mobile;
+              if (parsed.data.jobTitle) patch.jobTitle = parsed.data.jobTitle;
+              if (parsed.data.department) patch.department = parsed.data.department;
+              if (parsed.data.linkedinUrl) patch.linkedinUrl = parsed.data.linkedinUrl;
+              if (parsed.data.companyName) patch.companyName = parsed.data.companyName;
+              if (parsed.data.addressLine1) patch.addressLine1 = parsed.data.addressLine1;
+              if (parsed.data.addressLine2) patch.addressLine2 = parsed.data.addressLine2;
+              if (parsed.data.city) patch.city = parsed.data.city;
+              if (parsed.data.state) patch.state = parsed.data.state;
+              if (parsed.data.postalCode) patch.postalCode = parsed.data.postalCode;
+              if (parsed.data.country) patch.country = parsed.data.country;
+              if (parsed.data.description) patch.description = parsed.data.description;
+              if (parsed.data.leadScore != null) patch.leadScore = parsed.data.leadScore;
+            } else {
+              // 'update': fill in only null/empty fields
+              if (!existing.email && parsed.data.email) patch.email = parsed.data.email;
+              if (!existing.secondaryEmail && parsed.data.secondaryEmail) patch.secondaryEmail = parsed.data.secondaryEmail;
+              if (!existing.phone && parsed.data.phone) patch.phone = parsed.data.phone;
+              if (!existing.mobile && parsed.data.mobile) patch.mobile = parsed.data.mobile;
+              if (!existing.jobTitle && parsed.data.jobTitle) patch.jobTitle = parsed.data.jobTitle;
+              if (!existing.department && parsed.data.department) patch.department = parsed.data.department;
+              if (!existing.linkedinUrl && parsed.data.linkedinUrl) patch.linkedinUrl = parsed.data.linkedinUrl;
+              if (!existing.companyName && parsed.data.companyName) patch.companyName = parsed.data.companyName;
+              if (!existing.addressLine1 && parsed.data.addressLine1) patch.addressLine1 = parsed.data.addressLine1;
+              if (!existing.addressLine2 && parsed.data.addressLine2) patch.addressLine2 = parsed.data.addressLine2;
+              if (!existing.city && parsed.data.city) patch.city = parsed.data.city;
+              if (!existing.state && parsed.data.state) patch.state = parsed.data.state;
+              if (!existing.postalCode && parsed.data.postalCode) patch.postalCode = parsed.data.postalCode;
+              if (!existing.country && parsed.data.country) patch.country = parsed.data.country;
+              if (!existing.description && parsed.data.description) patch.description = parsed.data.description;
+              if ((existing.leadScore == null || existing.leadScore === 0) && parsed.data.leadScore != null) patch.leadScore = parsed.data.leadScore;
+            }
 
             if (Object.keys(patch).length > 0) {
               await db

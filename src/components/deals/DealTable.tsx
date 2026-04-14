@@ -59,6 +59,9 @@ export function DealTable({ pipelineId, onDealClick, extraFilters }: DealTablePr
   const [cursor, setCursor] = useState<string | undefined>();
   const limit = 25;
 
+  // Reset to page 1 when pipeline, filters, or sort changes
+  React.useEffect(() => { setCursor(undefined); }, [pipelineId, sorting, extraFilters]);
+
   const { data, isLoading } = trpc.deals.list.useQuery({
     pipelineId,
     pagination: { limit, cursor },

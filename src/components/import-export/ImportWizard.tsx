@@ -194,7 +194,7 @@ export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: 
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [columnMap, setColumnMap] = useState<Record<string, string>>({});
-  const [duplicateMode, setDuplicateMode] = useState<'skip' | 'update' | 'create'>('skip');
+  const [duplicateMode, setDuplicateMode] = useState<'skip' | 'update' | 'overwrite' | 'create'>('skip');
   const [result, setResult] = useState<ImportResult | null>(null);
 
   // Fetch pipeline stages for deal template
@@ -281,9 +281,9 @@ export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: 
   function handleImport() {
     const trimmedRows = rows.slice(0, 1000);
     if (entityType === 'contact') {
-      importContacts.mutate({ rows: trimmedRows, columnMap, duplicateMode });
+      importContacts.mutate({ rows: trimmedRows, columnMap, duplicateMode: duplicateMode === 'overwrite' ? 'overwrite' : duplicateMode });
     } else if (entityType === 'company') {
-      importCompanies.mutate({ rows: trimmedRows, columnMap, duplicateMode });
+      importCompanies.mutate({ rows: trimmedRows, columnMap, duplicateMode: duplicateMode === 'overwrite' ? 'update' : duplicateMode });
     } else {
       if (!pipelineId) { toast.error('No pipeline selected'); return; }
       importDeals.mutate({ rows: trimmedRows, columnMap, pipelineId });
@@ -486,9 +486,10 @@ export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: 
                 <p className="text-xs font-medium text-slate-600 mb-2">If a matching record already exists:</p>
                 <div className="flex flex-col gap-1.5">
                   {([
-                    { value: 'skip', label: 'Skip it', desc: 'Leave the existing record untouched' },
-                    { value: 'update', label: 'Fill in missing fields', desc: 'Add email, phone, etc. — never overwrite existing data' },
-                    { value: 'create', label: 'Always create new', desc: 'May create duplicates' },
+                    { value: 'skip',      label: 'Skip it',               desc: 'Leave the existing record untouched' },
+                    { value: 'update',    label: 'Fill in missing fields', desc: 'Adds email, phone, etc. only where the field is currently empty' },
+                    { value: 'overwrite', label: 'Overwrite with CSV data', desc: 'Replaces all non-empty fields from the CSV — use to push updates' },
+                    { value: 'create',    label: 'Always create new',      desc: 'Ignores matches — may create duplicates' },
                   ] as const).map(({ value, label, desc }) => (
                     <label
                       key={value}
@@ -509,7 +510,7 @@ export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: 
                     </label>
                   ))}
                 </div>
-                <p className="text-[11px] text-slate-400 mt-2">Match is by email first, then by first + last name.</p>
+                <p className="text-[11px] text-slate-400 mt-2">Match is by email first, then by first + last name. Fields supported: phone, mobile, email, job title, company, address, LinkedIn, notes.</p>
               </div>
             )}
           </div>
