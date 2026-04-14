@@ -44,6 +44,9 @@ export default function CompaniesPage() {
   const { data: usersData } = trpc.users.list.useQuery();
   const users = usersData ?? [];
 
+  // Reset cursor whenever any filter/search changes
+  React.useEffect(() => { setCursor(undefined); }, [debouncedSearch, typeFilter, ownerFilter, dateFrom, dateTo, pageSize]);
+
   type FilterOp = 'eq' | 'gte' | 'lte';
   const filterConditions: Array<{ field: string; operator: FilterOp; value: string }> = [];
   if (typeFilter) filterConditions.push({ field: 'companyType', operator: 'eq', value: typeFilter });

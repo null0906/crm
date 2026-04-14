@@ -14,6 +14,12 @@ import {
 } from 'lucide-react';
 import type { DashboardDataSource, WidgetType } from '@/lib/types';
 
+export interface DashboardFilter {
+  dateFrom?: string;  // ISO date string
+  dateTo?: string;
+  status?: string;    // deal status filter
+}
+
 interface Widget {
   id: string;
   widgetType: string;
@@ -94,6 +100,28 @@ function filterContactsBySource(
   });
 }
 
+// ─── Dashboard filter helper ──────────────────────────────────────
+function applyDealFilter(
+  deals: Array<Record<string, unknown>>,
+  filter?: DashboardFilter,
+): Array<Record<string, unknown>> {
+  if (!filter) return deals;
+  return deals.filter((d) => {
+    if (filter.status && d.status !== filter.status) return false;
+    if (filter.dateFrom) {
+      const at = new Date(d.createdAt as string);
+      if (at < new Date(filter.dateFrom)) return false;
+    }
+    if (filter.dateTo) {
+      const at = new Date(d.createdAt as string);
+      const to = new Date(filter.dateTo);
+      to.setHours(23, 59, 59, 999);
+      if (at > to) return false;
+    }
+    return true;
+  });
+}
+
 // ─── Monthly data builder ──────────────────────────────────────────
 function buildMonthly(deals: Array<Record<string, unknown>>) {
   const now = new Date();
@@ -159,7 +187,7 @@ function MIcon({ metric, color }: { metric?: string; color: string }) {
 }
 
 // ─── METRIC CARD ──────────────────────────────────────────────────
-function MetricCard({ widget }: { widget: Widget }) {
+function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilter }) {
   const metric = widget.config.metric as string | undefined;
   const source = getWidgetSource(widget);
   const accent = widget.color ?? '#3b82f6';
@@ -183,7 +211,10 @@ function MetricCard({ widget }: { widget: Widget }) {
   const allDeals     = ((dealsRaw?.items ?? []) as Array<Record<string, unknown>>);
   const filteredContacts = filterContactsBySource(allContacts, allCompanies, source);
   const filteredCompanies = allCompanies.filter((c) => isCompanyInSource(c, source));
-  const filteredDeals = filterDealsBySource(allDeals, pipelinesRaw as Array<Record<string, unknown>>, source);
+  const filteredDeals = applyDealFilter(
+    filterDealsBySource(allDeals, pipelinesRaw as Array<Record<string, unknown>>, source),
+    filter,
+  );
 
   let value: string | number = '—';
   let subLine = '';
@@ -270,7 +301,7 @@ function MetricCard({ widget }: { widget: Widget }) {
 }
 
 // ─── PIPELINE SUMMARY BAR CHART ───────────────────────────────────
-function PipelineSummary({ widget }: { widget: Widget }) {
+function PipelineSummary({ widget, filter }: { widget: Widget; filter?: DashboardFilter }) {
   const source = getWidgetSource(widget);
   const { data: pipelines = [], error } = trpc.pipelines.list.useQuery();
   const sourcePipeline = resolvePipelineForSource(pipelines as Array<Record<string, unknown>>, source);
@@ -300,13 +331,16 @@ function PipelineSummary({ widget }: { widget: Widget }) {
 
   const stageData = byStage
     ? Object.entries(byStage as Record<string, unknown[]>)
-        .map(([sid, deals], i) => ({
-          name: stageNameMap[sid] ?? 'Unknown',
-          deals: (deals as Array<Record<string, unknown>>).length,
-          value: (deals as Array<Record<string, unknown>>).reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0),
-          fill: stageColorMap[sid] ?? CHART_COLORS[i % CHART_COLORS.length]!,
-          gradId: `sg_${widget.id}_${i}`,
-        }))
+        .map(([sid, rawDeals], i) => {
+          const filtered = applyDealFilter(rawDeals as Array<Record<string, unknown>>, filter);
+          return {
+            name: stageNameMap[sid] ?? 'Unknown',
+            deals: filtered.length,
+            value: filtered.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0),
+            fill: stageColorMap[sid] ?? CHART_COLORS[i % CHART_COLORS.length]!,
+            gradId: `sg_${widget.id}_${i}`,
+          };
+        })
         .filter((s) => s.deals > 0)
     : [];
 
@@ -371,14 +405,17 @@ function PipelineSummary({ widget }: { widget: Widget }) {
 }
 
 // ─── DEALS STATUS BAR CHART ────────────────────────────────────────
-function DealStatusChart({ widget }: { widget: Widget }) {
+function DealStatusChart({ widget, filter }: { widget: Widget; filter?: DashboardFilter }) {
   const source = getWidgetSource(widget);
   const { data: pipelines = [], error } = trpc.pipelines.list.useQuery();
   const { data: dealsRaw } = trpc.deals.list.useQuery({ pagination: { limit: 500, cursor: undefined } });
-  const deals = filterDealsBySource(
-    (dealsRaw?.items ?? []) as Array<Record<string, unknown>>,
-    pipelines as Array<Record<string, unknown>>,
-    source,
+  const deals = applyDealFilter(
+    filterDealsBySource(
+      (dealsRaw?.items ?? []) as Array<Record<string, unknown>>,
+      pipelines as Array<Record<string, unknown>>,
+      source,
+    ),
+    filter,
   );
 
   if (error) return <WidgetEmpty title={widget.title} message={error.message} />;
@@ -540,15 +577,18 @@ function ContactsPieChart({ widget }: { widget: Widget }) {
 }
 
 // ─── REVENUE AREA CHART (line_chart) ──────────────────────────────
-function RevenueAreaChart({ widget }: { widget: Widget }) {
+function RevenueAreaChart({ widget, filter }: { widget: Widget; filter?: DashboardFilter }) {
   const source = getWidgetSource(widget);
   const accent = widget.color ?? '#6366f1';
   const { data: pipelines = [] } = trpc.pipelines.list.useQuery();
   const { data: dealsRaw } = trpc.deals.list.useQuery({ pagination: { limit: 500, cursor: undefined } });
-  const deals = filterDealsBySource(
-    (dealsRaw?.items ?? []) as Array<Record<string, unknown>>,
-    pipelines as Array<Record<string, unknown>>,
-    source,
+  const deals = applyDealFilter(
+    filterDealsBySource(
+      (dealsRaw?.items ?? []) as Array<Record<string, unknown>>,
+      pipelines as Array<Record<string, unknown>>,
+      source,
+    ),
+    filter,
   );
   const monthly = buildMonthly(deals);
   const hasData = monthly.some((m) => m.count > 0);
@@ -758,14 +798,14 @@ function ActivityFeedWidget({ widget }: { widget: Widget }) {
 }
 
 // ─── DISPATCHER ───────────────────────────────────────────────────
-export function WidgetRenderer({ widget }: { widget: Widget }) {
+export function WidgetRenderer({ widget, filter }: { widget: Widget; filter?: DashboardFilter }) {
   switch (widget.widgetType as WidgetType) {
-    case 'metric_card':     return <MetricCard widget={widget} />;
+    case 'metric_card':     return <MetricCard widget={widget} filter={filter} />;
     case 'activity_feed':   return <ActivityFeedWidget widget={widget} />;
-    case 'pipeline_summary': return <PipelineSummary widget={widget} />;
-    case 'bar_chart':       return <DealStatusChart widget={widget} />;
+    case 'pipeline_summary': return <PipelineSummary widget={widget} filter={filter} />;
+    case 'bar_chart':       return <DealStatusChart widget={widget} filter={filter} />;
     case 'pie_chart':       return <ContactsPieChart widget={widget} />;
-    case 'line_chart':      return <RevenueAreaChart widget={widget} />;
+    case 'line_chart':      return <RevenueAreaChart widget={widget} filter={filter} />;
     case 'funnel_chart':    return <DealFunnelChart widget={widget} />;
     default:
       return (

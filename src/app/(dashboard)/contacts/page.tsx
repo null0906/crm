@@ -54,6 +54,9 @@ export default function ContactsPage() {
   const { data: usersData } = trpc.users.list.useQuery();
   const users = usersData ?? [];
 
+  // Reset cursor whenever any filter/search changes
+  React.useEffect(() => { setCursor(undefined); }, [debouncedSearch, statusFilter, ownerFilter, dateFrom, dateTo, pageSize]);
+
   // Build filter conditions
   type FilterOp = 'eq' | 'gte' | 'lte';
   const filterConditions: Array<{ field: string; operator: FilterOp; value: string }> = [];

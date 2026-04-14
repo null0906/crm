@@ -140,7 +140,7 @@ export const filterConfigSchema = z.object({
 // Pagination schema
 export const paginationSchema = z.object({
   cursor: z.string().optional(),
-  limit: z.number().min(1).max(200).default(50),
+  limit: z.number().min(1).max(500).default(50),
 });
 
 // Sort schema

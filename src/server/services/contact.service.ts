@@ -119,7 +119,7 @@ export async function listContacts(
   }
 ): Promise<PaginatedResult<Record<string, unknown>>> {
   const { filters, search, sort, pagination } = opts;
-  const limit = Math.min(pagination.limit, 200);
+  const limit = Math.min(pagination.limit, 500);
 
   // RBAC: ownership filtering
   const readLevel = getPermissionLevel(user.role.permissions, 'contacts', 'read');
@@ -150,7 +150,7 @@ export async function listContacts(
 
   // Custom filters
   if (filters?.conditions?.length) {
-    const filterWhere = buildFilterWhere(filters, 'contacts');
+    const filterWhere = buildFilterWhere(filters, 'contact');
     if (filterWhere) conditions.push(filterWhere);
   }
 

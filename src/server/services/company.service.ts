@@ -18,7 +18,7 @@ export async function listCompanies(
   }
 ): Promise<PaginatedResult<Record<string, unknown>>> {
   const { filters, search, sort, pagination } = opts;
-  const limit = Math.min(pagination.limit, 200);
+  const limit = Math.min(pagination.limit, 500);
 
   const readLevel = getPermissionLevel(user.role.permissions, 'companies', 'read');
   if (!readLevel) return { items: [], nextCursor: null, hasMore: false };

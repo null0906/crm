@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Settings2, Trash2, Edit2, Check, X, GripVertical, Globe, Lock, Users } from 'lucide-react';
+import { Plus, Settings2, Trash2, Check, X, GripVertical, Globe, Lock, Users, Filter, Maximize2, Minimize2 } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
-import { WidgetRenderer } from '@/components/dashboard/WidgetRenderer';
+import { WidgetRenderer, type DashboardFilter } from '@/components/dashboard/WidgetRenderer';
 import { AddWidgetModal } from '@/components/dashboard/AddWidgetModal';
 import { toast } from 'sonner';
 import { DASHBOARD_DATA_SOURCES } from '@/lib/constants';
@@ -45,6 +45,12 @@ export default function DashboardPage() {
   const [creatingDashboard, setCreatingDashboard] = useState(false);
   const [newDashName, setNewDashName] = useState('');
   const [newDashVisibility, setNewDashVisibility] = useState<'private' | 'team' | 'everyone'>('private');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  // widgetId -> extra col/row spans (0 = default)
+  const [widgetSizeOverrides, setWidgetSizeOverrides] = useState<Record<string, { extraCols: number; extraRows: number }>>({});
 
   const { data: dashboardList = [], isLoading: listLoading } = trpc.dashboards.list.useQuery();
 
@@ -106,6 +112,40 @@ export default function DashboardPage() {
 
   const widgets: DashboardWidget[] = (activeDashboard as Dashboard | undefined)?.widgets ?? [];
   const activeSourceContext = (widgets[0]?.config?.sourceContext as DashboardDataSource | undefined) ?? 'client';
+
+  const activeFilter: DashboardFilter | undefined = (filterDateFrom || filterDateTo || filterStatus)
+    ? { dateFrom: filterDateFrom || undefined, dateTo: filterDateTo || undefined, status: filterStatus || undefined }
+    : undefined;
+
+  function getWidgetClasses(widget: DashboardWidget): string {
+    const baseClass = WIDGET_COL_SPAN[widget.widgetType] ?? 'col-span-1';
+    const override = widgetSizeOverrides[widget.id];
+    if (!override) return baseClass;
+
+    const colMatch = baseClass.match(/col-span-(\d+)/);
+    const rowMatch = baseClass.match(/row-span-(\d+)/);
+    const baseCol = colMatch ? parseInt(colMatch[1]!) : 1;
+    const baseRow = rowMatch ? parseInt(rowMatch[1]!) : 1;
+
+    const newCol = Math.min(4, baseCol + (override.extraCols ?? 0));
+    const newRow = Math.min(3, baseRow + (override.extraRows ?? 0));
+
+    const colClass = `col-span-${newCol}`;
+    const rowClass = newRow > 1 ? ` row-span-${newRow}` : (rowMatch ? ` row-span-${baseRow}` : '');
+    return colClass + rowClass;
+  }
+
+  function resizeWidget(id: string, deltaCol: number, deltaRow: number) {
+    setWidgetSizeOverrides((prev) => {
+      const cur = prev[id] ?? { extraCols: 0, extraRows: 0 };
+      const wtype = widgets.find((w) => w.id === id)?.widgetType ?? '';
+      const baseClass = WIDGET_COL_SPAN[wtype] ?? 'col-span-1';
+      const baseCol = parseInt(baseClass.match(/col-span-(\d+)/)?.[1] ?? '1');
+      const newCols = Math.max(0, Math.min(4 - baseCol, cur.extraCols + deltaCol));
+      const newRows = Math.max(0, Math.min(2, cur.extraRows + deltaRow));
+      return { ...prev, [id]: { extraCols: newCols, extraRows: newRows } };
+    });
+  }
 
   async function handleSourceChange(nextSource: DashboardDataSource) {
     if (!widgets.length) {
@@ -281,6 +321,17 @@ export default function DashboardPage() {
                 Add Widget
               </Button>
             )}
+            {/* Filter toggle */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowFilters(!showFilters)}
+              className={showFilters ? 'border-blue-400 text-blue-600 bg-blue-50' : ''}
+            >
+              <Filter className="w-4 h-4" />
+              {activeFilter ? 'Filters •' : 'Filters'}
+            </Button>
+
             {/* Publish / visibility badge */}
             {(() => {
               const currentVis = (activeDashboard as Dashboard | undefined)?.visibility ?? 'private';
@@ -323,6 +374,48 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* Filter bar */}
+      {activeDashboardId && showFilters && (
+        <div className="flex items-center gap-3 px-6 py-2.5 bg-slate-50 border-b border-slate-100 flex-shrink-0">
+          <span className="text-xs font-medium text-slate-500">Filter widgets:</span>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+          >
+            <option value="">All statuses</option>
+            <option value="open">Open</option>
+            <option value="won">Won</option>
+            <option value="lost">Lost</option>
+          </select>
+          <div className="flex items-center gap-1">
+            <input
+              type="date"
+              value={filterDateFrom}
+              onChange={(e) => setFilterDateFrom(e.target.value)}
+              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+              title="Created from"
+            />
+            <span className="text-xs text-slate-400">–</span>
+            <input
+              type="date"
+              value={filterDateTo}
+              onChange={(e) => setFilterDateTo(e.target.value)}
+              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+              title="Created to"
+            />
+          </div>
+          {(filterDateFrom || filterDateTo || filterStatus) && (
+            <button
+              onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); setFilterStatus(''); }}
+              className="text-[11px] text-slate-400 hover:text-slate-600"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Dashboard content */}
       <div className="flex-1 overflow-y-auto p-6">
         {!activeDashboardId ? (
@@ -362,10 +455,35 @@ export default function DashboardPage() {
             {widgets.map((widget) => (
               <div
                 key={widget.id}
-                className={`bg-white border border-slate-200/70 rounded-2xl p-4 relative group shadow-[0_2px_8px_rgba(16,24,40,0.06),_0_0_0_1px_rgba(16,24,40,0.03)] overflow-hidden ${WIDGET_COL_SPAN[widget.widgetType] ?? 'col-span-1'}`}
+                className={`bg-white border border-slate-200/70 rounded-2xl p-4 relative group shadow-[0_2px_8px_rgba(16,24,40,0.06),_0_0_0_1px_rgba(16,24,40,0.03)] overflow-hidden ${getWidgetClasses(widget)}`}
               >
                 {editMode && (
                   <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                    {/* Resize controls */}
+                    <button
+                      onClick={() => resizeWidget(widget.id, -1, 0)}
+                      className="w-6 h-6 rounded bg-slate-50 text-slate-400 hover:bg-slate-100 flex items-center justify-center text-[10px] font-bold"
+                      title="Narrower"
+                    >←</button>
+                    <button
+                      onClick={() => resizeWidget(widget.id, 1, 0)}
+                      className="w-6 h-6 rounded bg-slate-50 text-slate-400 hover:bg-slate-100 flex items-center justify-center text-[10px] font-bold"
+                      title="Wider"
+                    >→</button>
+                    <button
+                      onClick={() => resizeWidget(widget.id, 0, -1)}
+                      className="w-6 h-6 rounded bg-slate-50 text-slate-400 hover:bg-slate-100 flex items-center justify-center"
+                      title="Shorter"
+                    >
+                      <Minimize2 className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => resizeWidget(widget.id, 0, 1)}
+                      className="w-6 h-6 rounded bg-slate-50 text-slate-400 hover:bg-slate-100 flex items-center justify-center"
+                      title="Taller"
+                    >
+                      <Maximize2 className="w-3 h-3" />
+                    </button>
                     <button
                       onClick={() => {
                         if (confirm('Remove this widget?')) deleteWidget.mutate({ id: widget.id });
@@ -382,7 +500,7 @@ export default function DashboardPage() {
                     <GripVertical className="w-4 h-4" />
                   </div>
                 )}
-                <WidgetRenderer widget={widget} />
+                <WidgetRenderer widget={widget} filter={activeFilter} />
               </div>
             ))}
 
