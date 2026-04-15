@@ -13,6 +13,7 @@ const TYPE_ICONS: Record<string, string> = {
   task_due: '⏰',
   mention: '💬',
   stage_change: '📋',
+  deal_inactivity_email: '📬',
   system: '🔔',
 };
 

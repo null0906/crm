@@ -91,7 +91,7 @@ export function Topbar() {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings/general" className="gap-2">
+                <Link href="/settings" className="gap-2">
                   <Settings className="w-3.5 h-3.5 text-slate-400" strokeWidth={1.75} />
                   Settings
                 </Link>

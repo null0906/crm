@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { checkAndRunSchedules } from '@/server/services/digest.service';
+import { sendDealInactivityReminders } from '@/server/services/deal-inactivity.service';
 import { startTelegramPolling } from '@/server/lib/telegram-polling';
 
 let initialized = false;
@@ -12,6 +13,10 @@ export function initializeCron(): void {
   cron.schedule('* * * * *', () => {
     checkAndRunSchedules().catch((err) => {
       console.error('[Cron] checkAndRunSchedules error:', err);
+    });
+
+    sendDealInactivityReminders().catch((err) => {
+      console.error('[Cron] sendDealInactivityReminders error:', err);
     });
   });
 
