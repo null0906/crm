@@ -2,15 +2,13 @@ import { db } from '@/server/db';
 import { activities, dealContacts, deals, notifications, pipelineStages, pipelines, users } from '@/server/db/schema';
 import { and, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import { sendEmail } from '@/server/lib/mailer';
+import { getAutomationSettings } from './automation-settings.service';
 
-const TARGET_PIPELINE_KEYWORDS = ['sales', 'partner', 'enterprise'];
 const REMINDER_TYPE = 'deal_inactivity_email';
-const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-const REMINDER_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
-function isTargetPipeline(name: string | null | undefined): boolean {
+function isTargetPipeline(name: string | null | undefined, configuredPipelines: string[]): boolean {
   const normalized = String(name ?? '').toLowerCase();
-  return TARGET_PIPELINE_KEYWORDS.some((keyword) => normalized.includes(keyword));
+  return configuredPipelines.some((keyword) => normalized.includes(keyword));
 }
 
 function buildReminderEmail(args: {
@@ -108,7 +106,15 @@ async function hasRecentReminder(args: {
   return Boolean(row?.createdAt && row.createdAt >= args.since);
 }
 
-export async function sendDealInactivityReminders(now = new Date()): Promise<void> {
+export async function sendDealInactivityReminders(now = new Date()): Promise<{ checked: number; sent: number }> {
+  const settings = await getAutomationSettings();
+  if (!settings.leadInactivityEnabled) {
+    return { checked: 0, sent: 0 };
+  }
+
+  const inactivityWindowMs = settings.leadInactivityDays * 24 * 60 * 60 * 1000;
+  const reminderCooldownMs = settings.leadInactivityCooldownHours * 60 * 60 * 1000;
+
   const openDeals = await db
     .select({
       id: deals.id,
@@ -134,10 +140,12 @@ export async function sendDealInactivityReminders(now = new Date()): Promise<voi
     ));
 
   const candidates = openDeals.filter((deal) =>
-    isTargetPipeline(deal.pipelineName) &&
+    isTargetPipeline(deal.pipelineName, settings.leadInactivityPipelines) &&
     Boolean(deal.ownerId) &&
     Boolean(deal.ownerEmail)
   );
+
+  let sent = 0;
 
   for (const deal of candidates) {
     const linkedContacts = await db
@@ -157,11 +165,11 @@ export async function sendDealInactivityReminders(now = new Date()): Promise<voi
     });
 
     const lastTouchedAt = latestActivityAt ?? deal.stageEnteredAt ?? deal.createdAt;
-    if (now.getTime() - lastTouchedAt.getTime() < THREE_DAYS_MS) continue;
+    if (now.getTime() - lastTouchedAt.getTime() < inactivityWindowMs) continue;
 
     const reminderCooldownSince = new Date(Math.max(
       lastTouchedAt.getTime(),
-      now.getTime() - REMINDER_COOLDOWN_MS,
+      now.getTime() - reminderCooldownMs,
     ));
 
     if (await hasRecentReminder({
@@ -182,6 +190,7 @@ export async function sendDealInactivityReminders(now = new Date()): Promise<voi
 
     try {
       await sendEmail(deal.ownerEmail!, subject, html);
+      sent += 1;
 
       await db.insert(notifications).values({
         userId: deal.ownerId!,
@@ -200,4 +209,6 @@ export async function sendDealInactivityReminders(now = new Date()): Promise<voi
       console.error(`[DealInactivity] Failed to send reminder for deal ${deal.id}:`, error);
     }
   }
+
+  return { checked: candidates.length, sent };
 }

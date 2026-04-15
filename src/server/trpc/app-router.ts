@@ -15,6 +15,7 @@ import { savedViewRouter } from './routers/saved-view.router';
 import { importRouter } from './routers/import.router';
 import { telegramRouter } from './routers/telegram.router';
 import { digestRouter } from './routers/digest.router';
+import { automationRouter } from './routers/automation.router';
 
 export const appRouter = router({
   contacts: contactRouter,
@@ -33,6 +34,7 @@ export const appRouter = router({
   import: importRouter,
   telegram: telegramRouter,
   digests: digestRouter,
+  automation: automationRouter,
 });
 
 export type AppRouter = typeof appRouter;

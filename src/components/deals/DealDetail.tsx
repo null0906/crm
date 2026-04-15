@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Calendar, DollarSign, Pencil, Trash2 } from 'lucide-react';
+import { X, Calendar, DollarSign, Pencil, Trash2, BellRing } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ActivityFeed } from '@/components/activities/ActivityFeed';
 import { DealForm } from './DealForm';
+import { DealReminderDialog } from './DealReminderDialog';
 import { formatDate, formatRelative, formatCurrency } from '@/lib/formatters';
 import { toast } from 'sonner';
 
@@ -32,6 +33,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
   const utils = trpc.useUtils();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
 
   const { data: deal, isLoading } = trpc.deals.getById.useQuery(
     { id: dealId },
@@ -160,6 +162,13 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                   </div>
                 )}
               </div>
+
+              <div className="mt-4">
+                <Button size="sm" variant="outline" onClick={() => setReminderOpen(true)}>
+                  <BellRing className="w-3.5 h-3.5 mr-1.5" />
+                  Set Reminder
+                </Button>
+              </div>
             </div>
 
             {/* Tabs */}
@@ -269,6 +278,18 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
         destructive
         loading={deleteDeal.isPending}
         onConfirm={() => deleteDeal.mutate({ id: dealId })}
+      />
+
+      <DealReminderDialog
+        open={reminderOpen}
+        onOpenChange={setReminderOpen}
+        dealId={dealId}
+        dealTitle={title}
+        companyId={companyId}
+        primaryContactId={primaryContactId}
+        onCreated={() => {
+          void utils.activities.list.invalidate();
+        }}
       />
     </>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Tag, Users, LayoutGrid, FileText, Shield, ChevronRight, Bot, CalendarClock } from 'lucide-react';
+import { Tag, Users, LayoutGrid, FileText, Shield, ChevronRight, Bot, CalendarClock, BellRing } from 'lucide-react';
 import Link from 'next/link';
 
 const settingsSections = [
@@ -25,6 +25,7 @@ const settingsSections = [
     items: [
       { label: 'Telegram Bot', description: 'Add contacts and log activities from Telegram', href: '/settings/telegram', icon: Bot },
       { label: 'Digest Schedules', description: 'Send scheduled dashboard reports via email & Telegram', href: '/settings/digests', icon: CalendarClock },
+      { label: 'Automations', description: 'Configure stale-lead reminder emails and future workflow automations', href: '/settings/automations', icon: BellRing },
     ],
   },
 ];

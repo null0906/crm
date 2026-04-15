@@ -66,6 +66,18 @@ export function ActivityFeed({ contactId, companyId, dealId }: ActivityFeedProps
     },
   });
 
+  const completeTask = trpc.activities.update.useMutation({
+    onSuccess: () => {
+      toast.success('Reminder completed');
+      void utils.activities.list.invalidate();
+      void refetch();
+      setSelectedActivity(null);
+    },
+    onError: (err) => {
+      toast.error('Failed to complete reminder', { description: err.message });
+    },
+  });
+
   const activities = (data?.items ?? []) as ActivityItem[];
   const currentUserId = (session?.user as Record<string, unknown> | undefined)?.id as string | undefined;
 
@@ -175,6 +187,8 @@ export function ActivityFeed({ contactId, companyId, dealId }: ActivityFeedProps
         currentUserId={currentUserId}
         onDelete={(activityId) => deleteActivity.mutate({ id: activityId })}
         deletePending={deleteActivity.isPending}
+        onCompleteTask={(activityId) => completeTask.mutate({ id: activityId, taskCompletedAt: new Date().toISOString() })}
+        completePending={completeTask.isPending}
       />
     </>
   );
@@ -187,6 +201,8 @@ function ActivityDetailPanel({
   currentUserId,
   onDelete,
   deletePending,
+  onCompleteTask,
+  completePending,
 }: {
   activity: ActivityItem | null;
   open: boolean;
@@ -194,6 +210,8 @@ function ActivityDetailPanel({
   currentUserId?: string;
   onDelete: (activityId: string) => void;
   deletePending: boolean;
+  onCompleteTask: (activityId: string) => void;
+  completePending: boolean;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const metadata = useMemo(
@@ -207,6 +225,13 @@ function ActivityDetailPanel({
     typeof activity?.id === 'string' &&
     typeof activity?.performedById === 'string' &&
     activity.performedById === currentUserId;
+  const canCompleteTask =
+    Boolean(activity) &&
+    String(activity?.activityType) === 'task' &&
+    !Boolean(activity?.taskCompletedAt) &&
+    typeof activity?.id === 'string' &&
+    typeof activity?.performedById === 'string' &&
+    activity.performedById === currentUserId;
 
   const detailRows = useMemo(() => {
     if (!activity) return [];
@@ -217,6 +242,8 @@ function ActivityDetailPanel({
     const duration = typeof activity.callDurationSeconds === 'number' && activity.callDurationSeconds > 0
       ? formatDuration(activity.callDurationSeconds)
       : null;
+    const taskDueDate = activity.taskDueDate ? String(activity.taskDueDate) : null;
+    const taskPriority = activity.taskPriority ? formatEnumLabel(String(activity.taskPriority)) : null;
     const fromStageName = typeof metadata.fromStageName === 'string' ? metadata.fromStageName : null;
     const toStageName = typeof metadata.toStageName === 'string' ? metadata.toStageName : null;
     const contactFullName = activity.contactFullName ? String(activity.contactFullName) : null;
@@ -232,6 +259,8 @@ function ActivityDetailPanel({
     if (direction) rows.push({ label: 'Direction', value: direction });
     if (outcome) rows.push({ label: 'Outcome', value: outcome });
     if (duration) rows.push({ label: 'Duration', value: duration });
+    if (taskDueDate) rows.push({ label: 'Due Date', value: formatDateTime(new Date(taskDueDate)) });
+    if (taskPriority) rows.push({ label: 'Priority', value: taskPriority });
     if (fromStageName || toStageName) {
       rows.push({
         label: 'Stage Change',
@@ -259,16 +288,33 @@ function ActivityDetailPanel({
               <p className="text-sm text-slate-500 mt-1">{buildActivitySummary(activity)}</p>
             </div>
             {canDelete && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="text-red-600 border-red-200 hover:text-red-700 hover:border-red-300"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                Delete
-              </Button>
+              <div className="flex items-center gap-2">
+                {canCompleteTask && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (typeof activity.id === 'string') {
+                        onCompleteTask(activity.id);
+                      }
+                    }}
+                    disabled={completePending}
+                  >
+                    {completePending ? 'Completing...' : 'Mark Done'}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="text-red-600 border-red-200 hover:text-red-700 hover:border-red-300"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                  Delete
+                </Button>
+              </div>
             )}
           </div>
         </div>
@@ -382,6 +428,8 @@ function buildActivitySummary(activity: ActivityItem): string {
   const contactName = activity.contactFullName ? String(activity.contactFullName) : null;
   const companyName = activity.companyName ? String(activity.companyName) : null;
   const dealTitle = activity.dealTitle ? String(activity.dealTitle) : null;
+  const taskDueDate = activity.taskDueDate ? String(activity.taskDueDate) : null;
+  const taskPriority = activity.taskPriority ? formatEnumLabel(String(activity.taskPriority)) : null;
 
   if (String(activity.activityType) === 'stage_change') {
     const fromStageName = typeof metadata.fromStageName === 'string' ? metadata.fromStageName : null;
@@ -396,6 +444,8 @@ function buildActivitySummary(activity: ActivityItem): string {
   if (dealTitle) pieces.push(`Deal: ${dealTitle}`);
   if (contactName) pieces.push(`Contact: ${contactName}`);
   if (companyName) pieces.push(`Company: ${companyName}`);
+  if (taskDueDate) pieces.push(`Due: ${formatDateTime(new Date(taskDueDate))}`);
+  if (taskPriority) pieces.push(`Priority: ${taskPriority}`);
 
   if (typeof activity.callDurationSeconds === 'number' && activity.callDurationSeconds > 0) {
     pieces.push(`Duration: ${formatDuration(activity.callDurationSeconds)}`);
