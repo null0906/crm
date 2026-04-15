@@ -24,10 +24,17 @@ type FormState = {
   leadInactivityPipelines: LeadInactivityPipeline[];
 };
 
+const defaultFormState: FormState = {
+  leadInactivityEnabled: true,
+  leadInactivityDays: 3,
+  leadInactivityCooldownHours: 24,
+  leadInactivityPipelines: ['sales', 'partner', 'enterprise'],
+};
+
 export default function AutomationSettingsPage() {
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.automation.getLeadInactivity.useQuery();
-  const [form, setForm] = useState<FormState | null>(null);
+  const { data, isLoading, error } = trpc.automation.getLeadInactivity.useQuery();
+  const [form, setForm] = useState<FormState>(defaultFormState);
 
   useEffect(() => {
     if (data) {
@@ -65,7 +72,7 @@ export default function AutomationSettingsPage() {
 
   const isPending = updateSettings.isPending || runNow.isPending;
 
-  if (isLoading || !form) {
+  if (isLoading) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="text-sm text-slate-400">Loading automation settings...</div>
@@ -114,6 +121,15 @@ export default function AutomationSettingsPage() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-[0_1px_4px_rgba(16,24,40,0.04)] space-y-6">
+        {error && (
+          <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-medium">Using default settings</p>
+            <p className="mt-1 text-amber-800/90">
+              The saved automation settings could not be loaded yet. This usually means the latest database migration has not been run on this environment.
+            </p>
+          </div>
+        )}
+
         <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
           <BellRing className="w-4 h-4 text-blue-600 mt-0.5" />
           <div className="text-sm text-blue-900">
@@ -194,8 +210,8 @@ export default function AutomationSettingsPage() {
           <Button
             type="button"
             disabled={isPending}
-            onClick={() => updateSettings.mutate(form)}
-          >
+          onClick={() => updateSettings.mutate(form)}
+        >
             {updateSettings.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
             Save Settings
           </Button>

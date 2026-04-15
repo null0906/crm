@@ -21,22 +21,30 @@ function sanitizePipelines(pipelines: string[] | null | undefined): LeadInactivi
 }
 
 export async function getAutomationSettings() {
-  const [row] = await db
-    .select()
-    .from(automationSettings)
-    .orderBy(desc(automationSettings.updatedAt))
-    .limit(1);
+  try {
+    const [row] = await db
+      .select()
+      .from(automationSettings)
+      .orderBy(desc(automationSettings.updatedAt))
+      .limit(1);
 
-  if (!row) {
-    return DEFAULT_AUTOMATION_SETTINGS;
+    if (!row) {
+      return DEFAULT_AUTOMATION_SETTINGS;
+    }
+
+    return {
+      leadInactivityEnabled: row.leadInactivityEnabled,
+      leadInactivityDays: row.leadInactivityDays,
+      leadInactivityCooldownHours: row.leadInactivityCooldownHours,
+      leadInactivityPipelines: sanitizePipelines(row.leadInactivityPipelines),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('automation_settings') || message.includes('does not exist')) {
+      return DEFAULT_AUTOMATION_SETTINGS;
+    }
+    throw error;
   }
-
-  return {
-    leadInactivityEnabled: row.leadInactivityEnabled,
-    leadInactivityDays: row.leadInactivityDays,
-    leadInactivityCooldownHours: row.leadInactivityCooldownHours,
-    leadInactivityPipelines: sanitizePipelines(row.leadInactivityPipelines),
-  };
 }
 
 export async function updateAutomationSettings(
@@ -48,11 +56,20 @@ export async function updateAutomationSettings(
     leadInactivityPipelines: string[];
   }
 ) {
-  const [existing] = await db
-    .select({ id: automationSettings.id })
-    .from(automationSettings)
-    .orderBy(desc(automationSettings.updatedAt))
-    .limit(1);
+  let existing;
+  try {
+    [existing] = await db
+      .select({ id: automationSettings.id })
+      .from(automationSettings)
+      .orderBy(desc(automationSettings.updatedAt))
+      .limit(1);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('automation_settings') || message.includes('does not exist')) {
+      throw new Error('Automation settings table is missing. Run database migrations first.');
+    }
+    throw error;
+  }
 
   const payload = {
     leadInactivityEnabled: input.leadInactivityEnabled,
