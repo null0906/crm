@@ -1,14 +1,18 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Phone, Mail, MessageSquare, Users, FileText, CheckSquare, Activity, Clock3, Building2, User2, BriefcaseBusiness, ArrowRight } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { toast } from 'sonner';
+import { Phone, Mail, MessageSquare, Users, FileText, CheckSquare, Activity, Clock3, Building2, User2, BriefcaseBusiness, ArrowRight, Trash2 } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { formatDateTime, formatRelative } from '@/lib/formatters';
 import { getInitials } from '@/lib/formatters';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ActivityLogger } from './ActivityLogger';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   call: Phone,
@@ -38,6 +42,8 @@ interface ActivityFeedProps {
 }
 
 export function ActivityFeed({ contactId, companyId, dealId }: ActivityFeedProps) {
+  const utils = trpc.useUtils();
+  const { data: session } = useSession();
   const [showLogger, setShowLogger] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
 
@@ -48,7 +54,20 @@ export function ActivityFeed({ contactId, companyId, dealId }: ActivityFeedProps
     pagination: { limit: 50 },
   });
 
+  const deleteActivity = trpc.activities.delete.useMutation({
+    onSuccess: () => {
+      toast.success('Activity deleted');
+      void utils.activities.list.invalidate();
+      void refetch();
+      setSelectedActivity(null);
+    },
+    onError: (err) => {
+      toast.error('Failed to delete activity', { description: err.message });
+    },
+  });
+
   const activities = (data?.items ?? []) as ActivityItem[];
+  const currentUserId = (session?.user as Record<string, unknown> | undefined)?.id as string | undefined;
 
   return (
     <>
@@ -153,6 +172,9 @@ export function ActivityFeed({ contactId, companyId, dealId }: ActivityFeedProps
         activity={selectedActivity}
         open={!!selectedActivity}
         onClose={() => setSelectedActivity(null)}
+        currentUserId={currentUserId}
+        onDelete={(activityId) => deleteActivity.mutate({ id: activityId })}
+        deletePending={deleteActivity.isPending}
       />
     </>
   );
@@ -162,15 +184,29 @@ function ActivityDetailPanel({
   activity,
   open,
   onClose,
+  currentUserId,
+  onDelete,
+  deletePending,
 }: {
   activity: ActivityItem | null;
   open: boolean;
   onClose: () => void;
+  currentUserId?: string;
+  onDelete: (activityId: string) => void;
+  deletePending: boolean;
 }) {
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const metadata = useMemo(
     () => ((activity?.metadata as Record<string, unknown> | null) ?? {}),
     [activity]
   );
+
+  const canDelete =
+    Boolean(activity) &&
+    !Boolean(activity?.isAutomated) &&
+    typeof activity?.id === 'string' &&
+    typeof activity?.performedById === 'string' &&
+    activity.performedById === currentUserId;
 
   const detailRows = useMemo(() => {
     if (!activity) return [];
@@ -210,14 +246,31 @@ function ActivityDetailPanel({
   if (!activity) return null;
 
   return (
-    <SlideOverPanel open={open} onClose={onClose} title="Activity Details" width="md">
-      <div className="p-6 space-y-6">
+    <>
+      <SlideOverPanel open={open} onClose={onClose} title="Activity Details" width="md">
+        <div className="p-6 space-y-6">
         <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-semibold text-slate-900">{getActivityTitle(activity)}</h3>
-            {Boolean(activity.isAutomated) && <Badge variant="outline">Automated</Badge>}
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-slate-900">{getActivityTitle(activity)}</h3>
+                {Boolean(activity.isAutomated) && <Badge variant="outline">Automated</Badge>}
+              </div>
+              <p className="text-sm text-slate-500 mt-1">{buildActivitySummary(activity)}</p>
+            </div>
+            {canDelete && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="text-red-600 border-red-200 hover:text-red-700 hover:border-red-300"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                Delete
+              </Button>
+            )}
           </div>
-          <p className="text-sm text-slate-500 mt-1">{buildActivitySummary(activity)}</p>
         </div>
 
         <div className="grid grid-cols-1 gap-4">
@@ -271,8 +324,24 @@ function ActivityDetailPanel({
             </div>
           </div>
         )}
-      </div>
-    </SlideOverPanel>
+        </div>
+      </SlideOverPanel>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Delete activity?"
+        description="This will remove the activity from the timeline. This action cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        loading={deletePending}
+        onConfirm={() => {
+          if (typeof activity.id === 'string') {
+            onDelete(activity.id);
+          }
+        }}
+      />
+    </>
   );
 }
 
