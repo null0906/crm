@@ -97,8 +97,8 @@ export function LogActivityPanel({
   const isCall = activityType === 'call';
   const showDirection = ['call', 'email_sent', 'email_received', 'sms'].includes(activityType);
 
-  async function onSubmit(data: FormData) {
-    await createActivity.mutateAsync({
+  function onSubmit(data: FormData) {
+    createActivity.mutate({
       activityType: data.activityType,
       subject: data.subject,
       body: data.body ?? null,
