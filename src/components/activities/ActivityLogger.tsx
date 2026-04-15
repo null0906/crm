@@ -12,6 +12,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ACTIVITY_TYPES } from '@/lib/constants';
 
+const emptyToUndefined = (value: unknown) => {
+  if (typeof value === 'string' && value.trim() === '') {
+    return undefined;
+  }
+  return value;
+};
+
 function toActivityIsoString(value: string): string | null {
   const direct = new Date(value);
   if (!Number.isNaN(direct.getTime())) {
@@ -35,11 +42,11 @@ function toActivityIsoString(value: string): string | null {
 const schema = z.object({
   activityType: z.enum(['call', 'email_sent', 'email_received', 'meeting', 'note', 'task', 'sms', 'whatsapp', 'linkedin', 'demo', 'proposal', 'document', 'stage_change', 'status_change', 'assignment', 'custom']),
   subject: z.string().min(1, 'Subject is required').max(255),
-  body: z.string().optional(),
-  occurredAt: z.string().optional(),
-  callDurationSeconds: z.coerce.number().int().min(0).optional(),
-  callDirection: z.enum(['inbound', 'outbound']).optional(),
-  callOutcome: z.enum(['connected', 'voicemail', 'no_answer', 'busy', 'wrong_number']).optional(),
+  body: z.preprocess(emptyToUndefined, z.string().optional()),
+  occurredAt: z.preprocess(emptyToUndefined, z.string().optional()),
+  callDurationSeconds: z.preprocess(emptyToUndefined, z.coerce.number().int().min(0).optional()),
+  callDirection: z.preprocess(emptyToUndefined, z.enum(['inbound', 'outbound']).optional()),
+  callOutcome: z.preprocess(emptyToUndefined, z.enum(['connected', 'voicemail', 'no_answer', 'busy', 'wrong_number']).optional()),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -78,6 +85,7 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
       activityType: 'call',
       occurredAt: localDatetime,
     },
+    shouldUnregister: true,
   });
 
   const activityType = form.watch('activityType');
@@ -105,7 +113,12 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
     <div className="border border-slate-200 rounded-lg p-4 bg-slate-50 space-y-3">
       <form
         onSubmit={form.handleSubmit(onSubmit, () => {
-          toast.error('Failed to log activity', { description: 'Please fix the highlighted fields.' });
+          const firstError = Object.values(form.formState.errors)[0];
+          const description =
+            typeof firstError?.message === 'string' && firstError.message.length > 0
+              ? firstError.message
+              : 'Please fix the highlighted fields.';
+          toast.error('Failed to log activity', { description });
         })}
         className="space-y-3"
       >
