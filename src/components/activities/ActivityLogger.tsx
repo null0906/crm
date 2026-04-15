@@ -36,7 +36,7 @@ const schema = z.object({
   activityType: z.enum(['call', 'email_sent', 'email_received', 'meeting', 'note', 'task', 'sms', 'whatsapp', 'linkedin', 'demo', 'proposal', 'document', 'stage_change', 'status_change', 'assignment', 'custom']),
   subject: z.string().min(1, 'Subject is required').max(255),
   body: z.string().optional(),
-  occurredAt: z.string().min(1),
+  occurredAt: z.string().optional(),
   callDurationSeconds: z.coerce.number().int().min(0).optional(),
   callDirection: z.enum(['inbound', 'outbound']).optional(),
   callOutcome: z.enum(['connected', 'voicemail', 'no_answer', 'busy', 'wrong_number']).optional(),
@@ -85,12 +85,7 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
   const showDirection = ['call', 'email_sent', 'email_received', 'sms'].includes(activityType);
 
   async function onSubmit(data: FormData) {
-    const occurredAtIso = toActivityIsoString(data.occurredAt);
-    if (!occurredAtIso) {
-      form.setError('occurredAt', { type: 'validate', message: 'Enter a valid date and time' });
-      toast.error('Failed to log activity', { description: 'Enter a valid date and time.' });
-      return;
-    }
+    const occurredAtIso = toActivityIsoString(data.occurredAt ?? '') ?? new Date().toISOString();
 
     await createActivity.mutateAsync({
       activityType: data.activityType,
@@ -134,9 +129,6 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
               {...form.register('occurredAt')}
               className="h-8 text-sm"
             />
-            {form.formState.errors.occurredAt && (
-              <p className="text-xs text-red-500">{form.formState.errors.occurredAt.message}</p>
-            )}
           </div>
         </div>
 
