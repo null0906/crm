@@ -12,6 +12,25 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ACTIVITY_TYPES } from '@/lib/constants';
 
+function toActivityIsoString(value: string): string | null {
+  const direct = new Date(value);
+  if (!Number.isNaN(direct.getTime())) {
+    return direct.toISOString();
+  }
+
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4}),\s*(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return null;
+
+  const [, dd, mm, yyyy, hh, min, meridiem] = match;
+  let hours = Number(hh);
+  if (meridiem.toUpperCase() === 'PM' && hours < 12) hours += 12;
+  if (meridiem.toUpperCase() === 'AM' && hours === 12) hours = 0;
+
+  const parsed = new Date(Number(yyyy), Number(mm) - 1, Number(dd), hours, Number(min));
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
 // Local schema mirroring the activityCreateSchema but with UI-friendly duration field
 const schema = z.object({
   activityType: z.enum(['call', 'email_sent', 'email_received', 'meeting', 'note', 'task', 'sms', 'whatsapp', 'linkedin', 'demo', 'proposal', 'document', 'stage_change', 'status_change', 'assignment', 'custom']),
@@ -66,11 +85,18 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
   const showDirection = ['call', 'email_sent', 'email_received', 'sms'].includes(activityType);
 
   async function onSubmit(data: FormData) {
+    const occurredAtIso = toActivityIsoString(data.occurredAt);
+    if (!occurredAtIso) {
+      form.setError('occurredAt', { type: 'validate', message: 'Enter a valid date and time' });
+      toast.error('Failed to log activity', { description: 'Enter a valid date and time.' });
+      return;
+    }
+
     await createActivity.mutateAsync({
       activityType: data.activityType,
       subject: data.subject,
       body: data.body ?? null,
-      occurredAt: new Date(data.occurredAt).toISOString(),
+      occurredAt: occurredAtIso,
       callDurationSeconds: data.callDurationSeconds ?? null,
       callDirection: data.callDirection ?? null,
       callOutcome: data.callOutcome ?? null,
@@ -82,7 +108,12 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
 
   return (
     <div className="border border-slate-200 rounded-lg p-4 bg-slate-50 space-y-3">
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+      <form
+        onSubmit={form.handleSubmit(onSubmit, () => {
+          toast.error('Failed to log activity', { description: 'Please fix the highlighted fields.' });
+        })}
+        className="space-y-3"
+      >
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label className="text-xs">Type</Label>
@@ -103,6 +134,9 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
               {...form.register('occurredAt')}
               className="h-8 text-sm"
             />
+            {form.formState.errors.occurredAt && (
+              <p className="text-xs text-red-500">{form.formState.errors.occurredAt.message}</p>
+            )}
           </div>
         </div>
 
