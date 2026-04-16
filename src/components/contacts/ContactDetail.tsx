@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Mail, Phone, X, Link2, Pencil, Trash2 } from 'lucide-react';
+import { Mail, Phone, X, Link2, Pencil, Trash2, BellRing } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ContactStatusBadge } from './ContactStatusBadge';
 import { ContactForm } from './ContactForm';
+import { ContactReminderDialog } from './ContactReminderDialog';
 import { TagBadge } from '@/components/tags/TagBadge';
 import { ActivityFeed } from '@/components/activities/ActivityFeed';
 import { formatDate, formatRelative, getInitials } from '@/lib/formatters';
@@ -28,6 +29,7 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
   const utils = trpc.useUtils();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
 
   const { data: contact, isLoading } = trpc.contacts.getById.useQuery(
     { id: contactId },
@@ -76,6 +78,8 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
   const ownerLastName = contact?.ownerLastName as string | undefined;
   const description = contact?.description as string | undefined;
   const ownerId = contact?.ownerId as string | null | undefined;
+  const companyId = contact?.companyId as string | null | undefined;
+  const contactFullName = [firstName, lastName].filter(Boolean).join(' ').trim();
 
   // Build defaultValues for edit form
   const editDefaults = contact ? {
@@ -202,6 +206,10 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
                     </a>
                   </Button>
                 )}
+                <Button size="sm" variant="outline" onClick={() => setReminderOpen(true)}>
+                  <BellRing className="w-3.5 h-3.5 mr-1" />
+                  Set Reminder
+                </Button>
               </div>
             </div>
 
@@ -281,6 +289,17 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
         destructive
         loading={deleteContact.isPending}
         onConfirm={() => deleteContact.mutate({ id: contactId })}
+      />
+
+      <ContactReminderDialog
+        open={reminderOpen}
+        onOpenChange={setReminderOpen}
+        contactId={contactId}
+        contactName={contactFullName || undefined}
+        companyId={companyId}
+        onCreated={() => {
+          void utils.activities.list.invalidate();
+        }}
       />
     </>
   );
