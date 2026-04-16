@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Mail, Phone, X, Link2, Pencil, Trash2, BellRing } from 'lucide-react';
+import { Mail, Phone, X, Link2, Pencil, Trash2, BellRing, BriefcaseBusiness } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -9,12 +9,14 @@ import { DetailSkeleton } from '@/components/shared/LoadingSkeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ContactStatusBadge } from './ContactStatusBadge';
 import { ContactForm } from './ContactForm';
 import { ContactReminderDialog } from './ContactReminderDialog';
 import { TagBadge } from '@/components/tags/TagBadge';
 import { ActivityFeed } from '@/components/activities/ActivityFeed';
+import { DealForm } from '@/components/deals/DealForm';
 import { formatDate, formatRelative, getInitials } from '@/lib/formatters';
 import { toast } from 'sonner';
 
@@ -30,11 +32,14 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
+  const [createDealOpen, setCreateDealOpen] = useState(false);
+  const [createDealPipelineId, setCreateDealPipelineId] = useState('');
 
   const { data: contact, isLoading } = trpc.contacts.getById.useQuery(
     { id: contactId },
     { enabled: !!contactId && open }
   );
+  const { data: pipelines = [] } = trpc.pipelines.list.useQuery(undefined, { enabled: createDealOpen || open });
 
   const removeTags = trpc.contacts.removeTags.useMutation({
     onSuccess: () => {
@@ -80,6 +85,11 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
   const ownerId = contact?.ownerId as string | null | undefined;
   const companyId = contact?.companyId as string | null | undefined;
   const contactFullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  const dealPipelines = (pipelines as Array<Record<string, unknown>>).filter((pipeline) => {
+    const name = String(pipeline.name ?? '').toLowerCase();
+    return ['sales', 'partner', 'enterprise'].some((keyword) => name.includes(keyword));
+  });
+  const selectedDealPipelineId = createDealPipelineId || String(dealPipelines[0]?.id ?? '');
 
   // Build defaultValues for edit form
   const editDefaults = contact ? {
@@ -210,6 +220,10 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
                   <BellRing className="w-3.5 h-3.5 mr-1" />
                   Set Reminder
                 </Button>
+                <Button size="sm" onClick={() => setCreateDealOpen(true)}>
+                  <BriefcaseBusiness className="w-3.5 h-3.5 mr-1" />
+                  Create Deal
+                </Button>
               </div>
             </div>
 
@@ -301,6 +315,45 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
           void utils.activities.list.invalidate();
         }}
       />
+
+      <SlideOverPanel open={createDealOpen} onClose={() => setCreateDealOpen(false)} title="Create Deal" width="md">
+        <div className="p-6 space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="contact-create-deal-pipeline">Pipeline</Label>
+            <select
+              id="contact-create-deal-pipeline"
+              value={selectedDealPipelineId}
+              onChange={(e) => setCreateDealPipelineId(e.target.value)}
+              className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              {dealPipelines.map((pipeline) => (
+                <option key={String(pipeline.id)} value={String(pipeline.id)}>
+                  {String(pipeline.name)}
+                </option>
+              ))}
+            </select>
+            {dealPipelines.length === 0 && (
+              <p className="text-xs text-amber-600">No active Sales, Partner, or Enterprise pipelines found.</p>
+            )}
+          </div>
+
+          {selectedDealPipelineId && (
+            <DealForm
+              pipelineId={selectedDealPipelineId}
+              defaultValues={{
+                primaryContactId: contactId,
+                companyId: companyId ?? '',
+                title: companyName ? `${companyName} Opportunity` : `${contactFullName || 'New'} Opportunity`,
+              }}
+              onSuccess={() => {
+                setCreateDealOpen(false);
+                void utils.deals.byContact.invalidate({ contactId });
+              }}
+              onCancel={() => setCreateDealOpen(false)}
+            />
+          )}
+        </div>
+      </SlideOverPanel>
     </>
   );
 }

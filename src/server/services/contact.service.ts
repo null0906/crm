@@ -136,16 +136,27 @@ export async function listContacts(
 
   // Search
   if (search && search.trim()) {
-    const searchTerm = `%${search.trim()}%`;
-    conditions.push(
-      or(
+    const searchTokens = search
+      .trim()
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+
+    const tokenConditions = searchTokens.map((token) => {
+      const searchTerm = `%${token}%`;
+      return or(
         ilike(contacts.firstName, searchTerm),
         ilike(contacts.lastName, searchTerm),
         ilike(contacts.email, searchTerm),
         ilike(contacts.phone, searchTerm),
-        ilike(contacts.jobTitle, searchTerm)
-      )!
-    );
+        ilike(contacts.jobTitle, searchTerm),
+        ilike(sql<string>`concat(${contacts.firstName}, ' ', ${contacts.lastName})`, searchTerm)
+      )!;
+    });
+
+    if (tokenConditions.length > 0) {
+      conditions.push(and(...tokenConditions)!);
+    }
   }
 
   // Custom filters

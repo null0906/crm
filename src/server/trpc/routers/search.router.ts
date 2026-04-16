@@ -8,7 +8,23 @@ export const searchRouter = router({
   global: protectedProcedure
     .input(z.object({ query: z.string().min(1).max(200) }))
     .query(async ({ input }) => {
+      const searchTokens = input.query
+        .trim()
+        .split(/\s+/)
+        .map((token) => token.trim())
+        .filter(Boolean);
+
       const q = `%${input.query.trim()}%`;
+      const contactTokenConditions = searchTokens.map((token) => {
+        const tokenPattern = `%${token}%`;
+        return or(
+          ilike(contacts.firstName, tokenPattern),
+          ilike(contacts.lastName, tokenPattern),
+          ilike(contacts.email, tokenPattern),
+          ilike(contacts.phone, tokenPattern),
+          ilike(sql<string>`concat(${contacts.firstName}, ' ', ${contacts.lastName})`, tokenPattern)
+        )!;
+      });
 
       const [contactResults, companyResults, dealResults] = await Promise.all([
         db
@@ -23,12 +39,17 @@ export const searchRouter = router({
           .where(
             and(
               isNull(contacts.deletedAt),
-              or(
-                ilike(contacts.firstName, q),
-                ilike(contacts.lastName, q),
-                ilike(contacts.email, q),
-                ilike(contacts.phone, q)
-              )
+              ...(contactTokenConditions.length > 0
+                ? [and(...contactTokenConditions)!]
+                : [
+                    or(
+                      ilike(contacts.firstName, q),
+                      ilike(contacts.lastName, q),
+                      ilike(contacts.email, q),
+                      ilike(contacts.phone, q),
+                      ilike(sql<string>`concat(${contacts.firstName}, ' ', ${contacts.lastName})`, q)
+                    )!,
+                  ])
             )
           )
           .limit(5),
