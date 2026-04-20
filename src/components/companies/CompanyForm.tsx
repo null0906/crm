@@ -169,6 +169,18 @@ export function CompanyForm({ onSuccess, onCancel, defaultValues, mode = 'create
       </div>
 
       <div className="space-y-1.5">
+        <Label htmlFor="location">Location</Label>
+        <Input
+          id="location"
+          {...form.register('location')}
+          placeholder="Mumbai, Pune, London, San Francisco..."
+        />
+        {form.formState.errors.location && (
+          <p className="text-xs text-red-500">{form.formState.errors.location.message}</p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
         <Label htmlFor="annualRevenueRange">Annual Revenue Range</Label>
         <Input
           id="annualRevenueRange"

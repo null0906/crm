@@ -289,6 +289,7 @@ export async function getContactById(
       state: contacts.state,
       postalCode: contacts.postalCode,
       country: contacts.country,
+      location: contacts.location,
       description: contacts.description,
       customFields: contacts.customFields,
       lastContactedAt: contacts.lastContactedAt,

@@ -167,6 +167,18 @@ export function ContactForm({ onSuccess, onCancel, defaultValues, compact = fals
         </div>
       </div>
 
+      <div className="space-y-1.5">
+        <Label htmlFor="location">Location</Label>
+        <Input
+          id="location"
+          {...form.register('location')}
+          placeholder="Mumbai, Pune, New York, Tokyo..."
+        />
+        {form.formState.errors.location && (
+          <p className="text-xs text-red-500">{form.formState.errors.location.message}</p>
+        )}
+      </div>
+
       {!compact && (
         <>
           <div className="space-y-1.5">

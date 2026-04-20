@@ -36,6 +36,7 @@ export const contactCreateSchema = z.object({
   state: optionalStringMax(100),
   postalCode: optionalStringMax(20),
   country: optionalStringMax(100),
+  location: optionalStringMax(255),
   customFields: z.record(z.string(), z.unknown()).default({}),
   tagIds: z.array(z.string().uuid()).default([]),
 });
@@ -67,6 +68,7 @@ export const companyCreateSchema = z.object({
   state: optionalStringMax(100),
   postalCode: optionalStringMax(20),
   country: optionalStringMax(100),
+  location: optionalStringMax(255),
   linkedinUrl: optionalUrl(),
   twitterUrl: optionalUrl(),
   ownerId: optionalUuid(),

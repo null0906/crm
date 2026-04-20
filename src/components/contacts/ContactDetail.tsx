@@ -77,6 +77,7 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
   const source = contact?.source as string | undefined;
   const country = contact?.country as string | undefined;
   const city = contact?.city as string | undefined;
+  const location = contact?.location as string | undefined;
   const createdAt = contact?.createdAt as Date | undefined;
   const lastContactedAt = contact?.lastContactedAt as Date | null | undefined;
   const ownerFirstName = contact?.ownerFirstName as string | undefined;
@@ -109,6 +110,7 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
     companyId: (contact?.companyId as string) ?? '',
     country: country ?? '',
     city: city ?? '',
+    location: location ?? '',
   } : undefined;
 
   return (
@@ -245,6 +247,7 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
                     {source && <InfoField label="Source" value={source} />}
                     {country && <InfoField label="Country" value={country} />}
                     {city && <InfoField label="City" value={city} />}
+                    {location && <InfoField label="Location" value={location} />}
                     {createdAt && <InfoField label="Created" value={formatDate(createdAt)} />}
                     <InfoField
                       label="Last Contacted"

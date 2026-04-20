@@ -132,6 +132,7 @@ export async function getCompanyById(
       state: companies.state,
       postalCode: companies.postalCode,
       country: companies.country,
+      location: companies.location,
       linkedinUrl: companies.linkedinUrl,
       twitterUrl: companies.twitterUrl,
       logoUrl: companies.logoUrl,

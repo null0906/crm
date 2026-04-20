@@ -23,6 +23,7 @@ export const companies = pgTable(
     state: varchar('state', { length: 100 }),
     postalCode: varchar('postal_code', { length: 20 }),
     country: varchar('country', { length: 100 }),
+    location: varchar('location', { length: 255 }),
     linkedinUrl: text('linkedin_url'),
     twitterUrl: text('twitter_url'),
     ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),

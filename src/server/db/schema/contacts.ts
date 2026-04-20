@@ -35,6 +35,7 @@ export const contacts = pgTable(
     state: varchar('state', { length: 100 }),
     postalCode: varchar('postal_code', { length: 20 }),
     country: varchar('country', { length: 100 }),
+    location: varchar('location', { length: 255 }),
     // Notes
     description: text('description'),
     // Custom fields (JSONB)

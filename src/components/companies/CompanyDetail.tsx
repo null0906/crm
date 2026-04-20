@@ -66,6 +66,7 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
   const domain = company?.domain as string | undefined;
   const city = company?.city as string | undefined;
   const country = company?.country as string | undefined;
+  const location = company?.location as string | undefined;
   const annualRevenueRange = company?.annualRevenueRange as string | undefined;
   const lastContactedAt = company?.lastContactedAt as Date | undefined;
   const createdAt = company?.createdAt as Date | undefined;
@@ -84,6 +85,7 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
     domain: domain ?? '',
     city: city ?? '',
     country: country ?? '',
+    location: location ?? '',
     annualRevenueRange: annualRevenueRange ?? '',
     ownerId: ownerId ?? '',
     description: description ?? '',
@@ -193,6 +195,7 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
                     {phone && <InfoField label="Phone" value={phone} />}
                     {city && <InfoField label="City" value={city} />}
                     {country && <InfoField label="Country" value={country} />}
+                    {location && <InfoField label="Location" value={location} />}
                     {annualRevenueRange && <InfoField label="Annual Revenue" value={annualRevenueRange} />}
                     {metrics && metrics.contactCount > 0 && (
                       <InfoField label="Contacts" value={String(metrics.contactCount)} />
