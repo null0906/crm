@@ -48,6 +48,7 @@ function getColumn(entity: string, field: string): SQL | null {
       pipelineId: sql`deals.pipeline_id`,
       stageId: sql`deals.stage_id`,
       companyId: sql`deals.company_id`,
+      partnerCompanyId: sql`deals.partner_company_id`,
       amount: sql`deals.amount`,
       probability: sql`deals.probability`,
       expectedCloseDate: sql`deals.expected_close_date`,

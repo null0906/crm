@@ -62,6 +62,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
   const primaryContactFirstName = deal?.primaryContactFirstName as string | null | undefined;
   const primaryContactLastName = deal?.primaryContactLastName as string | null | undefined;
   const companyName = deal?.companyName as string | null | undefined;
+  const partnerCompanyName = deal?.partnerCompanyName as string | null | undefined;
   const stageName = deal?.stageName as string | null | undefined;
   const ownerFirstName = deal?.ownerFirstName as string | null | undefined;
   const ownerLastName = deal?.ownerLastName as string | null | undefined;
@@ -89,6 +90,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
     status: (status as 'open' | 'won' | 'lost' | 'abandoned') ?? 'open',
     primaryContactId: primaryContactId ?? '',
     companyId: companyId ?? '',
+    partnerCompanyId: (deal?.partnerCompanyId as string | null | undefined) ?? '',
     ownerId: ownerId ?? '',
   } : undefined;
 
@@ -186,6 +188,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                       <InfoField label="Primary Contact" value={`${primaryContactFirstName} ${primaryContactLastName ?? ''}`} />
                     )}
                     {companyName && <InfoField label="Company" value={companyName} />}
+                    {partnerCompanyName && <InfoField label="Partner" value={partnerCompanyName} />}
                     {stageName && <InfoField label="Stage" value={stageName} />}
                     {ownerFirstName && (
                       <InfoField label="Owner" value={`${ownerFirstName} ${ownerLastName ?? ''}`} />

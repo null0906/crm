@@ -16,6 +16,7 @@ import { importRouter } from './routers/import.router';
 import { telegramRouter } from './routers/telegram.router';
 import { digestRouter } from './routers/digest.router';
 import { automationRouter } from './routers/automation.router';
+import { partnerRouter } from './routers/partner.router';
 
 export const appRouter = router({
   contacts: contactRouter,
@@ -35,6 +36,7 @@ export const appRouter = router({
   telegram: telegramRouter,
   digests: digestRouter,
   automation: automationRouter,
+  partners: partnerRouter,
 });
 
 export type AppRouter = typeof appRouter;

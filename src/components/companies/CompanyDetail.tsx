@@ -271,7 +271,18 @@ function InfoField({ label, value, mono = false }: { label: string; value: strin
 }
 
 function CompanyDeals({ companyId }: { companyId: string }) {
-  const { data: deals = [], isLoading } = trpc.deals.byCompany.useQuery({ companyId });
+  const { data: company } = trpc.companies.getById.useQuery({ id: companyId });
+  const isPartnerCompany = String(company?.companyType ?? '') === 'partner';
+  const partnerDealsQuery = trpc.partners.dealsByPartner.useQuery(
+    { partnerCompanyId: companyId },
+    { enabled: isPartnerCompany }
+  );
+  const companyDealsQuery = trpc.deals.byCompany.useQuery(
+    { companyId },
+    { enabled: !isPartnerCompany }
+  );
+  const deals = (isPartnerCompany ? partnerDealsQuery.data : companyDealsQuery.data) ?? [];
+  const isLoading = isPartnerCompany ? partnerDealsQuery.isLoading : companyDealsQuery.isLoading;
 
   const statusColor: Record<string, string> = {
     open: 'bg-blue-100 text-blue-700',
@@ -293,7 +304,9 @@ function CompanyDeals({ companyId }: { companyId: string }) {
   if (deals.length === 0) {
     return (
       <div className="text-center py-10 text-slate-400">
-        <p className="text-sm">No deals linked to this company yet.</p>
+        <p className="text-sm">
+          {isPartnerCompany ? 'No sales deals are linked to this partner yet.' : 'No deals linked to this company yet.'}
+        </p>
       </div>
     );
   }
@@ -311,6 +324,7 @@ function CompanyDeals({ companyId }: { companyId: string }) {
               <p className="text-[11px] text-slate-400 truncate">
                 {!!d.stageName && <span>{d.stageName as string}</span>}
                 {!!d.primaryContactName && <span> · {d.primaryContactName as string}</span>}
+                {!!d.companyName && isPartnerCompany && <span> · {d.companyName as string}</span>}
               </p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">

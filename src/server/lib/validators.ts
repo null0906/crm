@@ -93,6 +93,7 @@ export const dealCreateSchema = z.object({
   wonReason: optionalString(),
   primaryContactId: optionalUuid(),
   companyId: optionalUuid(),
+  partnerCompanyId: optionalUuid(),
   ownerId: optionalUuid(),
   customFields: z.record(z.string(), z.unknown()).default({}),
   tagIds: z.array(z.string().uuid()).default([]),

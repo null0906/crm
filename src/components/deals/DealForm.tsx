@@ -44,6 +44,8 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
 
   const stages = pipelineData?.stages ?? [];
   const defaultStageId = stageId ?? stages[0]?.id ?? '';
+  const pipelineName = String(pipelineData?.name ?? '').toLowerCase();
+  const isSalesPipeline = pipelineName.includes('sales');
 
   const createDeal = trpc.deals.create.useMutation({
     onSuccess: (data) => {
@@ -149,6 +151,9 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
       );
   });
   const selectedCompany = companyItems.find((company) => String(company.id) === String(selectedCompanyId ?? ''));
+  const partnerItems = companyItems.filter((company) => String(company.companyType ?? '') === 'partner');
+  const selectedPartnerCompanyId = form.watch('partnerCompanyId');
+  const selectedPartnerCompany = partnerItems.find((company) => String(company.id) === String(selectedPartnerCompanyId ?? ''));
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -330,6 +335,57 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
           </div>
         </div>
       </div>
+
+      {isSalesPipeline && (
+        <div className="space-y-1.5">
+          <Label htmlFor="partnerCompanyId">Partner</Label>
+          <input type="hidden" {...form.register('partnerCompanyId')} />
+          <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            {selectedPartnerCompany && (
+              <div className="flex items-center justify-between rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900">
+                <span>Selected partner: {String(selectedPartnerCompany.name ?? '')}</span>
+                <button
+                  type="button"
+                  onClick={() => form.setValue('partnerCompanyId', '', { shouldDirty: true })}
+                  className="text-violet-500 hover:text-violet-700"
+                  title="Clear selected partner"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            <div className="max-h-40 overflow-y-auto rounded-md border border-slate-200 bg-white">
+              <button
+                type="button"
+                onClick={() => form.setValue('partnerCompanyId', '', { shouldDirty: true })}
+                className={`w-full px-3 py-2 text-left text-sm border-b border-slate-100 hover:bg-slate-50 ${!selectedPartnerCompanyId ? 'bg-slate-50 font-medium text-slate-900' : 'text-slate-600'}`}
+              >
+                No partner
+              </button>
+              {partnerItems.map((company) => {
+                const isSelected = String(selectedPartnerCompanyId ?? '') === String(company.id);
+                return (
+                  <button
+                    key={String(company.id)}
+                    type="button"
+                    onClick={() => form.setValue('partnerCompanyId', String(company.id), { shouldDirty: true })}
+                    className={`w-full px-3 py-2 text-left text-sm border-b border-slate-100 last:border-0 hover:bg-slate-50 ${isSelected ? 'bg-violet-50 text-violet-900 font-medium' : 'text-slate-700'}`}
+                  >
+                    <div>{String(company.name ?? '')}</div>
+                    {Boolean(company.domain) && (
+                      <div className="text-xs text-slate-400">{String(company.domain ?? '')}</div>
+                    )}
+                  </button>
+                );
+              })}
+              {partnerItems.length === 0 && (
+                <div className="px-3 py-3 text-sm text-slate-400">No partner companies found.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <Label htmlFor="ownerId">Owner</Label>

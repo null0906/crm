@@ -8,6 +8,38 @@ import eventBus from '@/server/lib/event-bus';
 import { getPermissionLevel } from '@/server/lib/permissions';
 import { buildFilterWhere } from './filter.service';
 
+async function validatePartnerAssignment(pipelineId: string, partnerCompanyId?: string | null) {
+  if (!partnerCompanyId) return;
+
+  const [pipeline] = await db
+    .select({ id: pipelines.id, name: pipelines.name })
+    .from(pipelines)
+    .where(eq(pipelines.id, pipelineId))
+    .limit(1);
+
+  if (!pipeline) {
+    throw new Error('Pipeline not found');
+  }
+
+  if (!pipeline.name.toLowerCase().includes('sales')) {
+    throw new Error('Partners can only be linked to deals in a sales pipeline');
+  }
+
+  const [partnerCompany] = await db
+    .select({ id: companies.id, companyType: companies.companyType, deletedAt: companies.deletedAt })
+    .from(companies)
+    .where(eq(companies.id, partnerCompanyId))
+    .limit(1);
+
+  if (!partnerCompany || partnerCompany.deletedAt) {
+    throw new Error('Selected partner company was not found');
+  }
+
+  if (partnerCompany.companyType !== 'partner') {
+    throw new Error('Only companies marked as partners can be linked as deal partners');
+  }
+}
+
 export async function listDeals(
   user: SessionUser,
   opts: {
@@ -74,6 +106,7 @@ export async function listDeals(
       expectedCloseDate: deals.expectedCloseDate,
       ownerId: deals.ownerId,
       companyId: deals.companyId,
+      partnerCompanyId: deals.partnerCompanyId,
       primaryContactId: deals.primaryContactId,
       customFields: deals.customFields,
       positionInStage: deals.positionInStage,
@@ -83,6 +116,7 @@ export async function listDeals(
       ownerLastName: users.lastName,
       ownerName: sql<string | null>`NULLIF(TRIM(CONCAT(${users.firstName}, ' ', ${users.lastName})), '')`,
       companyName: companies.name,
+      partnerCompanyName: sql<string | null>`(SELECT c.name FROM companies c WHERE c.id = ${deals.partnerCompanyId})`,
       stageName: pipelineStages.name,
       stageColor: pipelineStages.color,
       primaryContactName: sql<string | null>`NULLIF(TRIM(CONCAT(${contactsAlias.firstName}, ' ', ${contactsAlias.lastName})), '')`,
@@ -130,6 +164,7 @@ export async function getDealsByStage(
       expectedCloseDate: deals.expectedCloseDate,
       ownerId: deals.ownerId,
       companyId: deals.companyId,
+      partnerCompanyId: deals.partnerCompanyId,
       primaryContactId: deals.primaryContactId,
       positionInStage: deals.positionInStage,
       createdAt: deals.createdAt,
@@ -138,6 +173,7 @@ export async function getDealsByStage(
       ownerName: sql<string | null>`NULLIF(TRIM(CONCAT(${users.firstName}, ' ', ${users.lastName})), '')`,
       ownerAvatarUrl: users.avatarUrl,
       companyName: companies.name,
+      partnerCompanyName: sql<string | null>`(SELECT c.name FROM companies c WHERE c.id = ${deals.partnerCompanyId})`,
       primaryContactName: sql<string | null>`NULLIF(TRIM(CONCAT(${contacts.firstName}, ' ', ${contacts.lastName})), '')`,
     })
     .from(deals)
@@ -186,6 +222,7 @@ export async function getDealById(
       wonReason: deals.wonReason,
       ownerId: deals.ownerId,
       companyId: deals.companyId,
+      partnerCompanyId: deals.partnerCompanyId,
       primaryContactId: deals.primaryContactId,
       customFields: deals.customFields,
       positionInStage: deals.positionInStage,
@@ -196,6 +233,7 @@ export async function getDealById(
       ownerFirstName: ownerUsers.firstName,
       ownerLastName: ownerUsers.lastName,
       companyName: companies.name,
+      partnerCompanyName: sql<string | null>`(SELECT c.name FROM companies c WHERE c.id = ${deals.partnerCompanyId})`,
       stageName: pipelineStages.name,
       stageColor: pipelineStages.color,
       primaryContactFirstName: primaryContacts.firstName,
@@ -272,6 +310,8 @@ export async function createDeal(
   user: SessionUser,
   data: Omit<NewDeal, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>
 ): Promise<Record<string, unknown>> {
+  await validatePartnerAssignment(data.pipelineId, data.partnerCompanyId);
+
   const [deal] = await db
     .insert(deals)
     .values({ ...data, ownerId: data.ownerId ?? user.id, createdBy: user.id })
@@ -324,6 +364,13 @@ export async function updateDeal(
   const updateLevel = getPermissionLevel(user.role.permissions, 'deals', 'update');
   if (updateLevel === 'own' && existing.ownerId !== user.id) throw new Error('Insufficient permissions');
   if (!updateLevel) throw new Error('Insufficient permissions');
+
+  const nextPipelineId = (data.pipelineId ?? existing.pipelineId) as string;
+  const nextPartnerCompanyId = data.partnerCompanyId !== undefined
+    ? data.partnerCompanyId
+    : (existing.partnerCompanyId as string | null | undefined);
+
+  await validatePartnerAssignment(nextPipelineId, nextPartnerCompanyId);
 
   const isStageChange = data.stageId && data.stageId !== existing.stageId;
 
