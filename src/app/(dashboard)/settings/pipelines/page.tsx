@@ -129,7 +129,10 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
       setNewStageColor('#3B82F6');
       setNewStageType('active');
       setNewStageProbability(50);
-      void utils.pipelines.getWithStages.invalidate({ id: pipelineId });
+      void utils.pipelines.getWithStages.invalidate();
+      void utils.pipelines.list.invalidate();
+      void utils.deals.byStage.invalidate();
+      void utils.deals.list.invalidate();
     },
     onError: (err) => toast.error('Failed to add stage', { description: err.message }),
   });
@@ -138,7 +141,10 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
     onSuccess: () => {
       toast.success('Stage deleted');
       setDeleteStageId(null);
-      void utils.pipelines.getWithStages.invalidate({ id: pipelineId });
+      void utils.pipelines.getWithStages.invalidate();
+      void utils.pipelines.list.invalidate();
+      void utils.deals.byStage.invalidate();
+      void utils.deals.list.invalidate();
     },
     onError: (err) => toast.error('Failed to delete stage', { description: err.message }),
   });
@@ -300,7 +306,7 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
         open={!!deleteStageId}
         onOpenChange={(open) => { if (!open) setDeleteStageId(null); }}
         title="Delete stage?"
-        description="This will remove the stage. Deals in this stage will not be deleted."
+        description="This will remove the stage only if no deals are still using it. Deals in that stage are not deleted automatically."
         confirmLabel="Delete"
         destructive
         loading={deleteStage.isPending}
@@ -321,11 +327,20 @@ function StageRow({ stage, pipelineId, onDelete }: {
   const [color, setColor] = useState((stage.color as string) ?? '#6B7280');
   const [probability, setProbability] = useState((stage.defaultProbability as number) ?? 0);
 
+  React.useEffect(() => {
+    setName(stage.name as string);
+    setColor((stage.color as string) ?? '#6B7280');
+    setProbability((stage.defaultProbability as number) ?? 0);
+  }, [stage.name, stage.color, stage.defaultProbability]);
+
   const updateStage = trpc.pipelines.updateStage.useMutation({
     onSuccess: () => {
       toast.success('Stage updated');
       setEditing(false);
-      void utils.pipelines.getWithStages.invalidate({ id: pipelineId });
+      void utils.pipelines.getWithStages.invalidate();
+      void utils.pipelines.list.invalidate();
+      void utils.deals.byStage.invalidate();
+      void utils.deals.list.invalidate();
     },
     onError: (err) => toast.error('Failed to update stage', { description: err.message }),
   });

@@ -30,14 +30,24 @@ export async function listCompanies(
   }
 
   if (search?.trim()) {
-    const searchTerm = `%${search.trim()}%`;
-    conditions.push(
-      or(
+    const searchTokens = search
+      .trim()
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+
+    const tokenConditions = searchTokens.map((token) => {
+      const searchTerm = `%${token}%`;
+      return or(
         ilike(companies.name, searchTerm),
         ilike(companies.domain, searchTerm),
         ilike(companies.industry, searchTerm)
-      )!
-    );
+      )!;
+    });
+
+    if (tokenConditions.length > 0) {
+      conditions.push(and(...tokenConditions)!);
+    }
   }
 
   if (filters?.conditions?.length) {

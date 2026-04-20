@@ -3,8 +3,8 @@ import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
-import { pipelines, pipelineStages } from '@/server/db/schema';
-import { eq, asc, and, isNull } from 'drizzle-orm';
+import { pipelines, pipelineStages, deals } from '@/server/db/schema';
+import { eq, asc, and, isNull, count } from 'drizzle-orm';
 import { writeAuditLog } from '@/server/services/audit.service';
 
 export const pipelineRouter = router({
@@ -173,6 +173,18 @@ export const pipelineRouter = router({
 
       if (stage?.isSystemStage) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cannot delete a system stage' });
+      }
+
+      const [linkedDeals] = await db
+        .select({ count: count() })
+        .from(deals)
+        .where(and(eq(deals.stageId, input.id), isNull(deals.deletedAt)));
+
+      if (Number(linkedDeals?.count ?? 0) > 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Cannot delete this stage because deals are still assigned to it. Move those deals first.',
+        });
       }
 
       await db.delete(pipelineStages).where(eq(pipelineStages.id, input.id));

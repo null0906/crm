@@ -28,6 +28,9 @@ export function DealCard({ deal, onClick }: DealCardProps) {
   const expectedCloseDate = deal.expectedCloseDate as string | null | undefined;
   const primaryContactName = deal.primaryContactName as string | null | undefined;
   const companyName = deal.companyName as string | null | undefined;
+  const ownerName =
+    (deal.ownerName as string | null | undefined) ??
+    ([deal.ownerFirstName, deal.ownerLastName].filter(Boolean).join(' ').trim() || null);
 
   return (
     <div
@@ -64,6 +67,13 @@ export function DealCard({ deal, onClick }: DealCardProps) {
           <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
             <Building2 className="w-3 h-3 flex-shrink-0" strokeWidth={1.75} />
             <span className="truncate">{companyName}</span>
+          </div>
+        )}
+
+        {ownerName && (
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <User className="w-3 h-3 flex-shrink-0" strokeWidth={1.75} />
+            <span className="truncate">Owner: {ownerName}</span>
           </div>
         )}
 

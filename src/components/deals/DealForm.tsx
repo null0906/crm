@@ -34,6 +34,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
 
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
   const [contactSearch, setContactSearch] = React.useState('');
+  const [companySearch, setCompanySearch] = React.useState('');
 
   const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery({ id: pipelineId });
   const { data: customFields = [] } = trpc.customFields.list.useQuery({ entityType: 'deal' });
@@ -108,6 +109,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
 
   const contactItems = (contactsData?.items ?? []) as Array<Record<string, unknown>>;
   const selectedPrimaryContactId = form.watch('primaryContactId');
+  const selectedCompanyId = form.watch('companyId');
   const filteredContactItems = contactItems.filter((contact) => {
     const search = contactSearch.trim().toLowerCase();
     if (!search) return true;
@@ -128,6 +130,25 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
       );
   });
   const selectedPrimaryContact = contactItems.find((contact) => String(contact.id) === String(selectedPrimaryContactId ?? ''));
+  const companyItems = ((companiesData?.items ?? []) as Array<Record<string, unknown>>);
+  const filteredCompanyItems = companyItems.filter((company) => {
+    const search = companySearch.trim().toLowerCase();
+    if (!search) return true;
+
+    const name = String(company.name ?? '').toLowerCase();
+    const domain = String(company.domain ?? '').toLowerCase();
+    const industry = String(company.industry ?? '').toLowerCase();
+
+    return search
+      .split(/\s+/)
+      .filter(Boolean)
+      .every((token) =>
+        name.includes(token) ||
+        domain.includes(token) ||
+        industry.includes(token)
+      );
+  });
+  const selectedCompany = companyItems.find((company) => String(company.id) === String(selectedCompanyId ?? ''));
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -249,19 +270,65 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
 
       <div className="space-y-1.5">
         <Label htmlFor="companyId">Company</Label>
-        <select
-          id="companyId"
-          {...form.register('companyId')}
-          className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-        >
-          <option value="">None</option>
-          {(companiesData?.items ?? []).map((c) => {
-            const company = c as Record<string, unknown>;
-            return (
-              <option key={company.id as string} value={company.id as string}>{company.name as string}</option>
-            );
-          })}
-        </select>
+        <input type="hidden" {...form.register('companyId')} />
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <Input
+              value={companySearch}
+              onChange={(e) => setCompanySearch(e.target.value)}
+              placeholder="Search companies by name, domain, or industry..."
+              className="pl-8 bg-white"
+            />
+          </div>
+
+          {selectedCompany && (
+            <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+              <span>
+                Selected: {String(selectedCompany.name ?? '')}
+              </span>
+              <button
+                type="button"
+                onClick={() => form.setValue('companyId', '', { shouldDirty: true })}
+                className="text-blue-500 hover:text-blue-700"
+                title="Clear selected company"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          <div className="max-h-44 overflow-y-auto rounded-md border border-slate-200 bg-white">
+            <button
+              type="button"
+              onClick={() => form.setValue('companyId', '', { shouldDirty: true })}
+              className={`w-full px-3 py-2 text-left text-sm border-b border-slate-100 hover:bg-slate-50 ${!selectedCompanyId ? 'bg-slate-50 font-medium text-slate-900' : 'text-slate-600'}`}
+            >
+              No company
+            </button>
+            {filteredCompanyItems.map((company) => {
+              const isSelected = String(selectedCompanyId ?? '') === String(company.id);
+              return (
+                <button
+                  key={String(company.id)}
+                  type="button"
+                  onClick={() => form.setValue('companyId', String(company.id), { shouldDirty: true })}
+                  className={`w-full px-3 py-2 text-left text-sm border-b border-slate-100 last:border-0 hover:bg-slate-50 ${isSelected ? 'bg-blue-50 text-blue-900 font-medium' : 'text-slate-700'}`}
+                >
+                  <div>{String(company.name ?? '')}</div>
+                  {Boolean(company.domain || company.industry) && (
+                    <div className="text-xs text-slate-400">
+                      {[String(company.domain ?? ''), String(company.industry ?? '')].filter(Boolean).join(' • ')}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+            {filteredCompanyItems.length === 0 && (
+              <div className="px-3 py-3 text-sm text-slate-400">No companies match your search.</div>
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="space-y-1.5">
