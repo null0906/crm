@@ -8,6 +8,46 @@ import eventBus from '@/server/lib/event-bus';
 import { getPermissionLevel } from '@/server/lib/permissions';
 import { buildFilterWhere } from './filter.service';
 
+async function promoteCompanyToPartnerIfEligible(
+  companyId: string | null | undefined,
+  pipelineId: string,
+  stageId: string
+) {
+  if (!companyId) return;
+
+  const [stageContext] = await db
+    .select({
+      pipelineName: pipelines.name,
+      stageName: pipelineStages.name,
+      stageSlug: pipelineStages.slug,
+    })
+    .from(pipelineStages)
+    .innerJoin(pipelines, eq(pipelineStages.pipelineId, pipelines.id))
+    .where(and(
+      eq(pipelineStages.id, stageId),
+      eq(pipelines.id, pipelineId),
+    ))
+    .limit(1);
+
+  if (!stageContext) return;
+
+  const isPartnerPipeline = stageContext.pipelineName.toLowerCase().includes('partner');
+  const isActivePartnerStage =
+    stageContext.stageSlug === 'active_partner' ||
+    stageContext.stageName.toLowerCase() === 'active partner';
+
+  if (!isPartnerPipeline || !isActivePartnerStage) return;
+
+  await db
+    .update(companies)
+    .set({
+      companyType: 'partner',
+      status: 'active',
+      updatedAt: new Date(),
+    })
+    .where(and(eq(companies.id, companyId), isNull(companies.deletedAt)));
+}
+
 async function validatePartnerAssignment(pipelineId: string, partnerCompanyId?: string | null) {
   if (!partnerCompanyId) return;
 
@@ -338,6 +378,8 @@ export async function createDeal(
     metadata: { dealTitle: deal!.title, stageId: data.stageId },
   });
 
+  await promoteCompanyToPartnerIfEligible(data.companyId, data.pipelineId, data.stageId);
+
   eventBus.emit('deal.created', { dealId: deal!.id, createdBy: user.id });
 
   await writeAuditLog({
@@ -435,6 +477,12 @@ export async function updateDeal(
         primaryContactId: existing.primaryContactId,
       },
     });
+
+    await promoteCompanyToPartnerIfEligible(
+      (updated?.companyId as string | null | undefined) ?? (existing.companyId as string | null | undefined),
+      nextPipelineId,
+      data.stageId as string
+    );
   }
 
   const changes = buildChangeDiff(existing as Record<string, unknown>, updated as Record<string, unknown>);
