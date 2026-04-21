@@ -24,6 +24,8 @@ export const deals = pgTable(
     status: varchar('status', { length: 20 }).$type<DealStatus>().notNull().default('open'),
     lostReason: text('lost_reason'),
     wonReason: text('won_reason'),
+    services: jsonb('services').$type<string[]>().default([]),
+    serviceOther: text('service_other'),
     primaryContactId: uuid('primary_contact_id').references(() => contacts.id, { onDelete: 'set null' }),
     companyId: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
     partnerCompanyId: uuid('partner_company_id').references(() => companies.id, { onDelete: 'set null' }),

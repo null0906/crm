@@ -66,6 +66,8 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
   const stageName = deal?.stageName as string | null | undefined;
   const ownerFirstName = deal?.ownerFirstName as string | null | undefined;
   const ownerLastName = deal?.ownerLastName as string | null | undefined;
+  const services = ((deal?.services as string[] | null | undefined) ?? []).filter(Boolean);
+  const serviceOther = deal?.serviceOther as string | null | undefined;
   const currency = deal?.currency as string | undefined;
   const createdAt = deal?.createdAt as Date | undefined;
   const updatedAt = deal?.updatedAt as Date | undefined;
@@ -88,6 +90,8 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
     probability: (probability as number) ?? 0,
     expectedCloseDate: expectedCloseDate ?? '',
     status: (status as 'open' | 'won' | 'lost' | 'abandoned') ?? 'open',
+    services,
+    serviceOther: serviceOther ?? '',
     primaryContactId: primaryContactId ?? '',
     companyId: companyId ?? '',
     partnerCompanyId: (deal?.partnerCompanyId as string | null | undefined) ?? '',
@@ -189,6 +193,12 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                     )}
                     {companyName && <InfoField label="Company" value={companyName} />}
                     {partnerCompanyName && <InfoField label="Partner" value={partnerCompanyName} />}
+                    {(services.length > 0 || serviceOther) && (
+                      <InfoField
+                        label="Services"
+                        value={[...services.filter((service) => service !== 'Other'), serviceOther].filter(Boolean).join(', ')}
+                      />
+                    )}
                     {stageName && <InfoField label="Stage" value={stageName} />}
                     {ownerFirstName && (
                       <InfoField label="Owner" value={`${ownerFirstName} ${ownerLastName ?? ''}`} />

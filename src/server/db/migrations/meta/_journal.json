@@ -43,6 +43,13 @@
       "when": 1776700000000,
       "tag": "0005_bright_sabertooth",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776800000000,
+      "tag": "0006_fancy_services",
+      "breakpoints": true
     }
   ]
 }

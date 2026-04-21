@@ -29,6 +29,19 @@ export const DEAL_STATUSES = [
   { value: 'abandoned', label: 'Abandoned', color: '#9CA3AF' },
 ] as const;
 
+export const DEAL_SERVICE_OPTIONS = [
+  'VAPT',
+  'SOC 2',
+  'ISO 27001',
+  'PCI DSS',
+  'Cloud Security',
+  'GRC Consulting',
+  'Compliance Automation',
+  'Security Awareness Training',
+  'Audit Support',
+  'Other',
+] as const;
+
 export const ACTIVITY_TYPES = [
   { value: 'call', label: 'Call', icon: 'Phone' },
   { value: 'email_sent', label: 'Email Sent', icon: 'Mail' },

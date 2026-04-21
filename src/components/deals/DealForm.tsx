@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { dealCreateSchema } from '@/server/lib/validators';
 import { CustomFieldRenderer } from '@/components/custom-fields/CustomFieldRenderer';
+import { DEAL_SERVICE_OPTIONS } from '@/lib/constants';
 import type { z } from 'zod';
 
 type FormData = z.infer<typeof dealCreateSchema>;
@@ -77,6 +78,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
       currency: 'INR',
       probability: 0,
       status: 'open',
+      services: [],
       customFields: {},
       tagIds: [],
       ownerId: currentUserId ?? '',
@@ -108,6 +110,8 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   }
 
   const isPending = createDeal.isPending || updateDeal.isPending;
+  const selectedServices = form.watch('services') ?? [];
+  const showOtherServiceInput = selectedServices.includes('Other');
 
   const contactItems = (contactsData?.items ?? []) as Array<Record<string, unknown>>;
   const selectedPrimaryContactId = form.watch('primaryContactId');
@@ -210,6 +214,50 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
           type="date"
           {...form.register('expectedCloseDate')}
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Services</Label>
+        <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {DEAL_SERVICE_OPTIONS.map((service) => {
+            const checked = selectedServices.includes(service);
+            return (
+              <label
+                key={service}
+                className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${checked ? 'border-blue-200 bg-blue-50 text-blue-900' : 'border-slate-200 bg-white text-slate-700'}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(e) => {
+                    const next = e.target.checked
+                      ? [...selectedServices, service]
+                      : selectedServices.filter((value) => value !== service);
+                    form.setValue('services', next, { shouldDirty: true });
+                    if (service === 'Other' && !e.target.checked) {
+                      form.setValue('serviceOther', '', { shouldDirty: true });
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>{service}</span>
+              </label>
+            );
+          })}
+        </div>
+        {showOtherServiceInput && (
+          <div className="space-y-1.5">
+            <Label htmlFor="serviceOther">Custom Service</Label>
+            <Input
+              id="serviceOther"
+              {...form.register('serviceOther')}
+              placeholder="Add a custom service name"
+            />
+            {form.formState.errors.serviceOther && (
+              <p className="text-xs text-red-500">{form.formState.errors.serviceOther.message}</p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5">

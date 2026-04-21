@@ -99,6 +99,8 @@ export const dealCreateSchema = z.object({
   status: z.enum(['open', 'won', 'lost', 'abandoned']).default('open'),
   lostReason: optionalString(),
   wonReason: optionalString(),
+  services: z.array(z.string().min(1).max(100)).default([]),
+  serviceOther: optionalStringMax(255),
   primaryContactId: optionalUuid(),
   companyId: optionalUuid(),
   partnerCompanyId: optionalUuid(),
