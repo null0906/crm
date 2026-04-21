@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
-import { dealCreateSchema, dealUpdateSchema, filterConfigSchema, paginationSchema, sortSchema } from '@/server/lib/validators';
+import { dealCreateSchema, dealUpdateSchema, dealBulkUpdateSchema, filterConfigSchema, paginationSchema, sortSchema } from '@/server/lib/validators';
 import * as dealService from '@/server/services/deal.service';
 
 export const dealRouter = router({
@@ -84,6 +84,16 @@ export const dealRouter = router({
     .mutation(async ({ ctx, input }) => {
       await dealService.deleteDeal(ctx.user!, input.id);
       return { success: true };
+    }),
+
+  bulkUpdate: protectedProcedure
+    .use(requirePermission('deals', 'update'))
+    .input(z.object({
+      ids: z.array(z.string().uuid()).min(1),
+      data: dealBulkUpdateSchema,
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dealService.bulkUpdateDeals(ctx.user!, input.ids, input.data);
     }),
 
   moveToStage: protectedProcedure

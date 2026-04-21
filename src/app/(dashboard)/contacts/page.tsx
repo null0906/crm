@@ -19,6 +19,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { ContactForm } from '@/components/contacts/ContactForm';
 import { ContactStatusBadge } from '@/components/contacts/ContactStatusBadge';
 import { TagBadge } from '@/components/tags/TagBadge';
+import { TagInput } from '@/components/tags/TagInput';
 import { ContactDetail } from '@/components/contacts/ContactDetail';
 import { formatDate, formatRelative, getInitials } from '@/lib/formatters';
 import { toast } from 'sonner';
@@ -47,6 +48,9 @@ export default function ContactsPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string>('');
   const [editContact, setEditContact] = useState<Contact | null>(null);
+  const [bulkOwnerId, setBulkOwnerId] = useState('');
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkTagsToAdd, setBulkTagsToAdd] = useState<{ id: string; name: string; color: string }[]>([]);
 
   const debouncedSearch = useDebounce(search, 300);
   const utils = trpc.useUtils();
@@ -92,6 +96,18 @@ export default function ContactsPage() {
       void utils.contacts.list.invalidate();
     },
     onError: (e) => toast.error('Failed to delete', { description: e.message }),
+  });
+
+  const bulkUpdate = trpc.contacts.bulkUpdate.useMutation({
+    onSuccess: ({ updated }) => {
+      toast.success(`${updated} contacts updated`);
+      setBulkOwnerId('');
+      setBulkStatus('');
+      setBulkTagsToAdd([]);
+      setRowSelection({});
+      void utils.contacts.list.invalidate();
+    },
+    onError: (e) => toast.error('Failed to update contacts', { description: e.message }),
   });
 
   const relinkMutation = trpc.import.relinkContactCompanies.useMutation({
@@ -407,6 +423,45 @@ export default function ContactsPage() {
       {selectedIds.length > 0 && (
         <div className="flex items-center gap-2 px-6 py-2 bg-blue-50 border-b border-blue-200">
           <span className="text-sm font-medium text-blue-700">{selectedIds.length} selected</span>
+          <select
+            value={bulkOwnerId}
+            onChange={(e) => setBulkOwnerId(e.target.value)}
+            className="text-xs border border-blue-200 rounded-md px-2 py-1 bg-white text-slate-600"
+          >
+            <option value="">Change owner</option>
+            <option value="__unassigned__">Unassigned</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+            ))}
+          </select>
+          <select
+            value={bulkStatus}
+            onChange={(e) => setBulkStatus(e.target.value)}
+            className="text-xs border border-blue-200 rounded-md px-2 py-1 bg-white text-slate-600"
+          >
+            <option value="">Change lead type</option>
+            {CONTACT_STATUSES.map((status) => (
+              <option key={status.value} value={status.value}>{status.label}</option>
+            ))}
+          </select>
+          <div className="min-w-[240px] max-w-[320px]">
+            <TagInput value={bulkTagsToAdd} onChange={setBulkTagsToAdd} placeholder="Add tags to selected..." />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={bulkUpdate.isPending || (!bulkOwnerId && !bulkStatus && bulkTagsToAdd.length === 0)}
+            onClick={() => bulkUpdate.mutate({
+              ids: selectedIds,
+              data: {
+                ...(bulkOwnerId ? { ownerId: bulkOwnerId === '__unassigned__' ? null : bulkOwnerId } : {}),
+                ...(bulkStatus ? { status: bulkStatus as 'new' | 'contacted' | 'qualified' | 'unqualified' | 'nurturing' | 'converted' | 'lost' | 'archived' } : {}),
+                ...(bulkTagsToAdd.length > 0 ? { tagIdsToAdd: bulkTagsToAdd.map((tag) => tag.id) } : {}),
+              },
+            })}
+          >
+            Apply
+          </Button>
           <Button
             size="sm"
             variant="outline"

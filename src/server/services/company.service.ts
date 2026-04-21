@@ -274,3 +274,36 @@ export async function removeCompanyTags(user: SessionUser, companyId: string, ta
     eventBus.emit('tag.removed', { entityType: 'company', entityId: companyId, tagId, untaggedBy: user.id });
   }
 }
+
+export async function bulkUpdateCompanies(
+  user: SessionUser,
+  ids: string[],
+  data: { ownerId?: string | null; companyType?: string | null; tagIdsToAdd?: string[] }
+): Promise<{ updated: number }> {
+  if (!ids.length) return { updated: 0 };
+
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (data.ownerId !== undefined) updateData.ownerId = data.ownerId;
+  if (data.companyType !== undefined) updateData.companyType = data.companyType;
+
+  if (Object.keys(updateData).length > 1) {
+    await db
+      .update(companies)
+      .set(updateData as Partial<typeof companies.$inferInsert>)
+      .where(and(inArray(companies.id, ids), isNull(companies.deletedAt)));
+  }
+
+  for (const id of ids) {
+    if (data.tagIdsToAdd?.length) await addCompanyTags(user, id, data.tagIdsToAdd);
+  }
+
+  await writeAuditLog({
+    userId: user.id,
+    userEmail: user.email,
+    action: 'bulk_update',
+    entityType: 'company',
+    metadata: { ids, changes: data },
+  });
+
+  return { updated: ids.length };
+}

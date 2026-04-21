@@ -637,6 +637,39 @@ export async function removeDealTags(user: SessionUser, dealId: string, tagIds: 
   }
 }
 
+export async function bulkUpdateDeals(
+  user: SessionUser,
+  ids: string[],
+  data: { ownerId?: string | null; status?: string; tagIdsToAdd?: string[] }
+): Promise<{ updated: number }> {
+  if (!ids.length) return { updated: 0 };
+
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (data.ownerId !== undefined) updateData.ownerId = data.ownerId;
+  if (data.status !== undefined) updateData.status = data.status;
+
+  if (Object.keys(updateData).length > 1) {
+    await db
+      .update(deals)
+      .set(updateData as Partial<typeof deals.$inferInsert>)
+      .where(and(inArray(deals.id, ids), isNull(deals.deletedAt)));
+  }
+
+  for (const id of ids) {
+    if (data.tagIdsToAdd?.length) await addDealTags(user, id, data.tagIdsToAdd);
+  }
+
+  await writeAuditLog({
+    userId: user.id,
+    userEmail: user.email,
+    action: 'bulk_update',
+    entityType: 'deal',
+    metadata: { ids, changes: data },
+  });
+
+  return { updated: ids.length };
+}
+
 export async function moveDealToStage(
   user: SessionUser,
   dealId: string,

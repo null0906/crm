@@ -33,6 +33,14 @@ export const searchRouter = router({
           ilike(companies.industry, tokenPattern)
         )!;
       });
+      const dealTokenConditions = searchTokens.map((token) => {
+        const tokenPattern = `%${token}%`;
+        return or(
+          ilike(deals.title, tokenPattern),
+          ilike(deals.status, tokenPattern),
+          sql`${deals.id}::text ILIKE ${tokenPattern}`
+        )!;
+      });
 
       const [contactResults, companyResults, dealResults] = await Promise.all([
         db
@@ -99,7 +107,9 @@ export const searchRouter = router({
           .where(
             and(
               isNull(deals.deletedAt),
-              ilike(deals.title, q)
+              ...(dealTokenConditions.length > 0
+                ? [and(...dealTokenConditions)!]
+                : [ilike(deals.title, q)])
             )
           )
           .limit(5),

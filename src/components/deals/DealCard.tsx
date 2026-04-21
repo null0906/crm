@@ -39,17 +39,20 @@ export function DealCard({ deal, onClick }: DealCardProps) {
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-[0_1px_3px_rgba(16,24,40,0.06),_0_1px_2px_rgba(16,24,40,0.04)] hover:shadow-[0_4px_12px_rgba(16,24,40,0.08),_0_2px_4px_rgba(16,24,40,0.04)] hover:border-slate-300 transition-all duration-150 cursor-pointer group"
+      className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-[0_1px_3px_rgba(16,24,40,0.06),_0_1px_2px_rgba(16,24,40,0.04)] hover:shadow-[0_4px_12px_rgba(16,24,40,0.08),_0_2px_4px_rgba(16,24,40,0.04)] hover:border-slate-300 transition-all duration-150 cursor-pointer group overflow-hidden"
     >
-      <p className="text-[13px] font-medium text-slate-800 leading-snug mb-2.5 group-hover:text-blue-600 transition-colors">
+      <p
+        className="text-[13px] font-medium text-slate-800 leading-snug mb-2.5 group-hover:text-blue-600 transition-colors break-words"
+        title={String(deal.title ?? '')}
+      >
         {deal.title as string}
       </p>
 
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {amount !== null && amount !== undefined && (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
             <DollarSign className="w-3 h-3 text-slate-300 flex-shrink-0" />
-            <span className="text-[12px] font-semibold text-slate-700 font-data">{formatCurrency(amount)}</span>
+            <span className="text-[12px] font-semibold text-slate-700 font-data break-all">{formatCurrency(amount)}</span>
             {probability !== null && probability !== undefined && (
               <Badge variant="secondary" className="ml-auto text-[10px]">{probability}%</Badge>
             )}
@@ -57,23 +60,23 @@ export function DealCard({ deal, onClick }: DealCardProps) {
         )}
 
         {primaryContactName && (
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <div className="flex items-start gap-1.5 text-[11px] text-slate-400 min-w-0">
             <User className="w-3 h-3 flex-shrink-0" strokeWidth={1.75} />
-            <span className="truncate">{primaryContactName}</span>
+            <span className="break-words leading-snug" title={primaryContactName}>{primaryContactName}</span>
           </div>
         )}
 
         {companyName && (
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <div className="flex items-start gap-1.5 text-[11px] text-slate-400 min-w-0">
             <Building2 className="w-3 h-3 flex-shrink-0" strokeWidth={1.75} />
-            <span className="truncate">{companyName}</span>
+            <span className="break-words leading-snug" title={companyName}>{companyName}</span>
           </div>
         )}
 
         {ownerName && (
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <div className="flex items-start gap-1.5 text-[11px] text-slate-400 min-w-0">
             <User className="w-3 h-3 flex-shrink-0" strokeWidth={1.75} />
-            <span className="truncate">Owner: {ownerName}</span>
+            <span className="break-words leading-snug" title={String(ownerName)}>Owner: {ownerName}</span>
           </div>
         )}
 

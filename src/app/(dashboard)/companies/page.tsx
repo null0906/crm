@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import {
   useReactTable, getCoreRowModel, flexRender,
-  type ColumnDef,
+  type ColumnDef, type RowSelectionState,
 } from '@tanstack/react-table';
 import { Plus, Search, Building2, Pencil, Trash2 } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
@@ -16,6 +16,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { CompanyForm } from '@/components/companies/CompanyForm';
 import { CompanyTypeBadge } from '@/components/companies/CompanyTypeBadge';
+import { TagInput } from '@/components/tags/TagInput';
 import { CompanyDetail } from '@/components/companies/CompanyDetail';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDate } from '@/lib/formatters';
@@ -30,6 +31,7 @@ export default function CompaniesPage() {
   const [ownerFilter, setOwnerFilter] = useState<string>('');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [pageSize, setPageSize] = useState(50);
   const [cursor, setCursor] = useState<string | undefined>();
   const [createOpen, setCreateOpen] = useState(false);
@@ -37,6 +39,9 @@ export default function CompaniesPage() {
   const [editCompany, setEditCompany] = useState<Company | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string>('');
+  const [bulkOwnerId, setBulkOwnerId] = useState('');
+  const [bulkCompanyType, setBulkCompanyType] = useState('');
+  const [bulkTagsToAdd, setBulkTagsToAdd] = useState<{ id: string; name: string; color: string }[]>([]);
 
   const debouncedSearch = useDebounce(search, 300);
   const utils = trpc.useUtils();
@@ -64,6 +69,18 @@ export default function CompaniesPage() {
     onError: (e) => toast.error('Failed to delete', { description: e.message }),
   });
 
+  const bulkUpdate = trpc.companies.bulkUpdate.useMutation({
+    onSuccess: ({ updated }) => {
+      toast.success(`${updated} companies updated`);
+      setBulkOwnerId('');
+      setBulkCompanyType('');
+      setBulkTagsToAdd([]);
+      setRowSelection({});
+      void utils.companies.list.invalidate();
+    },
+    onError: (e) => toast.error('Failed to update companies', { description: e.message }),
+  });
+
   const { data, isLoading } = trpc.companies.list.useQuery({
     search: debouncedSearch || undefined,
     filters: filterConditions.length > 0
@@ -73,8 +90,30 @@ export default function CompaniesPage() {
   });
 
   const companies: Company[] = (data?.items ?? []) as Company[];
+  const selectedIds = Object.keys(rowSelection).filter((k) => rowSelection[k]);
 
   const columns: ColumnDef<Company>[] = [
+    {
+      id: 'select',
+      header: ({ table }) => (
+        <input
+          type="checkbox"
+          checked={table.getIsAllRowsSelected()}
+          onChange={table.getToggleAllRowsSelectedHandler()}
+          className="rounded border-slate-300"
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          type="checkbox"
+          checked={row.getIsSelected()}
+          onChange={row.getToggleSelectedHandler()}
+          onClick={(e) => e.stopPropagation()}
+          className="rounded border-slate-300"
+        />
+      ),
+      size: 40,
+    },
     {
       accessorKey: 'name',
       header: 'Company',
@@ -169,6 +208,9 @@ export default function CompaniesPage() {
   const table = useReactTable({
     data: companies,
     columns,
+    state: { rowSelection },
+    getRowId: (row) => String(row.id),
+    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
   });
 
@@ -267,6 +309,54 @@ export default function CompaniesPage() {
           </select>
         </div>
       </div>
+
+      {selectedIds.length > 0 && (
+        <div className="flex items-center gap-2 px-6 py-2 bg-blue-50 border-b border-blue-200">
+          <span className="text-sm font-medium text-blue-700">{selectedIds.length} selected</span>
+          <select
+            value={bulkOwnerId}
+            onChange={(e) => setBulkOwnerId(e.target.value)}
+            className="text-xs border border-blue-200 rounded-md px-2 py-1 bg-white text-slate-600"
+          >
+            <option value="">Change owner</option>
+            <option value="__unassigned__">Unassigned</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+            ))}
+          </select>
+          <select
+            value={bulkCompanyType}
+            onChange={(e) => setBulkCompanyType(e.target.value)}
+            className="text-xs border border-blue-200 rounded-md px-2 py-1 bg-white text-slate-600"
+          >
+            <option value="">Change company type</option>
+            {COMPANY_TYPES.map((type) => (
+              <option key={type.value} value={type.value}>{type.label}</option>
+            ))}
+          </select>
+          <div className="min-w-[240px] max-w-[320px]">
+            <TagInput value={bulkTagsToAdd} onChange={setBulkTagsToAdd} placeholder="Add tags to selected..." />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={bulkUpdate.isPending || (!bulkOwnerId && !bulkCompanyType && bulkTagsToAdd.length === 0)}
+            onClick={() => bulkUpdate.mutate({
+              ids: selectedIds,
+              data: {
+                ownerId: bulkOwnerId ? (bulkOwnerId === '__unassigned__' ? null : bulkOwnerId) : undefined,
+                companyType: bulkCompanyType ? (bulkCompanyType as 'prospect' | 'customer' | 'partner' | 'vendor' | 'competitor' | 'other') : undefined,
+                tagIdsToAdd: bulkTagsToAdd.length > 0 ? bulkTagsToAdd.map((tag) => tag.id) : undefined,
+              },
+            })}
+          >
+            Apply
+          </Button>
+          <button onClick={() => setRowSelection({})} className="text-xs text-slate-500 ml-auto hover:text-slate-700">
+            Clear selection
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="flex-1 overflow-auto">

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
-import { companyCreateSchema, companyUpdateSchema, filterConfigSchema, paginationSchema, sortSchema } from '@/server/lib/validators';
+import { companyCreateSchema, companyUpdateSchema, companyBulkUpdateSchema, filterConfigSchema, paginationSchema, sortSchema } from '@/server/lib/validators';
 import * as companyService from '@/server/services/company.service';
 
 export const companyRouter = router({
@@ -54,6 +54,16 @@ export const companyRouter = router({
     .mutation(async ({ ctx, input }) => {
       await companyService.deleteCompany(ctx.user!, input.id);
       return { success: true };
+    }),
+
+  bulkUpdate: protectedProcedure
+    .use(requirePermission('companies', 'update'))
+    .input(z.object({
+      ids: z.array(z.string().uuid()).min(1),
+      data: companyBulkUpdateSchema,
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return companyService.bulkUpdateCompanies(ctx.user!, input.ids, input.data);
     }),
 
   addTags: protectedProcedure

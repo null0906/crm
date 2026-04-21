@@ -8,6 +8,7 @@ import {
   flexRender,
   createColumnHelper,
   type SortingState,
+  type RowSelectionState,
 } from '@tanstack/react-table';
 import { ChevronUp, ChevronDown, ChevronsUpDown, Trash2, ExternalLink } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
@@ -43,6 +44,8 @@ interface DealTableProps {
   pipelineId: string;
   onDealClick: (dealId: string) => void;
   extraFilters?: FilterCondition[];
+  rowSelection?: RowSelectionState;
+  onRowSelectionChange?: React.Dispatch<React.SetStateAction<RowSelectionState>>;
 }
 
 const columnHelper = createColumnHelper<Deal>();
@@ -53,7 +56,7 @@ const STATUS_COLORS: Record<string, string> = {
   lost: 'bg-red-50 text-red-700 border border-red-200',
 };
 
-export function DealTable({ pipelineId, onDealClick, extraFilters }: DealTableProps) {
+export function DealTable({ pipelineId, onDealClick, extraFilters, rowSelection, onRowSelectionChange }: DealTableProps) {
   const utils = trpc.useUtils();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [cursor, setCursor] = useState<string | undefined>();
@@ -87,6 +90,26 @@ export function DealTable({ pipelineId, onDealClick, extraFilters }: DealTablePr
   const nextCursor: string | null = (data as { nextCursor?: string | null })?.nextCursor ?? null;
 
   const columns = [
+    columnHelper.display({
+      id: 'select',
+      header: ({ table }) => (
+        <input
+          type="checkbox"
+          checked={table.getIsAllRowsSelected()}
+          onChange={table.getToggleAllRowsSelectedHandler()}
+          className="rounded border-slate-300"
+        />
+      ),
+      cell: (info) => (
+        <input
+          type="checkbox"
+          checked={info.row.getIsSelected()}
+          onChange={info.row.getToggleSelectedHandler()}
+          onClick={(e) => e.stopPropagation()}
+          className="rounded border-slate-300"
+        />
+      ),
+    }),
     columnHelper.accessor('title', {
       header: 'Deal',
       cell: (info) => (
@@ -201,8 +224,10 @@ export function DealTable({ pipelineId, onDealClick, extraFilters }: DealTablePr
   const table = useReactTable({
     data: items,
     columns,
-    state: { sorting },
+    state: { sorting, rowSelection: rowSelection ?? {} },
+    getRowId: (row) => row.id,
     onSortingChange: setSorting,
+    onRowSelectionChange,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     manualSorting: true,

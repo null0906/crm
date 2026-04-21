@@ -43,10 +43,17 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     setFocusedIndex(-1);
   }, [debouncedQuery]);
 
+  function getEntityHref(type: string, id: string) {
+    if (type === 'company') return `/companies/${id}`;
+    if (type === 'contact') return `/contacts/${id}`;
+    if (type === 'deal') return `/deals/${id}`;
+    return '/dashboard';
+  }
+
   function handleSelect(type: string, id: string) {
     onOpenChange(false);
     setQuery('');
-    router.push(`/${type}s/${id}`);
+    router.push(getEntityHref(type, id));
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {

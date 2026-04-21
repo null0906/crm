@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import type { RowSelectionState } from '@tanstack/react-table';
 import { Plus, LayoutGrid, List, Upload, Link2, Filter } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
@@ -9,8 +10,10 @@ import { KanbanBoard } from '@/components/deals/KanbanBoard';
 import { DealTable } from '@/components/deals/DealTable';
 import { DealForm } from '@/components/deals/DealForm';
 import { DealDetail } from '@/components/deals/DealDetail';
+import { TagInput } from '@/components/tags/TagInput';
 import { ImportWizard } from '@/components/import-export/ImportWizard';
 import { BackfillDealLinksWizard } from '@/components/import-export/BackfillDealLinksWizard';
+import { toast } from 'sonner';
 
 interface Stage {
   id: string;
@@ -34,10 +37,29 @@ export default function DealsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [bulkOwnerId, setBulkOwnerId] = useState('');
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkTagsToAdd, setBulkTagsToAdd] = useState<{ id: string; name: string; color: string }[]>([]);
 
   const { data: pipelines = [], isLoading: pipelinesLoading } = trpc.pipelines.list.useQuery();
   const { data: usersData } = trpc.users.list.useQuery();
   const users = usersData ?? [];
+  const utils = trpc.useUtils();
+  const selectedDealIds = Object.keys(rowSelection).filter((k) => rowSelection[k]);
+
+  const bulkUpdateDeals = trpc.deals.bulkUpdate.useMutation({
+    onSuccess: ({ updated }) => {
+      toast.success(`${updated} deals updated`);
+      setBulkOwnerId('');
+      setBulkStatus('');
+      setBulkTagsToAdd([]);
+      setRowSelection({});
+      void utils.deals.list.invalidate();
+      if (selectedPipelineId) void utils.deals.byStage.invalidate({ pipelineId: selectedPipelineId });
+    },
+    onError: (err) => toast.error('Failed to update deals', { description: err.message }),
+  });
 
   type FilterOp = 'eq' | 'gte' | 'lte';
   const dealFilterConditions: Array<{ field: string; operator: FilterOp; value: string }> = [];
@@ -52,6 +74,10 @@ export default function DealsPage() {
       setSelectedPipelineId(String(pipelines[0]!.id));
     }
   }, [pipelines, selectedPipelineId]);
+
+  React.useEffect(() => {
+    setRowSelection({});
+  }, [selectedPipelineId, viewMode]);
 
   const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery(
     { id: selectedPipelineId },
@@ -199,6 +225,55 @@ export default function DealsPage() {
         </div>
       )}
 
+      {selectedDealIds.length > 0 && (
+        <div className="flex items-center gap-2 px-6 py-2 bg-blue-50 border-b border-blue-200 flex-shrink-0">
+          <span className="text-sm font-medium text-blue-700">{selectedDealIds.length} selected</span>
+          <select
+            value={bulkOwnerId}
+            onChange={(e) => setBulkOwnerId(e.target.value)}
+            className="text-xs border border-blue-200 rounded-md px-2 py-1 bg-white text-slate-600"
+          >
+            <option value="">Change owner</option>
+            <option value="__unassigned__">Unassigned</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+            ))}
+          </select>
+          <select
+            value={bulkStatus}
+            onChange={(e) => setBulkStatus(e.target.value)}
+            className="text-xs border border-blue-200 rounded-md px-2 py-1 bg-white text-slate-600"
+          >
+            <option value="">Change lead type / status</option>
+            <option value="open">Open</option>
+            <option value="won">Won</option>
+            <option value="lost">Lost</option>
+            <option value="abandoned">Abandoned</option>
+          </select>
+          <div className="min-w-[240px] max-w-[320px]">
+            <TagInput value={bulkTagsToAdd} onChange={setBulkTagsToAdd} placeholder="Add tags to selected..." />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={bulkUpdateDeals.isPending || (!bulkOwnerId && !bulkStatus && bulkTagsToAdd.length === 0)}
+            onClick={() => bulkUpdateDeals.mutate({
+              ids: selectedDealIds,
+              data: {
+                ...(bulkOwnerId ? { ownerId: bulkOwnerId === '__unassigned__' ? null : bulkOwnerId } : {}),
+                ...(bulkStatus ? { status: bulkStatus as 'open' | 'won' | 'lost' | 'abandoned' } : {}),
+                ...(bulkTagsToAdd.length > 0 ? { tagIdsToAdd: bulkTagsToAdd.map((tag) => tag.id) } : {}),
+              },
+            })}
+          >
+            Apply
+          </Button>
+          <button onClick={() => setRowSelection({})} className="text-xs text-slate-500 ml-auto hover:text-slate-700">
+            Clear selection
+          </button>
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {!selectedPipelineId ? (
@@ -223,6 +298,8 @@ export default function DealsPage() {
             pipelineId={selectedPipelineId}
             onDealClick={(dealId) => setSelectedDealId(dealId)}
             extraFilters={dealFilterConditions.length > 0 ? dealFilterConditions : undefined}
+            rowSelection={rowSelection}
+            onRowSelectionChange={setRowSelection}
           />
         )}
       </div>

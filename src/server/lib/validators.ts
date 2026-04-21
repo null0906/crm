@@ -80,6 +80,12 @@ export const companyCreateSchema = z.object({
 
 export const companyUpdateSchema = companyCreateSchema.partial().omit({ tagIds: true });
 
+export const companyBulkUpdateSchema = z.object({
+  ownerId: optionalUuid(),
+  companyType: z.preprocess(emptyToNull, z.enum(['prospect', 'customer', 'partner', 'vendor', 'competitor', 'other']).optional().nullable()),
+  tagIdsToAdd: z.array(z.string().uuid()).optional(),
+});
+
 // Deal schemas
 export const dealCreateSchema = z.object({
   title: z.string().min(1).max(255),
@@ -102,6 +108,12 @@ export const dealCreateSchema = z.object({
 });
 
 export const dealUpdateSchema = dealCreateSchema.partial().omit({ tagIds: true });
+
+export const dealBulkUpdateSchema = z.object({
+  ownerId: optionalUuid(),
+  status: z.enum(['open', 'won', 'lost', 'abandoned']).optional(),
+  tagIdsToAdd: z.array(z.string().uuid()).optional(),
+});
 
 // Activity schemas
 export const activityCreateSchema = z.object({
