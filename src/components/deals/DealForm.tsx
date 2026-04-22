@@ -36,11 +36,11 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
   const [contactSearch, setContactSearch] = React.useState('');
   const [companySearch, setCompanySearch] = React.useState('');
+  const debouncedContactSearch = React.useDeferredValue(contactSearch.trim());
+  const debouncedCompanySearch = React.useDeferredValue(companySearch.trim());
 
   const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery({ id: pipelineId });
   const { data: customFields = [] } = trpc.customFields.list.useQuery({ entityType: 'deal' });
-  const { data: contactsData } = trpc.contacts.list.useQuery({ pagination: { limit: 200 } });
-  const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 200 } });
   const { data: users = [] } = trpc.users.list.useQuery();
 
   const stages = pipelineData?.stages ?? [];
@@ -112,51 +112,55 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   const isPending = createDeal.isPending || updateDeal.isPending;
   const selectedServices = form.watch('services') ?? [];
   const showOtherServiceInput = selectedServices.includes('Other');
-
-  const contactItems = (contactsData?.items ?? []) as Array<Record<string, unknown>>;
   const selectedPrimaryContactId = form.watch('primaryContactId');
   const selectedCompanyId = form.watch('companyId');
-  const filteredContactItems = contactItems.filter((contact) => {
-    const search = contactSearch.trim().toLowerCase();
-    if (!search) return true;
+  const selectedPartnerCompanyId = form.watch('partnerCompanyId');
 
-    const firstName = String(contact.firstName ?? '').toLowerCase();
-    const lastName = String(contact.lastName ?? '').toLowerCase();
-    const email = String(contact.email ?? '').toLowerCase();
-    const fullName = `${firstName} ${lastName}`.trim();
-
-    return search
-      .split(/\s+/)
-      .filter(Boolean)
-      .every((token) =>
-        firstName.includes(token) ||
-        lastName.includes(token) ||
-        fullName.includes(token) ||
-        email.includes(token)
-      );
+  const { data: contactsData } = trpc.contacts.list.useQuery({
+    search: debouncedContactSearch || undefined,
+    pagination: { limit: 50 },
   });
+  const { data: companiesData } = trpc.companies.list.useQuery({
+    search: debouncedCompanySearch || undefined,
+    pagination: { limit: 50 },
+  });
+  const { data: selectedPrimaryContactData } = trpc.contacts.getById.useQuery(
+    { id: String(selectedPrimaryContactId) },
+    { enabled: Boolean(selectedPrimaryContactId) }
+  );
+  const { data: selectedCompanyData } = trpc.companies.getById.useQuery(
+    { id: String(selectedCompanyId) },
+    { enabled: Boolean(selectedCompanyId) }
+  );
+  const { data: selectedPartnerCompanyData } = trpc.companies.getById.useQuery(
+    { id: String(selectedPartnerCompanyId) },
+    { enabled: Boolean(selectedPartnerCompanyId) }
+  );
+
+  const contactItems = React.useMemo(() => {
+    const items = (contactsData?.items ?? []) as Array<Record<string, unknown>>;
+    const merged = [...items];
+    if (selectedPrimaryContactData) {
+      const alreadyIncluded = items.some((contact) => String(contact.id) === String(selectedPrimaryContactData.id));
+      if (!alreadyIncluded) merged.unshift(selectedPrimaryContactData as Record<string, unknown>);
+    }
+    return merged;
+  }, [contactsData?.items, selectedPrimaryContactData]);
+  const filteredContactItems = contactItems;
   const selectedPrimaryContact = contactItems.find((contact) => String(contact.id) === String(selectedPrimaryContactId ?? ''));
-  const companyItems = ((companiesData?.items ?? []) as Array<Record<string, unknown>>);
-  const filteredCompanyItems = companyItems.filter((company) => {
-    const search = companySearch.trim().toLowerCase();
-    if (!search) return true;
-
-    const name = String(company.name ?? '').toLowerCase();
-    const domain = String(company.domain ?? '').toLowerCase();
-    const industry = String(company.industry ?? '').toLowerCase();
-
-    return search
-      .split(/\s+/)
-      .filter(Boolean)
-      .every((token) =>
-        name.includes(token) ||
-        domain.includes(token) ||
-        industry.includes(token)
-      );
-  });
+  const companyItems = React.useMemo(() => {
+    const items = (companiesData?.items ?? []) as Array<Record<string, unknown>>;
+    const merged = [...items];
+    for (const selectedItem of [selectedCompanyData, selectedPartnerCompanyData]) {
+      if (!selectedItem) continue;
+      const alreadyIncluded = merged.some((company) => String(company.id) === String(selectedItem.id));
+      if (!alreadyIncluded) merged.unshift(selectedItem as Record<string, unknown>);
+    }
+    return merged;
+  }, [companiesData?.items, selectedCompanyData, selectedPartnerCompanyData]);
+  const filteredCompanyItems = companyItems;
   const selectedCompany = companyItems.find((company) => String(company.id) === String(selectedCompanyId ?? ''));
   const partnerItems = companyItems.filter((company) => String(company.companyType ?? '') === 'partner');
-  const selectedPartnerCompanyId = form.watch('partnerCompanyId');
   const selectedPartnerCompany = partnerItems.find((company) => String(company.id) === String(selectedPartnerCompanyId ?? ''));
 
   return (

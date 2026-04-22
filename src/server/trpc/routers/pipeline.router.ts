@@ -161,6 +161,43 @@ export const pipelineRouter = router({
       return updated;
     }),
 
+  reorderStages: protectedProcedure
+    .use(requirePermission('settings', 'pipelines'))
+    .input(z.object({
+      pipelineId: z.string().uuid(),
+      stageIds: z.array(z.string().uuid()).min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const stageRows = await db
+        .select({ id: pipelineStages.id })
+        .from(pipelineStages)
+        .where(eq(pipelineStages.pipelineId, input.pipelineId))
+        .orderBy(asc(pipelineStages.position));
+
+      const existingIds = stageRows.map((stage) => stage.id);
+      if (existingIds.length !== input.stageIds.length || existingIds.some((id) => !input.stageIds.includes(id))) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Stage reorder payload does not match this pipeline.' });
+      }
+
+      await db.transaction(async (tx) => {
+        for (let i = 0; i < input.stageIds.length; i++) {
+          await tx
+            .update(pipelineStages)
+            .set({ position: input.stageIds.length + i, updatedAt: new Date() })
+            .where(eq(pipelineStages.id, input.stageIds[i]!));
+        }
+
+        for (let i = 0; i < input.stageIds.length; i++) {
+          await tx
+            .update(pipelineStages)
+            .set({ position: i, updatedAt: new Date() })
+            .where(eq(pipelineStages.id, input.stageIds[i]!));
+        }
+      });
+
+      return { success: true };
+    }),
+
   deleteStage: protectedProcedure
     .use(requirePermission('settings', 'pipelines'))
     .input(z.object({ id: z.string().uuid() }))

@@ -137,6 +137,16 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
     onError: (err) => toast.error('Failed to add stage', { description: err.message }),
   });
 
+  const reorderStages = trpc.pipelines.reorderStages.useMutation({
+    onSuccess: () => {
+      void utils.pipelines.getWithStages.invalidate({ id: pipelineId });
+      void utils.pipelines.list.invalidate();
+      void utils.deals.byStage.invalidate();
+      void utils.deals.list.invalidate();
+    },
+    onError: (err) => toast.error('Failed to reorder stages', { description: err.message }),
+  });
+
   const deleteStage = trpc.pipelines.deleteStage.useMutation({
     onSuccess: () => {
       toast.success('Stage deleted');
@@ -158,6 +168,23 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
       stageType: newStageType,
       defaultProbability: newStageProbability,
       position: stages.length,
+    });
+  }
+
+  function handleMoveStage(stageId: string, direction: 'up' | 'down') {
+    const currentIndex = stages.findIndex((stage) => String(stage.id) === stageId);
+    if (currentIndex === -1) return;
+
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= stages.length) return;
+
+    const reordered = [...stages];
+    const [movedStage] = reordered.splice(currentIndex, 1);
+    reordered.splice(targetIndex, 0, movedStage!);
+
+    reorderStages.mutate({
+      pipelineId,
+      stageIds: reordered.map((stage) => String(stage.id)),
     });
   }
 
@@ -221,11 +248,16 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
             </div>
 
             <div className="space-y-1.5">
-              {stages.map((stage) => (
+              {stages.map((stage, index) => (
                 <StageRow
                   key={stage.id as string}
                   stage={stage}
                   pipelineId={pipelineId}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < stages.length - 1}
+                  onMoveUp={() => handleMoveStage(String(stage.id), 'up')}
+                  onMoveDown={() => handleMoveStage(String(stage.id), 'down')}
+                  reorderPending={reorderStages.isPending}
                   onDelete={() => setDeleteStageId(stage.id as string)}
                 />
               ))}
@@ -316,10 +348,15 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
   );
 }
 
-function StageRow({ stage, pipelineId, onDelete }: {
+function StageRow({ stage, pipelineId, onDelete, canMoveUp, canMoveDown, onMoveUp, onMoveDown, reorderPending }: {
   stage: Record<string, unknown>;
   pipelineId: string;
   onDelete: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  reorderPending: boolean;
 }) {
   const utils = trpc.useUtils();
   const [editing, setEditing] = useState(false);
@@ -417,6 +454,22 @@ function StageRow({ stage, pipelineId, onDelete }: {
       <span className={`text-xs font-medium capitalize ${typeColor}`}>{stageType}</span>
       <span className="text-xs text-slate-400">{probability}%</span>
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          onClick={onMoveUp}
+          disabled={!canMoveUp || reorderPending}
+          className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-30"
+          title="Move stage up"
+        >
+          <ChevronUp className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={onMoveDown}
+          disabled={!canMoveDown || reorderPending}
+          className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-30"
+          title="Move stage down"
+        >
+          <ChevronDown className="w-3.5 h-3.5" />
+        </button>
         <button
           onClick={() => setEditing(true)}
           className="p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"
