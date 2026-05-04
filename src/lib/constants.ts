@@ -13,6 +13,15 @@ export const CONTACT_STATUSES = [
   { value: 'archived', label: 'Archived', color: '#9CA3AF' },
 ] as const;
 
+export const CONTACT_SOURCES = [
+  { value: 'apollo', label: 'Apollo' },
+  { value: 'manual', label: 'Manual' },
+  { value: 'website', label: 'Website' },
+  { value: 'referral', label: 'Referral' },
+  { value: 'event', label: 'Event' },
+  { value: 'cold_outreach', label: 'Cold Outreach' },
+] as const;
+
 export const COMPANY_TYPES = [
   { value: 'prospect', label: 'Prospect', color: '#6B7280' },
   { value: 'customer', label: 'Customer', color: '#10B981' },
@@ -20,6 +29,13 @@ export const COMPANY_TYPES = [
   { value: 'vendor', label: 'Vendor', color: '#F59E0B' },
   { value: 'competitor', label: 'Competitor', color: '#EF4444' },
   { value: 'other', label: 'Other', color: '#9CA3AF' },
+] as const;
+
+export const COMPANY_STATUSES = [
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'churned', label: 'Churned' },
+  { value: 'archived', label: 'Archived' },
 ] as const;
 
 export const DEAL_STATUSES = [

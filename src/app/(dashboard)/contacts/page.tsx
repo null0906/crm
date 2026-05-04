@@ -23,7 +23,7 @@ import { TagInput } from '@/components/tags/TagInput';
 import { ContactDetail } from '@/components/contacts/ContactDetail';
 import { formatDate, formatRelative, getInitials } from '@/lib/formatters';
 import { toast } from 'sonner';
-import { PAGE_SIZES, CONTACT_STATUSES } from '@/lib/constants';
+import { PAGE_SIZES, CONTACT_SOURCES, CONTACT_STATUSES } from '@/lib/constants';
 import { SavedViewsBar } from '@/components/saved-views/SavedViewsBar';
 import { ImportWizard } from '@/components/import-export/ImportWizard';
 import { exportToCSV } from '@/lib/export-csv';
@@ -34,8 +34,14 @@ export default function ContactsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [ownerFilter, setOwnerFilter] = useState<string>('');
+  const [sourceFilter, setSourceFilter] = useState<string>('');
+  const [locationFilter, setLocationFilter] = useState<string>('');
+  const [cityFilter, setCityFilter] = useState<string>('');
+  const [countryFilter, setCountryFilter] = useState<string>('');
+  const [filterTags, setFilterTags] = useState<{ id: string; name: string; color: string }[]>([]);
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [pageSize, setPageSize] = useState(50);
   const [cursor, setCursor] = useState<string | undefined>();
@@ -59,13 +65,20 @@ export default function ContactsPage() {
   const users = usersData ?? [];
 
   // Reset cursor whenever any filter/search changes
-  React.useEffect(() => { setCursor(undefined); }, [debouncedSearch, statusFilter, ownerFilter, dateFrom, dateTo, pageSize]);
+  React.useEffect(() => {
+    setCursor(undefined);
+  }, [debouncedSearch, statusFilter, ownerFilter, sourceFilter, locationFilter, cityFilter, countryFilter, filterTags, dateFrom, dateTo, pageSize]);
 
   // Build filter conditions
-  type FilterOp = 'eq' | 'gte' | 'lte';
-  const filterConditions: Array<{ field: string; operator: FilterOp; value: string }> = [];
+  type FilterOp = 'eq' | 'gte' | 'lte' | 'contains' | 'contains_any';
+  const filterConditions: Array<{ field: string; operator: FilterOp; value: unknown }> = [];
   if (statusFilter) filterConditions.push({ field: 'status', operator: 'eq', value: statusFilter });
   if (ownerFilter) filterConditions.push({ field: 'ownerId', operator: 'eq', value: ownerFilter });
+  if (sourceFilter) filterConditions.push({ field: 'source', operator: 'eq', value: sourceFilter });
+  if (locationFilter) filterConditions.push({ field: 'location', operator: 'contains', value: locationFilter });
+  if (cityFilter) filterConditions.push({ field: 'city', operator: 'contains', value: cityFilter });
+  if (countryFilter) filterConditions.push({ field: 'country', operator: 'contains', value: countryFilter });
+  if (filterTags.length > 0) filterConditions.push({ field: 'tags', operator: 'contains_any', value: filterTags.map((tag) => tag.id) });
   if (dateFrom) filterConditions.push({ field: 'createdAt', operator: 'gte', value: dateFrom });
   if (dateTo) filterConditions.push({ field: 'createdAt', operator: 'lte', value: dateTo });
 
@@ -321,102 +334,163 @@ export default function ContactsPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex items-center gap-3 px-6 py-2.5 bg-white border-b border-slate-100">
-        {/* Search */}
-        <div className="relative flex-1 max-w-[280px]">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-          <Input
-            placeholder="Search contacts..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-[13px]"
-          />
-        </div>
+      <div className="flex flex-col gap-2 px-6 py-2.5 bg-white border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-[280px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <Input
+              placeholder="Search contacts..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8 text-[13px]"
+            />
+          </div>
 
-        {/* Status chips */}
-        <div className="flex items-center gap-1">
-          <button
-            className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${!statusFilter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
-            onClick={() => setStatusFilter('')}
-          >
-            All
-          </button>
-          {CONTACT_STATUSES.slice(0, 5).map((s) => (
+          <div className="flex items-center gap-1">
             <button
-              key={s.value}
-              className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${statusFilter === s.value ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
-              onClick={() => setStatusFilter(statusFilter === s.value ? '' : s.value)}
+              className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${!statusFilter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
+              onClick={() => setStatusFilter('')}
             >
-              {s.label}
+              All
             </button>
-          ))}
-        </div>
+            {CONTACT_STATUSES.slice(0, 5).map((s) => (
+              <button
+                key={s.value}
+                className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${statusFilter === s.value ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
+                onClick={() => setStatusFilter(statusFilter === s.value ? '' : s.value)}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
 
-        {/* Owner filter */}
-        <select
-          value={ownerFilter}
-          onChange={(e) => setOwnerFilter(e.target.value)}
-          className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
-        >
-          <option value="">All owners</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
-          ))}
-        </select>
-
-        {/* Date range */}
-        <div className="flex items-center gap-1">
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
-            title="Created from"
-          />
-          <span className="text-xs text-slate-400">–</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
-            title="Created to"
-          />
-        </div>
-
-        {(ownerFilter || dateFrom || dateTo) && (
-          <button
-            onClick={() => { setOwnerFilter(''); setDateFrom(''); setDateTo(''); }}
-            className="text-[11px] text-slate-400 hover:text-slate-600"
-          >
-            Clear
-          </button>
-        )}
-
-        {/* Saved views */}
-        <SavedViewsBar
-          entityType="contact"
-          activeFilters={filterConditions.length > 0 ? { conditions: filterConditions, logic: 'AND' } : undefined}
-          activeViewId={activeViewId}
-          onLoadView={(view) => {
-            setActiveViewId(view.id);
-            const filters = view.filters as { conditions?: Array<{ field: string; operator: string; value: unknown }>; logic?: string } | null;
-            const statusCond = filters?.conditions?.find((c) => c.field === 'status');
-            if (statusCond) setStatusFilter(String(statusCond.value));
-            else setStatusFilter('');
-          }}
-        />
-
-        {/* Page size */}
-        <div className="ml-auto flex items-center gap-1">
-          <span className="text-xs text-slate-500">Show</span>
           <select
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="text-xs border border-slate-200 rounded px-1 py-0.5 bg-white"
+            value={ownerFilter}
+            onChange={(e) => setOwnerFilter(e.target.value)}
+            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
           >
-            {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+            <option value="">All owners</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+            ))}
           </select>
+
+          <button
+            onClick={() => setShowAdvancedFilters((current) => !current)}
+            className={`inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-md border transition-colors ${
+              showAdvancedFilters || sourceFilter || locationFilter || cityFilter || countryFilter || filterTags.length > 0 || dateFrom || dateTo
+                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            More Filters
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+          </button>
+
+          <SavedViewsBar
+            entityType="contact"
+            activeFilters={filterConditions.length > 0 ? { conditions: filterConditions, logic: 'AND' } : undefined}
+            activeViewId={activeViewId}
+            onLoadView={(view) => {
+              setActiveViewId(view.id);
+              const filters = view.filters as { conditions?: Array<{ field: string; operator: string; value: unknown }>; logic?: string } | null;
+              const statusCond = filters?.conditions?.find((c) => c.field === 'status');
+              const ownerCond = filters?.conditions?.find((c) => c.field === 'ownerId');
+              const sourceCond = filters?.conditions?.find((c) => c.field === 'source');
+              const locationCond = filters?.conditions?.find((c) => c.field === 'location');
+              const cityCond = filters?.conditions?.find((c) => c.field === 'city');
+              const countryCond = filters?.conditions?.find((c) => c.field === 'country');
+              setStatusFilter(statusCond ? String(statusCond.value) : '');
+              setOwnerFilter(ownerCond ? String(ownerCond.value) : '');
+              setSourceFilter(sourceCond ? String(sourceCond.value) : '');
+              setLocationFilter(locationCond ? String(locationCond.value) : '');
+              setCityFilter(cityCond ? String(cityCond.value) : '');
+              setCountryFilter(countryCond ? String(countryCond.value) : '');
+            }}
+          />
+
+          <div className="ml-auto flex items-center gap-1">
+            <span className="text-xs text-slate-500">Show</span>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="text-xs border border-slate-200 rounded px-1 py-0.5 bg-white"
+            >
+              {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
         </div>
+
+        {showAdvancedFilters && (
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            >
+              <option value="">All sources</option>
+              {CONTACT_SOURCES.map((source) => (
+                <option key={source.value} value={source.value}>{source.label}</option>
+              ))}
+            </select>
+            <Input
+              placeholder="Location"
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="h-8 w-[140px] text-[11px]"
+            />
+            <Input
+              placeholder="City"
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+              className="h-8 w-[120px] text-[11px]"
+            />
+            <Input
+              placeholder="Country"
+              value={countryFilter}
+              onChange={(e) => setCountryFilter(e.target.value)}
+              className="h-8 w-[120px] text-[11px]"
+            />
+            <div className="min-w-[220px] max-w-[320px]">
+              <TagInput value={filterTags} onChange={setFilterTags} placeholder="Filter by tags..." />
+            </div>
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+                title="Created from"
+              />
+              <span className="text-xs text-slate-400">–</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+                title="Created to"
+              />
+            </div>
+            {(ownerFilter || statusFilter || sourceFilter || locationFilter || cityFilter || countryFilter || filterTags.length > 0 || dateFrom || dateTo) && (
+              <button
+                onClick={() => {
+                  setStatusFilter('');
+                  setOwnerFilter('');
+                  setSourceFilter('');
+                  setLocationFilter('');
+                  setCityFilter('');
+                  setCountryFilter('');
+                  setFilterTags([]);
+                  setDateFrom('');
+                  setDateTo('');
+                }}
+                className="text-[11px] text-slate-400 hover:text-slate-600"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Bulk actions */}

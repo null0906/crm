@@ -2,8 +2,9 @@
 
 import React, { useState } from 'react';
 import type { RowSelectionState } from '@tanstack/react-table';
-import { Plus, LayoutGrid, List, Upload, Link2, Filter } from 'lucide-react';
+import { Plus, LayoutGrid, List, Upload, Link2, Filter, Search, ChevronDown } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { KanbanBoard } from '@/components/deals/KanbanBoard';
@@ -13,6 +14,8 @@ import { DealDetail } from '@/components/deals/DealDetail';
 import { TagInput } from '@/components/tags/TagInput';
 import { ImportWizard } from '@/components/import-export/ImportWizard';
 import { BackfillDealLinksWizard } from '@/components/import-export/BackfillDealLinksWizard';
+import { Input } from '@/components/ui/input';
+import { DEAL_SERVICE_OPTIONS, DEAL_STATUSES } from '@/lib/constants';
 import { toast } from 'sonner';
 
 interface Stage {
@@ -32,19 +35,34 @@ export default function DealsPage() {
   const [selectedDealId, setSelectedDealId] = useState<string>('');
   const [importOpen, setImportOpen] = useState(false);
   const [backfillOpen, setBackfillOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [ownerFilter, setOwnerFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [stageFilter, setStageFilter] = useState<string>('');
+  const [companyFilter, setCompanyFilter] = useState<string>('');
+  const [contactFilter, setContactFilter] = useState<string>('');
+  const [partnerFilter, setPartnerFilter] = useState<string>('');
+  const [serviceFilter, setServiceFilter] = useState<string>('');
+  const [expectedCloseFrom, setExpectedCloseFrom] = useState<string>('');
+  const [expectedCloseTo, setExpectedCloseTo] = useState<string>('');
+  const [filterTags, setFilterTags] = useState<{ id: string; name: string; color: string }[]>([]);
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [bulkOwnerId, setBulkOwnerId] = useState('');
   const [bulkStatus, setBulkStatus] = useState('');
   const [bulkTagsToAdd, setBulkTagsToAdd] = useState<{ id: string; name: string; color: string }[]>([]);
+  const debouncedSearch = useDebounce(search, 300);
 
   const { data: pipelines = [], isLoading: pipelinesLoading } = trpc.pipelines.list.useQuery();
   const { data: usersData } = trpc.users.list.useQuery();
+  const { data: contactsData } = trpc.contacts.list.useQuery({ pagination: { limit: 200 } });
+  const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 200 } });
   const users = usersData ?? [];
+  const contacts = (contactsData?.items ?? []) as Array<Record<string, unknown>>;
+  const companies = (companiesData?.items ?? []) as Array<Record<string, unknown>>;
+  const partnerCompanies = companies.filter((company) => String(company.companyType ?? '') === 'partner');
   const utils = trpc.useUtils();
   const selectedDealIds = Object.keys(rowSelection).filter((k) => rowSelection[k]);
 
@@ -61,12 +79,20 @@ export default function DealsPage() {
     onError: (err) => toast.error('Failed to update deals', { description: err.message }),
   });
 
-  type FilterOp = 'eq' | 'gte' | 'lte';
-  const dealFilterConditions: Array<{ field: string; operator: FilterOp; value: string }> = [];
+  type FilterOp = 'eq' | 'gte' | 'lte' | 'contains' | 'contains_any';
+  const dealFilterConditions: Array<{ field: string; operator: FilterOp; value: unknown }> = [];
   if (ownerFilter) dealFilterConditions.push({ field: 'ownerId', operator: 'eq', value: ownerFilter });
   if (statusFilter) dealFilterConditions.push({ field: 'status', operator: 'eq', value: statusFilter });
+  if (stageFilter) dealFilterConditions.push({ field: 'stageId', operator: 'eq', value: stageFilter });
+  if (companyFilter) dealFilterConditions.push({ field: 'companyId', operator: 'eq', value: companyFilter });
+  if (contactFilter) dealFilterConditions.push({ field: 'primaryContactId', operator: 'eq', value: contactFilter });
+  if (partnerFilter) dealFilterConditions.push({ field: 'partnerCompanyId', operator: 'eq', value: partnerFilter });
+  if (serviceFilter) dealFilterConditions.push({ field: 'services', operator: 'contains', value: serviceFilter });
+  if (filterTags.length > 0) dealFilterConditions.push({ field: 'tags', operator: 'contains_any', value: filterTags.map((tag) => tag.id) });
   if (dateFrom) dealFilterConditions.push({ field: 'createdAt', operator: 'gte', value: dateFrom });
   if (dateTo) dealFilterConditions.push({ field: 'createdAt', operator: 'lte', value: dateTo });
+  if (expectedCloseFrom) dealFilterConditions.push({ field: 'expectedCloseDate', operator: 'gte', value: expectedCloseFrom });
+  if (expectedCloseTo) dealFilterConditions.push({ field: 'expectedCloseDate', operator: 'lte', value: expectedCloseTo });
 
   // Auto-select first pipeline
   React.useEffect(() => {
@@ -157,7 +183,8 @@ export default function DealsPage() {
 
           <Button size="sm" variant="outline" onClick={() => setShowFilters(!showFilters)}>
             <Filter className="w-4 h-4" />
-            {(ownerFilter || statusFilter || dateFrom || dateTo) ? 'Filters •' : 'Filters'}
+            {(debouncedSearch || ownerFilter || statusFilter || stageFilter || companyFilter || contactFilter || partnerFilter || serviceFilter || filterTags.length > 0 || expectedCloseFrom || expectedCloseTo || dateFrom || dateTo) ? 'Filters •' : 'Filters'}
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
           </Button>
           <Button size="sm" variant="outline" onClick={() => setBackfillOpen(true)} title="Re-link contacts & companies from a previous import CSV">
             <Link2 className="w-4 h-4" />
@@ -176,7 +203,16 @@ export default function DealsPage() {
 
       {/* Filter bar */}
       {showFilters && (
-        <div className="flex items-center gap-3 px-6 py-2.5 bg-slate-50 border-b border-slate-100 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-3 px-6 py-2.5 bg-slate-50 border-b border-slate-100 flex-shrink-0">
+          <div className="relative min-w-[240px] flex-1 max-w-[320px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <Input
+              placeholder="Search deals, contacts, companies..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8 text-[13px] bg-white"
+            />
+          </div>
           <select
             value={ownerFilter}
             onChange={(e) => setOwnerFilter(e.target.value)}
@@ -193,10 +229,65 @@ export default function DealsPage() {
             className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
           >
             <option value="">All statuses</option>
-            <option value="open">Open</option>
-            <option value="won">Won</option>
-            <option value="lost">Lost</option>
+            {DEAL_STATUSES.map((status) => (
+              <option key={status.value} value={status.value}>{status.label}</option>
+            ))}
           </select>
+          <select
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+          >
+            <option value="">All stages</option>
+            {stages.map((stage) => (
+              <option key={stage.id} value={stage.id}>{stage.name}</option>
+            ))}
+          </select>
+          <select
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+          >
+            <option value="">All companies</option>
+            {companies.map((company) => (
+              <option key={String(company.id)} value={String(company.id)}>{String(company.name ?? 'Unnamed company')}</option>
+            ))}
+          </select>
+          <select
+            value={contactFilter}
+            onChange={(e) => setContactFilter(e.target.value)}
+            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+          >
+            <option value="">All contacts</option>
+            {contacts.map((contact) => (
+              <option key={String(contact.id)} value={String(contact.id)}>
+                {String(contact.firstName ?? '')} {String(contact.lastName ?? '')}
+              </option>
+            ))}
+          </select>
+          <select
+            value={partnerFilter}
+            onChange={(e) => setPartnerFilter(e.target.value)}
+            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+          >
+            <option value="">All partners</option>
+            {partnerCompanies.map((company) => (
+              <option key={String(company.id)} value={String(company.id)}>{String(company.name ?? 'Unnamed partner')}</option>
+            ))}
+          </select>
+          <select
+            value={serviceFilter}
+            onChange={(e) => setServiceFilter(e.target.value)}
+            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+          >
+            <option value="">All services</option>
+            {DEAL_SERVICE_OPTIONS.map((service) => (
+              <option key={service} value={service}>{service}</option>
+            ))}
+          </select>
+          <div className="min-w-[220px] max-w-[320px]">
+            <TagInput value={filterTags} onChange={setFilterTags} placeholder="Filter by tags..." />
+          </div>
           <div className="flex items-center gap-1">
             <input
               type="date"
@@ -214,12 +305,43 @@ export default function DealsPage() {
               title="Created to"
             />
           </div>
-          {(ownerFilter || statusFilter || dateFrom || dateTo) && (
+          <div className="flex items-center gap-1">
+            <input
+              type="date"
+              value={expectedCloseFrom}
+              onChange={(e) => setExpectedCloseFrom(e.target.value)}
+              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+              title="Expected close from"
+            />
+            <span className="text-xs text-slate-400">–</span>
+            <input
+              type="date"
+              value={expectedCloseTo}
+              onChange={(e) => setExpectedCloseTo(e.target.value)}
+              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+              title="Expected close to"
+            />
+          </div>
+          {(search || ownerFilter || statusFilter || stageFilter || companyFilter || contactFilter || partnerFilter || serviceFilter || filterTags.length > 0 || dateFrom || dateTo || expectedCloseFrom || expectedCloseTo) && (
             <button
-              onClick={() => { setOwnerFilter(''); setStatusFilter(''); setDateFrom(''); setDateTo(''); }}
+              onClick={() => {
+                setSearch('');
+                setOwnerFilter('');
+                setStatusFilter('');
+                setStageFilter('');
+                setCompanyFilter('');
+                setContactFilter('');
+                setPartnerFilter('');
+                setServiceFilter('');
+                setFilterTags([]);
+                setDateFrom('');
+                setDateTo('');
+                setExpectedCloseFrom('');
+                setExpectedCloseTo('');
+              }}
               className="text-[11px] text-slate-400 hover:text-slate-600"
             >
-              Clear
+              Clear All
             </button>
           )}
         </div>
@@ -285,6 +407,8 @@ export default function DealsPage() {
             <KanbanBoard
               pipelineId={selectedPipelineId}
               stages={stages}
+              search={debouncedSearch || undefined}
+              extraFilters={dealFilterConditions.length > 0 ? dealFilterConditions : undefined}
               onAddDeal={handleAddDeal}
               onDealClick={(deal) => setSelectedDealId(String(deal.id))}
             />
@@ -297,6 +421,7 @@ export default function DealsPage() {
           <DealTable
             pipelineId={selectedPipelineId}
             onDealClick={(dealId) => setSelectedDealId(dealId)}
+            search={debouncedSearch || undefined}
             extraFilters={dealFilterConditions.length > 0 ? dealFilterConditions : undefined}
             rowSelection={rowSelection}
             onRowSelectionChange={setRowSelection}

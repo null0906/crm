@@ -5,7 +5,7 @@ import {
   useReactTable, getCoreRowModel, flexRender,
   type ColumnDef, type RowSelectionState,
 } from '@tanstack/react-table';
-import { Plus, Search, Building2, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Search, Building2, Pencil, Trash2, ChevronDown } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ import { TagInput } from '@/components/tags/TagInput';
 import { CompanyDetail } from '@/components/companies/CompanyDetail';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDate } from '@/lib/formatters';
-import { PAGE_SIZES, COMPANY_TYPES } from '@/lib/constants';
+import { PAGE_SIZES, COMPANY_SIZES, COMPANY_STATUSES, COMPANY_TYPES } from '@/lib/constants';
 import { toast } from 'sonner';
 
 type Company = Record<string, unknown>;
@@ -29,8 +29,16 @@ export default function CompaniesPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
   const [ownerFilter, setOwnerFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [industryFilter, setIndustryFilter] = useState<string>('');
+  const [sizeFilter, setSizeFilter] = useState<string>('');
+  const [locationFilter, setLocationFilter] = useState<string>('');
+  const [cityFilter, setCityFilter] = useState<string>('');
+  const [countryFilter, setCountryFilter] = useState<string>('');
+  const [filterTags, setFilterTags] = useState<{ id: string; name: string; color: string }[]>([]);
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [pageSize, setPageSize] = useState(50);
   const [cursor, setCursor] = useState<string | undefined>();
@@ -50,12 +58,21 @@ export default function CompaniesPage() {
   const users = usersData ?? [];
 
   // Reset cursor whenever any filter/search changes
-  React.useEffect(() => { setCursor(undefined); }, [debouncedSearch, typeFilter, ownerFilter, dateFrom, dateTo, pageSize]);
+  React.useEffect(() => {
+    setCursor(undefined);
+  }, [debouncedSearch, typeFilter, ownerFilter, statusFilter, industryFilter, sizeFilter, locationFilter, cityFilter, countryFilter, filterTags, dateFrom, dateTo, pageSize]);
 
-  type FilterOp = 'eq' | 'gte' | 'lte';
-  const filterConditions: Array<{ field: string; operator: FilterOp; value: string }> = [];
+  type FilterOp = 'eq' | 'gte' | 'lte' | 'contains' | 'contains_any';
+  const filterConditions: Array<{ field: string; operator: FilterOp; value: unknown }> = [];
   if (typeFilter) filterConditions.push({ field: 'companyType', operator: 'eq', value: typeFilter });
   if (ownerFilter) filterConditions.push({ field: 'ownerId', operator: 'eq', value: ownerFilter });
+  if (statusFilter) filterConditions.push({ field: 'status', operator: 'eq', value: statusFilter });
+  if (industryFilter) filterConditions.push({ field: 'industry', operator: 'contains', value: industryFilter });
+  if (sizeFilter) filterConditions.push({ field: 'companySize', operator: 'eq', value: sizeFilter });
+  if (locationFilter) filterConditions.push({ field: 'location', operator: 'contains', value: locationFilter });
+  if (cityFilter) filterConditions.push({ field: 'city', operator: 'contains', value: cityFilter });
+  if (countryFilter) filterConditions.push({ field: 'country', operator: 'contains', value: countryFilter });
+  if (filterTags.length > 0) filterConditions.push({ field: 'tags', operator: 'contains_any', value: filterTags.map((tag) => tag.id) });
   if (dateFrom) filterConditions.push({ field: 'createdAt', operator: 'gte', value: dateFrom });
   if (dateTo) filterConditions.push({ field: 'createdAt', operator: 'lte', value: dateTo });
 
@@ -229,85 +246,159 @@ export default function CompaniesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 px-6 py-2.5 bg-white border-b border-slate-100">
-        <div className="relative flex-1 max-w-[280px]">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-          <Input
-            placeholder="Search companies..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-[13px]"
-          />
-        </div>
+      <div className="flex flex-col gap-2 px-6 py-2.5 bg-white border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-[280px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <Input
+              placeholder="Search companies..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8 text-[13px]"
+            />
+          </div>
 
-        <div className="flex items-center gap-1">
-          <button
-            className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${!typeFilter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
-            onClick={() => setTypeFilter('')}
-          >
-            All
-          </button>
-          {COMPANY_TYPES.map((t) => (
+          <div className="flex items-center gap-1">
             <button
-              key={t.value}
-              className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${typeFilter === t.value ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
-              onClick={() => setTypeFilter(typeFilter === t.value ? '' : t.value)}
+              className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${!typeFilter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
+              onClick={() => setTypeFilter('')}
             >
-              {t.label}
+              All
             </button>
-          ))}
-        </div>
+            {COMPANY_TYPES.map((t) => (
+              <button
+                key={t.value}
+                className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${typeFilter === t.value ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
+                onClick={() => setTypeFilter(typeFilter === t.value ? '' : t.value)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
 
-        {/* Owner filter */}
-        <select
-          value={ownerFilter}
-          onChange={(e) => setOwnerFilter(e.target.value)}
-          className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
-        >
-          <option value="">All owners</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
-          ))}
-        </select>
-
-        {/* Date range */}
-        <div className="flex items-center gap-1">
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
-            title="Created from"
-          />
-          <span className="text-xs text-slate-400">–</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
-            title="Created to"
-          />
-        </div>
-
-        {(ownerFilter || dateFrom || dateTo) && (
-          <button
-            onClick={() => { setOwnerFilter(''); setDateFrom(''); setDateTo(''); }}
-            className="text-[11px] text-slate-400 hover:text-slate-600"
-          >
-            Clear
-          </button>
-        )}
-
-        <div className="ml-auto flex items-center gap-1">
-          <span className="text-xs text-slate-500">Show</span>
           <select
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="text-xs border border-slate-200 rounded px-1 py-0.5 bg-white"
+            value={ownerFilter}
+            onChange={(e) => setOwnerFilter(e.target.value)}
+            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
           >
-            {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+            <option value="">All owners</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+            ))}
           </select>
+
+          <button
+            onClick={() => setShowAdvancedFilters((current) => !current)}
+            className={`inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-md border transition-colors ${
+              showAdvancedFilters || statusFilter || industryFilter || sizeFilter || locationFilter || cityFilter || countryFilter || filterTags.length > 0 || dateFrom || dateTo
+                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            More Filters
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+          </button>
+
+          <div className="ml-auto flex items-center gap-1">
+            <span className="text-xs text-slate-500">Show</span>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="text-xs border border-slate-200 rounded px-1 py-0.5 bg-white"
+            >
+              {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
         </div>
+
+        {showAdvancedFilters && (
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            >
+              <option value="">All statuses</option>
+              {COMPANY_STATUSES.map((status) => (
+                <option key={status.value} value={status.value}>{status.label}</option>
+              ))}
+            </select>
+            <Input
+              placeholder="Industry"
+              value={industryFilter}
+              onChange={(e) => setIndustryFilter(e.target.value)}
+              className="h-8 w-[140px] text-[11px]"
+            />
+            <select
+              value={sizeFilter}
+              onChange={(e) => setSizeFilter(e.target.value)}
+              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            >
+              <option value="">All sizes</option>
+              {COMPANY_SIZES.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+            <Input
+              placeholder="Location"
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="h-8 w-[140px] text-[11px]"
+            />
+            <Input
+              placeholder="City"
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+              className="h-8 w-[120px] text-[11px]"
+            />
+            <Input
+              placeholder="Country"
+              value={countryFilter}
+              onChange={(e) => setCountryFilter(e.target.value)}
+              className="h-8 w-[120px] text-[11px]"
+            />
+            <div className="min-w-[220px] max-w-[320px]">
+              <TagInput value={filterTags} onChange={setFilterTags} placeholder="Filter by tags..." />
+            </div>
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+                title="Created from"
+              />
+              <span className="text-xs text-slate-400">–</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+                title="Created to"
+              />
+            </div>
+            {(typeFilter || ownerFilter || statusFilter || industryFilter || sizeFilter || locationFilter || cityFilter || countryFilter || filterTags.length > 0 || dateFrom || dateTo) && (
+              <button
+                onClick={() => {
+                  setTypeFilter('');
+                  setOwnerFilter('');
+                  setStatusFilter('');
+                  setIndustryFilter('');
+                  setSizeFilter('');
+                  setLocationFilter('');
+                  setCityFilter('');
+                  setCountryFilter('');
+                  setFilterTags([]);
+                  setDateFrom('');
+                  setDateTo('');
+                }}
+                className="text-[11px] text-slate-400 hover:text-slate-600"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {selectedIds.length > 0 && (

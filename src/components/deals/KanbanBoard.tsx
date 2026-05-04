@@ -96,14 +96,24 @@ interface KanbanBoardProps {
   stages: Stage[];
   onAddDeal: (stageId: string) => void;
   onDealClick: (deal: Record<string, unknown>) => void;
+  search?: string;
+  extraFilters?: Array<{
+    field: string;
+    operator: 'eq' | 'neq' | 'contains' | 'contains_any' | 'gte' | 'lte' | 'gt' | 'lt' | 'in' | 'not_in' | 'is_empty' | 'is_not_empty';
+    value: unknown;
+  }>;
 }
 
-export function KanbanBoard({ pipelineId, stages, onAddDeal, onDealClick }: KanbanBoardProps) {
+export function KanbanBoard({ pipelineId, stages, onAddDeal, onDealClick, search, extraFilters }: KanbanBoardProps) {
   const utils = trpc.useUtils();
   const [activeDeal, setActiveDeal] = useState<Record<string, unknown> | null>(null);
   const [dealsByStage, setDealsByStage] = useState<Record<string, Record<string, unknown>[]>>({});
 
-  const { data, isLoading } = trpc.deals.byStage.useQuery({ pipelineId });
+  const { data, isLoading } = trpc.deals.byStage.useQuery({
+    pipelineId,
+    search: search || undefined,
+    filters: extraFilters && extraFilters.length > 0 ? { conditions: extraFilters, logic: 'AND' } : undefined,
+  });
 
   React.useEffect(() => {
     if (data) {
@@ -114,7 +124,11 @@ export function KanbanBoard({ pipelineId, stages, onAddDeal, onDealClick }: Kanb
   const moveToStage = trpc.deals.moveToStage.useMutation({
     onError: () => {
       // Refetch on error to revert optimistic update
-      void utils.deals.byStage.invalidate({ pipelineId });
+      void utils.deals.byStage.invalidate({
+        pipelineId,
+        search: search || undefined,
+        filters: extraFilters && extraFilters.length > 0 ? { conditions: extraFilters, logic: 'AND' } : undefined,
+      });
       toast.error('Failed to move deal');
     },
   });

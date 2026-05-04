@@ -92,6 +92,7 @@ export async function listDeals(
 ): Promise<PaginatedResult<Record<string, unknown>>> {
   const { filters, search, sort, pagination, pipelineId } = opts;
   const limit = Math.min(pagination.limit, 500);
+  const contactsAlias = contacts;
 
   const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
   if (!readLevel) return { items: [], nextCursor: null, hasMore: false };
@@ -107,8 +108,25 @@ export async function listDeals(
   }
 
   if (search?.trim()) {
-    const searchTerm = `%${search.trim()}%`;
-    conditions.push(ilike(deals.title, searchTerm));
+    const searchTokens = search
+      .trim()
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+
+    const tokenConditions = searchTokens.map((token) => {
+      const searchTerm = `%${token}%`;
+      return or(
+        ilike(deals.title, searchTerm),
+        ilike(companies.name, searchTerm),
+        ilike(sql<string>`concat(${contactsAlias.firstName}, ' ', ${contactsAlias.lastName})`, searchTerm),
+        ilike(contactsAlias.email, searchTerm)
+      )!;
+    });
+
+    if (tokenConditions.length > 0) {
+      conditions.push(and(...tokenConditions)!);
+    }
   }
 
   if (filters?.conditions?.length) {
@@ -129,8 +147,6 @@ export async function listDeals(
       }
     } catch { /* ignore */ }
   }
-
-  const contactsAlias = contacts;
 
   const rows = await db
     .select({
@@ -185,13 +201,44 @@ export async function listDeals(
 
 export async function getDealsByStage(
   user: SessionUser,
-  pipelineId: string
+  pipelineId: string,
+  opts?: {
+    filters?: FilterConfig;
+    search?: string;
+  }
 ): Promise<Record<string, unknown[]>> {
   const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
   if (!readLevel) return {};
 
   const conditions = [isNull(deals.deletedAt), eq(deals.pipelineId, pipelineId)];
   if (readLevel === 'own') conditions.push(eq(deals.ownerId, user.id));
+
+  if (opts?.search?.trim()) {
+    const searchTokens = opts.search
+      .trim()
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+
+    const tokenConditions = searchTokens.map((token) => {
+      const searchTerm = `%${token}%`;
+      return or(
+        ilike(deals.title, searchTerm),
+        ilike(companies.name, searchTerm),
+        ilike(sql<string>`concat(${contacts.firstName}, ' ', ${contacts.lastName})`, searchTerm),
+        ilike(contacts.email, searchTerm)
+      )!;
+    });
+
+    if (tokenConditions.length > 0) {
+      conditions.push(and(...tokenConditions)!);
+    }
+  }
+
+  if (opts?.filters?.conditions?.length) {
+    const filterWhere = buildFilterWhere(opts.filters, 'deal');
+    if (filterWhere) conditions.push(filterWhere);
+  }
 
   const rows = await db
     .select({

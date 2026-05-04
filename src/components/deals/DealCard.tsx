@@ -3,7 +3,7 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Calendar, DollarSign, User, Building2 } from 'lucide-react';
+import { Calendar, DollarSign, User, Building2, Briefcase } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 
@@ -28,6 +28,10 @@ export function DealCard({ deal, onClick }: DealCardProps) {
   const expectedCloseDate = deal.expectedCloseDate as string | null | undefined;
   const primaryContactName = deal.primaryContactName as string | null | undefined;
   const companyName = deal.companyName as string | null | undefined;
+  const services = Array.isArray(deal.services)
+    ? deal.services.filter((service): service is string => typeof service === 'string' && service.trim().length > 0)
+    : [];
+  const servicesLabel = services.join(', ');
   const ownerName =
     (deal.ownerName as string | null | undefined) ??
     ([deal.ownerFirstName, deal.ownerLastName].filter(Boolean).join(' ').trim() || null);
@@ -70,6 +74,13 @@ export function DealCard({ deal, onClick }: DealCardProps) {
           <div className="flex items-start gap-1.5 text-[11px] text-slate-400 min-w-0">
             <Building2 className="w-3 h-3 flex-shrink-0" strokeWidth={1.75} />
             <span className="break-words leading-snug" title={companyName}>{companyName}</span>
+          </div>
+        )}
+
+        {servicesLabel && (
+          <div className="flex items-start gap-1.5 text-[11px] text-slate-400 min-w-0">
+            <Briefcase className="w-3 h-3 flex-shrink-0" strokeWidth={1.75} />
+            <span className="break-words leading-snug" title={servicesLabel}>{servicesLabel}</span>
           </div>
         )}
 

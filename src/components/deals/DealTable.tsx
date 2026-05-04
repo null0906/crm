@@ -32,17 +32,18 @@ interface Deal {
   createdAt: string;
 }
 
-type FilterOp = 'eq' | 'neq' | 'gte' | 'lte' | 'gt' | 'lt' | 'contains' | 'in' | 'not_in' | 'is_empty' | 'is_not_empty';
+type FilterOp = 'eq' | 'neq' | 'gte' | 'lte' | 'gt' | 'lt' | 'contains' | 'contains_any' | 'in' | 'not_in' | 'is_empty' | 'is_not_empty';
 
 interface FilterCondition {
   field: string;
   operator: FilterOp;
-  value: string;
+  value: unknown;
 }
 
 interface DealTableProps {
   pipelineId: string;
   onDealClick: (dealId: string) => void;
+  search?: string;
   extraFilters?: FilterCondition[];
   rowSelection?: RowSelectionState;
   onRowSelectionChange?: React.Dispatch<React.SetStateAction<RowSelectionState>>;
@@ -56,17 +57,18 @@ const STATUS_COLORS: Record<string, string> = {
   lost: 'bg-red-50 text-red-700 border border-red-200',
 };
 
-export function DealTable({ pipelineId, onDealClick, extraFilters, rowSelection, onRowSelectionChange }: DealTableProps) {
+export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSelection, onRowSelectionChange }: DealTableProps) {
   const utils = trpc.useUtils();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [cursor, setCursor] = useState<string | undefined>();
   const limit = 25;
 
   // Reset to page 1 when pipeline, filters, or sort changes
-  React.useEffect(() => { setCursor(undefined); }, [pipelineId, sorting, extraFilters]);
+  React.useEffect(() => { setCursor(undefined); }, [pipelineId, sorting, search, extraFilters]);
 
   const { data, isLoading } = trpc.deals.list.useQuery({
     pipelineId,
+    search: search || undefined,
     pagination: { limit, cursor },
     sort: sorting[0]
       ? { field: sorting[0].id, direction: sorting[0].desc ? 'desc' : 'asc' }

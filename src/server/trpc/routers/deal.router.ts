@@ -41,9 +41,16 @@ export const dealRouter = router({
 
   byStage: protectedProcedure
     .use(requirePermission('deals', 'read'))
-    .input(z.object({ pipelineId: z.string().uuid() }))
+    .input(z.object({
+      pipelineId: z.string().uuid(),
+      filters: filterConfigSchema.optional(),
+      search: z.string().optional(),
+    }))
     .query(async ({ ctx, input }) => {
-      return dealService.getDealsByStage(ctx.user!, input.pipelineId);
+      return dealService.getDealsByStage(ctx.user!, input.pipelineId, {
+        filters: input.filters,
+        search: input.search,
+      });
     }),
 
   getById: protectedProcedure
