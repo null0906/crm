@@ -206,6 +206,16 @@ export default function ContactsPage() {
       cell: ({ row }) => <span className="text-sm text-slate-600">{String(row.original.jobTitle ?? '—')}</span>,
     },
     {
+      accessorKey: 'city',
+      header: 'City',
+      cell: ({ row }) => <span className="text-sm text-slate-600">{String(row.original.city ?? '—')}</span>,
+    },
+    {
+      accessorKey: 'country',
+      header: 'Country',
+      cell: ({ row }) => <span className="text-sm text-slate-600">{String(row.original.country ?? '—')}</span>,
+    },
+    {
       accessorKey: 'status',
       header: 'Status',
       cell: ({ row }) => <ContactStatusBadge status={String(row.original.status ?? 'new')} />,

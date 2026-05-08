@@ -175,6 +175,16 @@ export default function CompaniesPage() {
       cell: ({ row }) => <span className="text-sm text-slate-600 font-mono">{String(row.original.domain ?? '—')}</span>,
     },
     {
+      accessorKey: 'city',
+      header: 'City',
+      cell: ({ row }) => <span className="text-sm text-slate-600">{String(row.original.city ?? '—')}</span>,
+    },
+    {
+      accessorKey: 'country',
+      header: 'Country',
+      cell: ({ row }) => <span className="text-sm text-slate-600">{String(row.original.country ?? '—')}</span>,
+    },
+    {
       accessorKey: 'annualRevenueRange',
       header: 'Revenue Range',
       cell: ({ row }) => <span className="text-sm text-slate-600">{String(row.original.annualRevenueRange ?? '—')}</span>,
