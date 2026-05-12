@@ -3,7 +3,7 @@ import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
 import { activities, users, contacts, companies, deals, pipelineStages } from '@/server/db/schema';
-import { eq, and, isNull, desc, inArray, gte, lte } from 'drizzle-orm';
+import { eq, and, isNull, desc, inArray, gte, lte, sql } from 'drizzle-orm';
 import { activityCreateSchema, paginationSchema } from '@/server/lib/validators';
 import { writeAuditLog } from '@/server/services/audit.service';
 import eventBus from '@/server/lib/event-bus';
@@ -130,17 +130,57 @@ export const activityRouter = router({
     .input(activityCreateSchema)
     .mutation(async ({ ctx, input }) => {
       const { meetingStartAt, meetingEndAt, occurredAt, ...rest } = input;
+      const occurredAtDate = occurredAt ? new Date(occurredAt) : new Date();
       const [activity] = await db
         .insert(activities)
         .values({
           ...rest,
           meetingStartAt: meetingStartAt ? new Date(meetingStartAt) : null,
           meetingEndAt: meetingEndAt ? new Date(meetingEndAt) : null,
-          occurredAt: occurredAt ? new Date(occurredAt) : new Date(),
+          occurredAt: occurredAtDate,
           performedBy: ctx.user!.id,
           isAutomated: false,
         })
         .returning();
+
+      const linkedContactIds = new Set<string>();
+      const linkedCompanyIds = new Set<string>();
+      if (input.contactId) linkedContactIds.add(input.contactId);
+      if (input.companyId) linkedCompanyIds.add(input.companyId);
+
+      if (input.dealId) {
+        const [deal] = await db
+          .select({
+            primaryContactId: deals.primaryContactId,
+            companyId: deals.companyId,
+          })
+          .from(deals)
+          .where(eq(deals.id, input.dealId))
+          .limit(1);
+
+        if (deal?.primaryContactId) linkedContactIds.add(deal.primaryContactId);
+        if (deal?.companyId) linkedCompanyIds.add(deal.companyId);
+      }
+
+      if (linkedContactIds.size > 0) {
+        await db
+          .update(contacts)
+          .set({
+            lastContactedAt: sql`COALESCE(GREATEST(${contacts.lastContactedAt}, ${occurredAtDate}), ${occurredAtDate})`,
+            updatedAt: new Date(),
+          })
+          .where(inArray(contacts.id, Array.from(linkedContactIds)));
+      }
+
+      if (linkedCompanyIds.size > 0) {
+        await db
+          .update(companies)
+          .set({
+            lastContactedAt: sql`COALESCE(GREATEST(${companies.lastContactedAt}, ${occurredAtDate}), ${occurredAtDate})`,
+            updatedAt: new Date(),
+          })
+          .where(inArray(companies.id, Array.from(linkedCompanyIds)));
+      }
 
       eventBus.emit('activity.created', {
         activityId: activity!.id,

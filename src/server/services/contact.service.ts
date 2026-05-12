@@ -1,5 +1,5 @@
 import { db } from '@/server/db';
-import { contacts, contactTags, tags, companies, users, roles } from '@/server/db/schema';
+import { activities, contacts, contactTags, tags, companies, users, roles } from '@/server/db/schema';
 import { eq, and, isNull, or, ilike, inArray, sql, lt, desc, asc } from 'drizzle-orm';
 import type { NewContact } from '@/server/db/schema';
 import type { CompanyType, ContactSource, ContactStatus, FilterConfig, PaginatedResult, SessionUser } from '@/lib/types';
@@ -27,6 +27,20 @@ function shouldPromoteCompanyType(
   if (existingType === inferredType) return false;
   if (inferredType === 'prospect') return false;
   return existingType === 'prospect' || existingType === 'other';
+}
+
+function latestContactedAtSql() {
+  return sql<Date | null>`
+    GREATEST(
+      ${contacts.lastContactedAt},
+      (
+        SELECT MAX(a.occurred_at)
+        FROM ${activities} a
+        WHERE a.contact_id = ${contacts.id}
+          AND a.deleted_at IS NULL
+      )
+    )
+  `;
 }
 
 async function resolveCompanyForContact(
@@ -205,7 +219,7 @@ export async function listContacts(
       ownerId: contacts.ownerId,
       companyId: contacts.companyId,
       customFields: contacts.customFields,
-      lastContactedAt: contacts.lastContactedAt,
+      lastContactedAt: latestContactedAtSql(),
       createdAt: contacts.createdAt,
       updatedAt: contacts.updatedAt,
       ownerFirstName: users.firstName,
@@ -296,7 +310,7 @@ export async function getContactById(
       location: contacts.location,
       description: contacts.description,
       customFields: contacts.customFields,
-      lastContactedAt: contacts.lastContactedAt,
+      lastContactedAt: latestContactedAtSql(),
       createdAt: contacts.createdAt,
       updatedAt: contacts.updatedAt,
       deletedAt: contacts.deletedAt,

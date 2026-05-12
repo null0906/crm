@@ -1,5 +1,5 @@
 import { db } from '@/server/db';
-import { companies, companyTags, tags, contacts, users } from '@/server/db/schema';
+import { activities, companies, companyTags, tags, contacts, users } from '@/server/db/schema';
 import { eq, and, isNull, or, ilike, inArray, sql, lt, desc, asc, count, sum } from 'drizzle-orm';
 import type { NewCompany } from '@/server/db/schema';
 import type { FilterConfig, PaginatedResult, SessionUser } from '@/lib/types';
@@ -7,6 +7,20 @@ import { writeAuditLog, buildChangeDiff } from './audit.service';
 import eventBus from '@/server/lib/event-bus';
 import { getPermissionLevel } from '@/server/lib/permissions';
 import { buildFilterWhere } from './filter.service';
+
+function latestCompanyContactedAtSql() {
+  return sql<Date | null>`
+    GREATEST(
+      ${companies.lastContactedAt},
+      (
+        SELECT MAX(a.occurred_at)
+        FROM ${activities} a
+        WHERE a.company_id = ${companies.id}
+          AND a.deleted_at IS NULL
+      )
+    )
+  `;
+}
 
 export async function listCompanies(
   user: SessionUser,
@@ -87,7 +101,7 @@ export async function listCompanies(
       ownerId: companies.ownerId,
       logoUrl: companies.logoUrl,
       customFields: companies.customFields,
-      lastContactedAt: companies.lastContactedAt,
+      lastContactedAt: latestCompanyContactedAtSql(),
       createdAt: companies.createdAt,
       ownerFirstName: users.firstName,
       ownerLastName: users.lastName,
@@ -143,7 +157,7 @@ export async function getCompanyById(
       status: companies.status,
       ownerId: companies.ownerId,
       customFields: companies.customFields,
-      lastContactedAt: companies.lastContactedAt,
+      lastContactedAt: latestCompanyContactedAtSql(),
       createdAt: companies.createdAt,
       updatedAt: companies.updatedAt,
       deletedAt: companies.deletedAt,
