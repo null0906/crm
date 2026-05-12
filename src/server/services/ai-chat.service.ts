@@ -11,7 +11,7 @@ import {
 } from '@/server/db/schema';
 import { writeAuditLog } from './audit.service';
 import { executeSafeQuery, validateGeneratedSql } from './sql-safety.service';
-import { generateChatResponse, GeminiServiceError, type GeminiHistoryMessage } from './gemini.service';
+import { generateChatResponse, type GeminiHistoryMessage } from './gemini.service';
 import type { RolePermissions } from '@/lib/types';
 
 type DbClient = typeof defaultDb;
@@ -322,6 +322,8 @@ export async function handleMessage(
   userMessage: string,
   db: DbClient = defaultDb
 ): Promise<AiChatResponse> {
+  let userMessageStored = false;
+
   try {
     await assertSessionAccess(sessionId, userId, db);
 
@@ -337,6 +339,7 @@ export async function handleMessage(
       role: 'user',
       content: userMessage,
     });
+    userMessageStored = true;
 
     await db
       .update(aiChatSessions)
@@ -469,10 +472,30 @@ Format this into a concise, useful CRM answer. If there are no rows, say that cl
       },
     };
   } catch (error) {
-    if (error instanceof GeminiServiceError) {
-      throw error;
-    }
     console.error('[AI Chat] Failed to handle message:', error);
+
+    if (userMessageStored) {
+      try {
+        const message = await storeAssistantMessage({
+          db,
+          sessionId,
+          content: friendlyError,
+        });
+
+        return {
+          message: {
+            id: message.id,
+            role: 'assistant',
+            content: friendlyError,
+            wasClarification: false,
+            createdAt: message.createdAt,
+          },
+        };
+      } catch (storeError) {
+        console.error('[AI Chat] Failed to store fallback assistant message:', storeError);
+      }
+    }
+
     throw new Error(friendlyError);
   }
 }

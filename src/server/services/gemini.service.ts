@@ -25,7 +25,7 @@ export async function generateChatResponse(
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL ?? 'gemini-2.0-flash-exp',
+      model: process.env.GEMINI_MODEL ?? 'gemini-2.0-flash',
       systemInstruction: systemPrompt,
       generationConfig: {
         temperature: Number(process.env.GEMINI_TEMPERATURE ?? 0.1),
