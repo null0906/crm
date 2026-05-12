@@ -72,35 +72,72 @@ function getColumn(entity: string, field: string): SQL | null {
   return entityCols[entity]?.[field] ?? null;
 }
 
+function buildTagSources(entity: string): SQL[] {
+  switch (entity) {
+    case 'contact':
+      return [
+        sql.raw(`SELECT contact_tags.tag_id AS tag_id FROM contact_tags WHERE contact_tags.contact_id = contacts.id`),
+        sql.raw(`SELECT company_tags.tag_id AS tag_id FROM company_tags WHERE company_tags.company_id = contacts.company_id`),
+        sql.raw(`SELECT deal_tags.tag_id AS tag_id FROM deals d INNER JOIN deal_tags ON deal_tags.deal_id = d.id WHERE d.primary_contact_id = contacts.id`),
+        sql.raw(`SELECT deal_tags.tag_id AS tag_id FROM deal_contacts dc INNER JOIN deal_tags ON deal_tags.deal_id = dc.deal_id WHERE dc.contact_id = contacts.id`),
+      ];
+    case 'company':
+      return [
+        sql.raw(`SELECT company_tags.tag_id AS tag_id FROM company_tags WHERE company_tags.company_id = companies.id`),
+        sql.raw(`SELECT contact_tags.tag_id AS tag_id FROM contacts c INNER JOIN contact_tags ON contact_tags.contact_id = c.id WHERE c.company_id = companies.id`),
+        sql.raw(`SELECT deal_tags.tag_id AS tag_id FROM deals d INNER JOIN deal_tags ON deal_tags.deal_id = d.id WHERE d.company_id = companies.id OR d.partner_company_id = companies.id`),
+      ];
+    case 'deal':
+      return [
+        sql.raw(`SELECT deal_tags.tag_id AS tag_id FROM deal_tags WHERE deal_tags.deal_id = deals.id`),
+        sql.raw(`SELECT company_tags.tag_id AS tag_id FROM company_tags WHERE company_tags.company_id = deals.company_id OR company_tags.company_id = deals.partner_company_id`),
+        sql.raw(`SELECT contact_tags.tag_id AS tag_id FROM contact_tags WHERE contact_tags.contact_id = deals.primary_contact_id`),
+        sql.raw(`SELECT contact_tags.tag_id AS tag_id FROM deal_contacts dc INNER JOIN contact_tags ON contact_tags.contact_id = dc.contact_id WHERE dc.deal_id = deals.id`),
+      ];
+    default: {
+      const entityTableNames: Record<string, string> = {
+        contact: 'contacts',
+        company: 'companies',
+        deal: 'deals',
+      };
+      const junctionTable = `${entity}_tags`;
+      const entityTable = entityTableNames[entity] ?? `${entity}s`;
+      return [
+        sql.raw(`SELECT ${junctionTable}.tag_id AS tag_id FROM ${junctionTable} WHERE ${junctionTable}.${entity}_id = ${entityTable}.id`),
+      ];
+    }
+  }
+}
+
+function buildTagRelation(entity: string): SQL {
+  const sources = buildTagSources(entity);
+  return sql`(${sql.join(sources, sql.raw(' UNION ALL '))}) AS tag_links`;
+}
+
 function buildCondition(entity: string, condition: FilterCondition, userId?: string): SQL | null {
   const { field, operator, value } = condition;
 
   // Handle tags filter specially
   if (field === 'tags') {
-    const entityTableNames: Record<string, string> = {
-      contact: 'contacts',
-      company: 'companies',
-      deal: 'deals',
-    };
-    const junctionTable = `${entity}_tags`;
-    const entityTable = entityTableNames[entity] ?? `${entity}s`;
+    const tagRelation = buildTagRelation(entity);
     if (operator === 'contains_any' && Array.isArray(value)) {
-      const ids = value.map((v) => `'${v}'`).join(', ');
-      return sql.raw(`EXISTS (SELECT 1 FROM ${junctionTable} WHERE ${junctionTable}.${entity}_id = ${entityTable}.id AND ${junctionTable}.tag_id IN (${ids}))`);
+      const ids = value.map((v) => sql`${v}`);
+      return sql`EXISTS (SELECT 1 FROM ${tagRelation} WHERE tag_links.tag_id IN (${sql.join(ids, sql`, `)}))`;
     }
     if (operator === 'contains_all' && Array.isArray(value)) {
-      const ids = value.map((v) => `'${v}'`).join(', ');
-      return sql.raw(`(SELECT COUNT(*) FROM ${junctionTable} WHERE ${junctionTable}.${entity}_id = ${entityTable}.id AND ${junctionTable}.tag_id IN (${ids})) = ${value.length}`);
+      const uniqueValues = [...new Set(value)];
+      const ids = uniqueValues.map((v) => sql`${v}`);
+      return sql`(SELECT COUNT(DISTINCT tag_links.tag_id) FROM ${tagRelation} WHERE tag_links.tag_id IN (${sql.join(ids, sql`, `)})) = ${uniqueValues.length}`;
     }
     if (operator === 'not_in' && Array.isArray(value)) {
-      const ids = value.map((v) => `'${v}'`).join(', ');
-      return sql.raw(`NOT EXISTS (SELECT 1 FROM ${junctionTable} WHERE ${junctionTable}.${entity}_id = ${entityTable}.id AND ${junctionTable}.tag_id IN (${ids}))`);
+      const ids = value.map((v) => sql`${v}`);
+      return sql`NOT EXISTS (SELECT 1 FROM ${tagRelation} WHERE tag_links.tag_id IN (${sql.join(ids, sql`, `)}))`;
     }
     if (operator === 'is_empty') {
-      return sql.raw(`NOT EXISTS (SELECT 1 FROM ${junctionTable} WHERE ${junctionTable}.${entity}_id = ${entityTable}.id)`);
+      return sql`NOT EXISTS (SELECT 1 FROM ${tagRelation})`;
     }
     if (operator === 'is_not_empty') {
-      return sql.raw(`EXISTS (SELECT 1 FROM ${junctionTable} WHERE ${junctionTable}.${entity}_id = ${entityTable}.id)`);
+      return sql`EXISTS (SELECT 1 FROM ${tagRelation})`;
     }
     return null;
   }
