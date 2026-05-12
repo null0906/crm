@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Users, Building2, TrendingUp, Activity, LayoutDashboard,
-  Settings, ChevronLeft, ChevronRight, Shield, Handshake,
+  Settings, ChevronLeft, ChevronRight, Shield, Handshake, Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -26,6 +26,7 @@ const mainNav: NavItem[] = [
   { href: '/companies',  label: 'Companies',   icon: Building2 },
   { href: '/deals',      label: 'Deals',       icon: TrendingUp },
   { href: '/partners',   label: 'Partners',    icon: Handshake },
+  { href: '/ai-chat',    label: 'AI Assistant', icon: Sparkles },
   { href: '/activities', label: 'Activities',  icon: Activity },
 ];
 

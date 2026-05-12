@@ -34,6 +34,19 @@ import type { SessionUser } from '@/lib/types';
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
+export async function notifyUser(userId: string, message: string): Promise<boolean> {
+  const [record] = await db
+    .select({ telegramUserId: telegramUsers.telegramUserId })
+    .from(telegramUsers)
+    .where(and(eq(telegramUsers.crmUserId, userId), eq(telegramUsers.isActive, true)))
+    .limit(1);
+
+  if (!record) return false;
+
+  await sendMessage(record.telegramUserId, message, 'Markdown');
+  return true;
+}
+
 async function getAuthorizedUser(telegramUserId: number): Promise<{
   sessionUser: SessionUser;
   telegramRecord: typeof telegramUsers.$inferSelect;

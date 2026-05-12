@@ -2,6 +2,14 @@ import cron from 'node-cron';
 import { checkAndRunSchedules } from '@/server/services/digest.service';
 import { sendDealInactivityReminders } from '@/server/services/deal-inactivity.service';
 import { sendTaskDueReminders } from '@/server/services/task-reminder.service';
+import {
+  calculatePipelineBenchmarks,
+  createStaleAlerts,
+  recalculateLeadScores,
+  registerAutomationEventListeners,
+  sendMorningBriefings,
+  sendWeeklySummary,
+} from '@/server/services/automation.service';
 import { startTelegramPolling } from '@/server/lib/telegram-polling';
 
 let initialized = false;
@@ -9,6 +17,7 @@ let initialized = false;
 export function initializeCron(): void {
   if (initialized) return;
   initialized = true;
+  registerAutomationEventListeners();
 
   // Run digest scheduler every minute
   cron.schedule('* * * * *', () => {
@@ -26,6 +35,38 @@ export function initializeCron(): void {
   });
 
   console.log('[Cron] Digest scheduler started (every minute)');
+
+  cron.schedule('30 0 * * *', () => {
+    recalculateLeadScores().catch((err) => {
+      console.error('[Cron] recalculateLeadScores error:', err);
+    });
+  });
+
+  cron.schedule('0 3 * * *', () => {
+    createStaleAlerts().catch((err) => {
+      console.error('[Cron] createStaleAlerts error:', err);
+    });
+  });
+
+  cron.schedule('30 3 * * *', () => {
+    sendMorningBriefings().catch((err) => {
+      console.error('[Cron] sendMorningBriefings error:', err);
+    });
+  });
+
+  cron.schedule('30 20 * * *', () => {
+    calculatePipelineBenchmarks().catch((err) => {
+      console.error('[Cron] calculatePipelineBenchmarks error:', err);
+    });
+  });
+
+  cron.schedule('30 2 * * 1', () => {
+    sendWeeklySummary().catch((err) => {
+      console.error('[Cron] sendWeeklySummary error:', err);
+    });
+  });
+
+  console.log('[Cron] Smart automation schedules registered');
 
   // Start Telegram polling if in polling mode
   startTelegramPolling();

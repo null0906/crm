@@ -3,7 +3,7 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Calendar, DollarSign, User, Building2, Briefcase } from 'lucide-react';
+import { Calendar, Clock, DollarSign, User, Building2, Briefcase } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 
@@ -35,6 +35,7 @@ export function DealCard({ deal, onClick }: DealCardProps) {
   const ownerName =
     (deal.ownerName as string | null | undefined) ??
     ([deal.ownerFirstName, deal.ownerLastName].filter(Boolean).join(' ').trim() || null);
+  const isVelocitySlow = Boolean(deal.isVelocitySlow);
 
   return (
     <div
@@ -51,6 +52,13 @@ export function DealCard({ deal, onClick }: DealCardProps) {
       >
         {deal.title as string}
       </p>
+
+      {isVelocitySlow && (
+        <div className="mb-2 inline-flex items-center gap-1 rounded-md border border-orange-200 bg-orange-50 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">
+          <Clock className="h-3 w-3" strokeWidth={1.75} />
+          Slow
+        </div>
+      )}
 
       <div className="space-y-1.5">
         {amount !== null && amount !== undefined && (

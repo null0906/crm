@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, jsonb, integer, decimal, date, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, jsonb, integer, decimal, date, boolean, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users';
 import { companies } from './companies';
@@ -33,6 +33,7 @@ export const deals = pgTable(
     createdBy: uuid('created_by').notNull().references(() => users.id),
     customFields: jsonb('custom_fields').default({}),
     positionInStage: integer('position_in_stage').default(0),
+    isVelocitySlow: boolean('is_velocity_slow').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),

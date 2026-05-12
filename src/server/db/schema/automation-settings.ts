@@ -1,4 +1,4 @@
-import { pgTable, uuid, boolean, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, boolean, integer, jsonb, timestamp, varchar, text } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
 export const automationSettings = pgTable('automation_settings', {
@@ -14,3 +14,14 @@ export const automationSettings = pgTable('automation_settings', {
 
 export type AutomationSettings = typeof automationSettings.$inferSelect;
 export type NewAutomationSettings = typeof automationSettings.$inferInsert;
+
+export const automationConfig = pgTable('automation_config', {
+  key: varchar('key', { length: 50 }).primaryKey(),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  lastRunResult: text('last_run_result'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type AutomationConfig = typeof automationConfig.$inferSelect;
+export type NewAutomationConfig = typeof automationConfig.$inferInsert;

@@ -2,6 +2,7 @@ import { auth } from '@/server/lib/auth';
 import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
+import { FloatingChatWidget } from '@/components/ai-chat/FloatingChatWidget';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -19,6 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           {children}
         </main>
       </div>
+      <FloatingChatWidget />
     </div>
   );
 }

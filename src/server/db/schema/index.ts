@@ -15,3 +15,5 @@ export * from './telegram-users';
 export * from './digest-schedules';
 export * from './telegram-message-log';
 export * from './automation-settings';
+export * from './ai-chat';
+export * from './pipeline-benchmarks';

@@ -3,8 +3,42 @@ import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
 import { getAutomationSettings, updateAutomationSettings, ALLOWED_LEAD_INACTIVITY_PIPELINES } from '@/server/services/automation-settings.service';
 import { sendDealInactivityReminders } from '@/server/services/deal-inactivity.service';
+import {
+  automationDefinitions,
+  listAutomationConfigs,
+  runAutomationNow,
+  updateAutomationEnabled,
+  type AutomationKey,
+} from '@/server/services/automation.service';
+
+const automationKeySchema = z.enum(
+  automationDefinitions.map((automation) => automation.key) as [AutomationKey, ...AutomationKey[]]
+);
 
 export const automationRouter = router({
+  list: protectedProcedure
+    .use(requirePermission('digests', 'manage'))
+    .query(async ({ ctx }) => {
+      return listAutomationConfigs(ctx.db);
+    }),
+
+  setEnabled: protectedProcedure
+    .use(requirePermission('digests', 'manage'))
+    .input(z.object({
+      key: automationKeySchema,
+      isEnabled: z.boolean(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return updateAutomationEnabled(input.key, input.isEnabled, ctx.db);
+    }),
+
+  runNow: protectedProcedure
+    .use(requirePermission('digests', 'manage'))
+    .input(z.object({ key: automationKeySchema }))
+    .mutation(async ({ ctx, input }) => {
+      return runAutomationNow(input.key, ctx.db);
+    }),
+
   getLeadInactivity: protectedProcedure
     .use(requirePermission('digests', 'manage'))
     .query(async () => {
