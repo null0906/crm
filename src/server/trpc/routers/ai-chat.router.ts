@@ -8,7 +8,7 @@ import * as aiChatService from '@/server/services/ai-chat.service';
 const staticSuggestions = [
   "How many open deals do we have and what's the total pipeline value?",
   "Which leads haven't been contacted in over 2 weeks?",
-  "Show me Aditi's activity this week",
+  "Show me Aditya's activity this week",
   "What's our win rate this quarter?",
   'Which stage has the most stuck deals?',
   'How many leads came from each event?',
