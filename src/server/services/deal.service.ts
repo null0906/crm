@@ -1,12 +1,133 @@
 import { db } from '@/server/db';
 import { deals, dealTags, dealContacts, dealStageHistory, tags, companies, contacts, users, pipelineStages, pipelines, activities } from '@/server/db/schema';
-import { eq, and, isNull, or, ilike, sql, lt, desc, asc, inArray } from 'drizzle-orm';
+import { eq, and, isNull, or, ilike, sql, lt, desc, asc, inArray, SQL, type SQLWrapper } from 'drizzle-orm';
 import type { NewDeal } from '@/server/db/schema';
-import type { FilterConfig, PaginatedResult, SessionUser } from '@/lib/types';
+import type { DealStatus, FilterConfig, PaginatedResult, SessionUser, StageType } from '@/lib/types';
 import { writeAuditLog, buildChangeDiff } from './audit.service';
 import eventBus from '@/server/lib/event-bus';
 import { getPermissionLevel } from '@/server/lib/permissions';
 import { buildFilterWhere } from './filter.service';
+
+interface StageContext {
+  id: string;
+  pipelineId: string;
+  stageType: StageType;
+}
+
+function getEffectiveDealStatusSql(stageTypeColumn: SQLWrapper): SQL<DealStatus> {
+  return sql<DealStatus>`
+    CASE
+      WHEN ${deals.status} <> 'open' THEN ${deals.status}
+      WHEN ${stageTypeColumn} = 'won' THEN 'won'
+      WHEN ${stageTypeColumn} = 'lost' THEN 'lost'
+      ELSE 'open'
+    END
+  `;
+}
+
+function deriveStatusFromStageType(stageType: StageType, preferredStatus?: DealStatus | null): DealStatus {
+  if (stageType === 'won') return 'won';
+  if (stageType === 'lost') return preferredStatus === 'abandoned' ? 'abandoned' : 'lost';
+  return 'open';
+}
+
+function normalizeDateValue(value: unknown): string | null {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value instanceof Date) return value.toISOString().split('T')[0] ?? null;
+  return null;
+}
+
+function resolveActualCloseDate(nextStatus: DealStatus, previousStatus?: DealStatus | null, previousActualCloseDate?: unknown): string | null {
+  if (nextStatus === 'open') return null;
+  const normalizedPreviousCloseDate = normalizeDateValue(previousActualCloseDate);
+  if (previousStatus === nextStatus && normalizedPreviousCloseDate) {
+    return normalizedPreviousCloseDate;
+  }
+  return new Date().toISOString().split('T')[0] ?? null;
+}
+
+async function getStageContext(stageId: string): Promise<StageContext | null> {
+  const [stage] = await db
+    .select({
+      id: pipelineStages.id,
+      pipelineId: pipelineStages.pipelineId,
+      stageType: pipelineStages.stageType,
+    })
+    .from(pipelineStages)
+    .where(eq(pipelineStages.id, stageId))
+    .limit(1);
+
+  return stage ?? null;
+}
+
+async function getFirstStageForType(pipelineId: string, stageType: StageType): Promise<StageContext | null> {
+  const [stage] = await db
+    .select({
+      id: pipelineStages.id,
+      pipelineId: pipelineStages.pipelineId,
+      stageType: pipelineStages.stageType,
+    })
+    .from(pipelineStages)
+    .where(and(eq(pipelineStages.pipelineId, pipelineId), eq(pipelineStages.stageType, stageType)))
+    .orderBy(asc(pipelineStages.position))
+    .limit(1);
+
+  return stage ?? null;
+}
+
+async function resolveStageAndStatus(params: {
+  pipelineId: string;
+  stageId?: string | null;
+  status?: DealStatus | null;
+  fallbackStageId?: string | null;
+  fallbackStatus?: DealStatus | null;
+}): Promise<{ stageId: string; stageType: StageType; status: DealStatus }> {
+  const preferredStatus = params.status ?? params.fallbackStatus ?? 'open';
+
+  if (params.stageId) {
+    const stage = await getStageContext(params.stageId);
+    if (!stage) throw new Error('Selected stage was not found');
+    return {
+      stageId: stage.id,
+      stageType: stage.stageType,
+      status: deriveStatusFromStageType(stage.stageType, preferredStatus),
+    };
+  }
+
+  const currentStage = params.fallbackStageId ? await getStageContext(params.fallbackStageId) : null;
+  const targetStageType: StageType =
+    preferredStatus === 'won' ? 'won' :
+    preferredStatus === 'open' ? 'active' :
+    'lost';
+
+  if (currentStage && currentStage.pipelineId === params.pipelineId && currentStage.stageType === targetStageType) {
+    return {
+      stageId: currentStage.id,
+      stageType: currentStage.stageType,
+      status: deriveStatusFromStageType(currentStage.stageType, preferredStatus),
+    };
+  }
+
+  const targetStage = await getFirstStageForType(params.pipelineId, targetStageType);
+  if (targetStage) {
+    return {
+      stageId: targetStage.id,
+      stageType: targetStage.stageType,
+      status: deriveStatusFromStageType(targetStage.stageType, preferredStatus),
+    };
+  }
+
+  if (currentStage) {
+    return {
+      stageId: currentStage.id,
+      stageType: currentStage.stageType,
+      status: deriveStatusFromStageType(currentStage.stageType, preferredStatus),
+    };
+  }
+
+  throw new Error('Unable to resolve a valid stage for this deal');
+}
 
 async function promoteCompanyToPartnerIfEligible(
   companyId: string | null | undefined,
@@ -155,7 +276,7 @@ export async function listDeals(
       amount: deals.amount,
       currency: deals.currency,
       probability: deals.probability,
-      status: deals.status,
+      status: getEffectiveDealStatusSql(pipelineStages.stageType),
       services: deals.services,
       serviceOther: deals.serviceOther,
       pipelineId: deals.pipelineId,
@@ -212,6 +333,18 @@ export async function getDealsByStage(
 
   const conditions = [isNull(deals.deletedAt), eq(deals.pipelineId, pipelineId)];
   if (readLevel === 'own') conditions.push(eq(deals.ownerId, user.id));
+  const pipelineStageRows = await db
+    .select({
+      id: pipelineStages.id,
+      stageType: pipelineStages.stageType,
+    })
+    .from(pipelineStages)
+    .where(eq(pipelineStages.pipelineId, pipelineId))
+    .orderBy(asc(pipelineStages.position));
+
+  const firstActiveStageId = pipelineStageRows.find((stage) => stage.stageType === 'active')?.id;
+  const firstWonStageId = pipelineStageRows.find((stage) => stage.stageType === 'won')?.id;
+  const firstLostStageId = pipelineStageRows.find((stage) => stage.stageType === 'lost')?.id;
 
   if (opts?.search?.trim()) {
     const searchTokens = opts.search
@@ -247,10 +380,11 @@ export async function getDealsByStage(
       amount: deals.amount,
       currency: deals.currency,
       probability: deals.probability,
-      status: deals.status,
+      status: getEffectiveDealStatusSql(pipelineStages.stageType),
       services: deals.services,
       serviceOther: deals.serviceOther,
       stageId: deals.stageId,
+      stageType: pipelineStages.stageType,
       stageEnteredAt: deals.stageEnteredAt,
       expectedCloseDate: deals.expectedCloseDate,
       ownerId: deals.ownerId,
@@ -270,6 +404,7 @@ export async function getDealsByStage(
     .from(deals)
     .leftJoin(users, eq(deals.ownerId, users.id))
     .leftJoin(companies, eq(deals.companyId, companies.id))
+    .leftJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
     .leftJoin(contacts, eq(deals.primaryContactId, contacts.id))
     .where(and(...conditions))
     .orderBy(asc(deals.positionInStage), desc(deals.createdAt));
@@ -277,9 +412,18 @@ export async function getDealsByStage(
   // Group by stage
   const grouped: Record<string, Record<string, unknown>[]> = {};
   for (const row of rows) {
-    const stageId = row.stageId;
-    if (!grouped[stageId]) grouped[stageId] = [];
-    grouped[stageId]!.push(row as Record<string, unknown>);
+    let groupedStageId = row.stageId;
+    if (row.status === 'won' && row.stageType !== 'won' && firstWonStageId) {
+      groupedStageId = firstWonStageId;
+    } else if ((row.status === 'lost' || row.status === 'abandoned') && row.stageType !== 'lost' && firstLostStageId) {
+      groupedStageId = firstLostStageId;
+    } else if (row.status === 'open' && row.stageType !== 'active' && firstActiveStageId) {
+      groupedStageId = firstActiveStageId;
+    }
+
+    const normalizedRow = { ...row, stageId: groupedStageId } as Record<string, unknown>;
+    if (!grouped[groupedStageId]) grouped[groupedStageId] = [];
+    grouped[groupedStageId]!.push(normalizedRow);
   }
   return grouped;
 }
@@ -303,7 +447,7 @@ export async function getDealById(
       amount: deals.amount,
       currency: deals.currency,
       probability: deals.probability,
-      status: deals.status,
+      status: getEffectiveDealStatusSql(pipelineStages.stageType),
       services: deals.services,
       serviceOther: deals.serviceOther,
       pipelineId: deals.pipelineId,
@@ -404,17 +548,29 @@ export async function createDeal(
   data: Omit<NewDeal, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>
 ): Promise<Record<string, unknown>> {
   await validatePartnerAssignment(data.pipelineId, data.partnerCompanyId);
+  const resolvedLifecycle = await resolveStageAndStatus({
+    pipelineId: data.pipelineId,
+    stageId: data.stageId,
+    status: (data.status as DealStatus | null | undefined) ?? 'open',
+  });
 
   const [deal] = await db
     .insert(deals)
-    .values({ ...data, ownerId: data.ownerId ?? user.id, createdBy: user.id })
+    .values({
+      ...data,
+      stageId: resolvedLifecycle.stageId,
+      status: resolvedLifecycle.status,
+      actualCloseDate: resolveActualCloseDate(resolvedLifecycle.status),
+      ownerId: data.ownerId ?? user.id,
+      createdBy: user.id,
+    })
     .returning();
 
   // Create initial stage history
   await db.insert(dealStageHistory).values({
     dealId: deal!.id,
     fromStageId: null,
-    toStageId: data.stageId,
+    toStageId: resolvedLifecycle.stageId,
     movedBy: user.id,
   });
 
@@ -422,16 +578,16 @@ export async function createDeal(
   await db.insert(activities).values({
     activityType: 'note',
     subject: `Deal created: ${deal!.title}`,
-    dealId: deal!.id,
-    companyId: data.companyId ?? null,
-    contactId: data.primaryContactId ?? null,
-    performedBy: user.id,
-    isAutomated: true,
-    occurredAt: new Date(),
-    metadata: { dealTitle: deal!.title, stageId: data.stageId },
-  });
+      dealId: deal!.id,
+      companyId: data.companyId ?? null,
+      contactId: data.primaryContactId ?? null,
+      performedBy: user.id,
+      isAutomated: true,
+      occurredAt: new Date(),
+      metadata: { dealTitle: deal!.title, stageId: resolvedLifecycle.stageId },
+    });
 
-  await promoteCompanyToPartnerIfEligible(data.companyId, data.pipelineId, data.stageId);
+  await promoteCompanyToPartnerIfEligible(data.companyId, data.pipelineId, resolvedLifecycle.stageId);
 
   eventBus.emit('deal.created', { dealId: deal!.id, createdBy: user.id });
 
@@ -466,12 +622,44 @@ export async function updateDeal(
     : (existing.partnerCompanyId as string | null | undefined);
 
   await validatePartnerAssignment(nextPipelineId, nextPartnerCompanyId);
+  const pipelineChanged = nextPipelineId !== (existing.pipelineId as string);
+  const shouldSyncLifecycle = data.stageId !== undefined || data.status !== undefined || pipelineChanged;
+  const resolvedLifecycle = shouldSyncLifecycle
+    ? await resolveStageAndStatus({
+        pipelineId: nextPipelineId,
+        stageId: data.stageId as string | null | undefined,
+        status: data.status as DealStatus | null | undefined,
+        fallbackStageId: existing.stageId as string | null | undefined,
+        fallbackStatus: existing.status as DealStatus | null | undefined,
+      })
+    : null;
 
-  const isStageChange = data.stageId && data.stageId !== existing.stageId;
+  const nextStageId = resolvedLifecycle?.stageId ?? (data.stageId as string | undefined) ?? (existing.stageId as string);
+  const nextStatus = resolvedLifecycle?.status ?? (data.status as DealStatus | undefined) ?? (existing.status as DealStatus);
+  const isStageChange = nextStageId !== existing.stageId;
+  const isStatusChange = nextStatus !== existing.status;
+  const updatePayload: Partial<Omit<NewDeal, 'id' | 'createdAt' | 'createdBy'>> & { updatedAt: Date; stageEnteredAt?: Date } = {
+    ...data,
+    updatedAt: new Date(),
+  };
+
+  if (resolvedLifecycle) {
+    updatePayload.stageId = resolvedLifecycle.stageId;
+    updatePayload.status = resolvedLifecycle.status;
+    updatePayload.actualCloseDate = resolveActualCloseDate(
+      resolvedLifecycle.status,
+      existing.status as DealStatus | null | undefined,
+      existing.actualCloseDate
+    );
+  }
+
+  if (isStageChange) {
+    updatePayload.stageEnteredAt = new Date();
+  }
 
   const [updated] = await db
     .update(deals)
-    .set({ ...data, updatedAt: new Date(), ...(isStageChange ? { stageEnteredAt: new Date() } : {}) })
+    .set(updatePayload)
     .where(and(eq(deals.id, id), isNull(deals.deletedAt)))
     .returning();
 
@@ -486,29 +674,14 @@ export async function updateDeal(
     await db.insert(dealStageHistory).values({
       dealId: id,
       fromStageId: existing.stageId as string,
-      toStageId: data.stageId as string,
+      toStageId: nextStageId,
       movedBy: user.id,
     });
-
-    // Check if winning/losing stage
-    const [stage] = await db
-      .select({ stageType: pipelineStages.stageType })
-      .from(pipelineStages)
-      .where(eq(pipelineStages.id, data.stageId as string))
-      .limit(1);
-
-    if (stage?.stageType === 'won') {
-      await db.update(deals).set({ status: 'won', actualCloseDate: new Date().toISOString().split('T')[0] }).where(eq(deals.id, id));
-      eventBus.emit('deal.won', { dealId: id, amount: Number(existing.amount ?? 0), wonBy: user.id });
-    } else if (stage?.stageType === 'lost') {
-      await db.update(deals).set({ status: 'lost' }).where(eq(deals.id, id));
-      eventBus.emit('deal.lost', { dealId: id, reason: data.lostReason as string ?? '', lostBy: user.id });
-    }
 
     eventBus.emit('deal.stage_changed', {
       dealId: id,
       fromStageId: existing.stageId as string,
-      toStageId: data.stageId as string,
+      toStageId: nextStageId,
       movedBy: user.id,
     });
 
@@ -525,7 +698,7 @@ export async function updateDeal(
       metadata: {
         dealTitle: existing.title,
         fromStageId: existing.stageId,
-        toStageId: data.stageId,
+        toStageId: nextStageId,
         companyId: existing.companyId,
         primaryContactId: existing.primaryContactId,
       },
@@ -534,8 +707,14 @@ export async function updateDeal(
     await promoteCompanyToPartnerIfEligible(
       (updated?.companyId as string | null | undefined) ?? (existing.companyId as string | null | undefined),
       nextPipelineId,
-      data.stageId as string
+      nextStageId
     );
+  }
+
+  if (isStatusChange && nextStatus === 'won') {
+    eventBus.emit('deal.won', { dealId: id, amount: Number(existing.amount ?? 0), wonBy: user.id });
+  } else if (isStatusChange && (nextStatus === 'lost' || nextStatus === 'abandoned')) {
+    eventBus.emit('deal.lost', { dealId: id, reason: (data.lostReason as string | undefined) ?? '', lostBy: user.id });
   }
 
   const changes = buildChangeDiff(existing as Record<string, unknown>, updated as Record<string, unknown>);
@@ -585,7 +764,7 @@ export async function getDealsByContact(
       title: deals.title,
       amount: deals.amount,
       currency: deals.currency,
-      status: deals.status,
+      status: getEffectiveDealStatusSql(pipelineStages.stageType),
       stageId: deals.stageId,
       expectedCloseDate: deals.expectedCloseDate,
       createdAt: deals.createdAt,
@@ -608,7 +787,7 @@ export async function getDealsByContact(
       title: deals.title,
       amount: deals.amount,
       currency: deals.currency,
-      status: deals.status,
+      status: getEffectiveDealStatusSql(pipelineStages.stageType),
       stageId: deals.stageId,
       expectedCloseDate: deals.expectedCloseDate,
       createdAt: deals.createdAt,
@@ -657,7 +836,7 @@ export async function getDealsByCompany(
       title: deals.title,
       amount: deals.amount,
       currency: deals.currency,
-      status: deals.status,
+      status: getEffectiveDealStatusSql(pipelineStages.stageType),
       stageId: deals.stageId,
       expectedCloseDate: deals.expectedCloseDate,
       createdAt: deals.createdAt,
@@ -697,9 +876,30 @@ export async function bulkUpdateDeals(
 ): Promise<{ updated: number }> {
   if (!ids.length) return { updated: 0 };
 
+  if (data.status !== undefined) {
+    for (const id of ids) {
+      await updateDeal(user, id, {
+        ...(data.ownerId !== undefined ? { ownerId: data.ownerId } : {}),
+        status: data.status as DealStatus,
+      });
+      if (data.tagIdsToAdd?.length) {
+        await addDealTags(user, id, data.tagIdsToAdd);
+      }
+    }
+
+    await writeAuditLog({
+      userId: user.id,
+      userEmail: user.email,
+      action: 'bulk_update',
+      entityType: 'deal',
+      metadata: { ids, changes: data },
+    });
+
+    return { updated: ids.length };
+  }
+
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (data.ownerId !== undefined) updateData.ownerId = data.ownerId;
-  if (data.status !== undefined) updateData.status = data.status;
 
   if (Object.keys(updateData).length > 1) {
     await db
