@@ -12,7 +12,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
       <Sidebar />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Topbar />

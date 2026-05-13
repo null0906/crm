@@ -119,8 +119,15 @@ export default function DealsPage() {
 
   if (pipelinesLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-sm text-slate-400">Loading pipelines...</div>
+      <div className="flex h-full items-start gap-3 p-4">
+        <div className="w-[280px] rounded-[10px] bg-[rgba(241,243,248,0.65)] p-3">
+          <div className="skeleton mb-4 h-3.5 w-32" />
+          <div className="space-y-2">
+            <div className="skeleton h-24 w-full rounded-[10px]" />
+            <div className="skeleton h-24 w-full rounded-[10px]" />
+            <div className="skeleton h-24 w-full rounded-[10px]" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -129,9 +136,9 @@ export default function DealsPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <LayoutGrid className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-500 font-medium">No pipelines found</p>
-          <p className="text-sm text-slate-400 mt-1">Create a pipeline in Settings to get started.</p>
+          <LayoutGrid className="mx-auto mb-3 h-10 w-10 text-[var(--color-border-strong)]" />
+          <p className="font-medium text-[var(--color-text-2)]">No pipelines found</p>
+          <p className="mt-1 text-sm text-[var(--color-text-3)]">Create a pipeline in Settings to get started.</p>
         </div>
       </div>
     );
@@ -140,19 +147,17 @@ export default function DealsPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center justify-between border-b border-[var(--color-border-ui)] bg-[var(--color-surface)] px-6 py-3 shadow-[0_1px_0_var(--color-border-ui),_0_2px_4px_rgba(17,19,24,0.03)]">
         <div className="flex items-center gap-4">
-          <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Deals</h1>
-
           {/* Pipeline tabs */}
-          <div className="flex items-center gap-0.5 bg-slate-100/80 border border-slate-200/60 rounded-lg p-1">
+          <div className="pipeline-tab-bar flex items-center gap-1 rounded-[9px] border border-[var(--color-header-border)] bg-[var(--color-avatar-bg)] p-[3px]">
             {pipelines.map((pipeline) => (
               <button
                 key={String(pipeline.id)}
-                className={`text-[13px] px-3 py-1 rounded-md transition-all duration-150 ${
+                className={`pipeline-tab h-[30px] rounded-[7px] px-3.5 text-[12.5px] font-medium transition-all duration-150 ease-[var(--ease-spring)] whitespace-nowrap ${
                   selectedPipelineId === String(pipeline.id)
-                    ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80 font-medium'
-                    : 'text-slate-500 hover:text-slate-700'
+                    ? 'bg-[var(--color-surface)] text-[var(--color-text-1)] shadow-[0_1px_3px_rgba(17,19,24,0.10),_0_1px_2px_rgba(17,19,24,0.06)] font-semibold'
+                    : 'text-[var(--color-neutral)] hover:bg-[rgba(255,255,255,0.7)] hover:text-[var(--color-company)]'
                 }`}
                 onClick={() => setSelectedPipelineId(String(pipeline.id))}
               >
@@ -164,17 +169,17 @@ export default function DealsPage() {
 
         <div className="flex items-center gap-2">
           {/* View toggle */}
-          <div className="flex items-center bg-slate-100/80 border border-slate-200/60 rounded-lg p-1">
+          <div className="flex items-center rounded-[9px] border border-[var(--color-header-border)] bg-[var(--color-avatar-bg)] p-[3px]">
             <button
               onClick={() => setViewMode('kanban')}
-              className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-white shadow-sm text-slate-900 border border-slate-200/80' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`rounded-[7px] p-1.5 transition-all ${viewMode === 'kanban' ? 'bg-[var(--color-surface)] text-[var(--color-text-1)] shadow-sm' : 'text-[var(--color-text-3)] hover:text-[var(--color-company)]'}`}
               title="Kanban view"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-md transition-colors ${viewMode === 'table' ? 'bg-white shadow-sm text-slate-900 border border-slate-200/80' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`rounded-[7px] p-1.5 transition-all ${viewMode === 'table' ? 'bg-[var(--color-surface)] text-[var(--color-text-1)] shadow-sm' : 'text-[var(--color-text-3)] hover:text-[var(--color-company)]'}`}
               title="Table view"
             >
               <List className="w-3.5 h-3.5" />
@@ -203,20 +208,20 @@ export default function DealsPage() {
 
       {/* Filter bar */}
       {showFilters && (
-        <div className="flex flex-wrap items-center gap-3 px-6 py-2.5 bg-slate-50 border-b border-slate-100 flex-shrink-0">
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-6 py-2.5">
           <div className="relative min-w-[240px] flex-1 max-w-[320px]">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-3)]" />
             <Input
               placeholder="Search deals, contacts, companies..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-8 text-[13px] bg-white"
+              className="h-8 bg-[var(--color-surface)] pl-8 text-base"
             />
           </div>
           <select
             value={ownerFilter}
             onChange={(e) => setOwnerFilter(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
             <option value="">All owners</option>
             {users.map((u) => (
@@ -226,7 +231,7 @@ export default function DealsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
             <option value="">All statuses</option>
             {DEAL_STATUSES.map((status) => (
@@ -236,7 +241,7 @@ export default function DealsPage() {
           <select
             value={stageFilter}
             onChange={(e) => setStageFilter(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
             <option value="">All stages</option>
             {stages.map((stage) => (
@@ -246,7 +251,7 @@ export default function DealsPage() {
           <select
             value={companyFilter}
             onChange={(e) => setCompanyFilter(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
             <option value="">All companies</option>
             {companies.map((company) => (
@@ -256,7 +261,7 @@ export default function DealsPage() {
           <select
             value={contactFilter}
             onChange={(e) => setContactFilter(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
             <option value="">All contacts</option>
             {contacts.map((contact) => (
@@ -268,7 +273,7 @@ export default function DealsPage() {
           <select
             value={partnerFilter}
             onChange={(e) => setPartnerFilter(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
             <option value="">All partners</option>
             {partnerCompanies.map((company) => (
@@ -278,7 +283,7 @@ export default function DealsPage() {
           <select
             value={serviceFilter}
             onChange={(e) => setServiceFilter(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
             <option value="">All services</option>
             {DEAL_SERVICE_OPTIONS.map((service) => (
@@ -293,15 +298,15 @@ export default function DealsPage() {
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+                className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-mono text-sm text-[var(--color-text-2)]"
               title="Created from"
             />
-            <span className="text-xs text-slate-400">–</span>
+            <span className="text-xs text-[var(--color-text-3)]">–</span>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+              className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-mono text-sm text-[var(--color-text-2)]"
               title="Created to"
             />
           </div>
@@ -310,15 +315,15 @@ export default function DealsPage() {
               type="date"
               value={expectedCloseFrom}
               onChange={(e) => setExpectedCloseFrom(e.target.value)}
-              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+              className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-mono text-sm text-[var(--color-text-2)]"
               title="Expected close from"
             />
-            <span className="text-xs text-slate-400">–</span>
+            <span className="text-xs text-[var(--color-text-3)]">–</span>
             <input
               type="date"
               value={expectedCloseTo}
               onChange={(e) => setExpectedCloseTo(e.target.value)}
-              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+              className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 font-mono text-sm text-[var(--color-text-2)]"
               title="Expected close to"
             />
           </div>
@@ -339,7 +344,7 @@ export default function DealsPage() {
                 setExpectedCloseFrom('');
                 setExpectedCloseTo('');
               }}
-              className="text-[11px] text-slate-400 hover:text-slate-600"
+              className="text-sm text-[var(--color-text-3)] hover:text-[var(--color-text-2)]"
             >
               Clear All
             </button>
@@ -348,12 +353,12 @@ export default function DealsPage() {
       )}
 
       {selectedDealIds.length > 0 && (
-        <div className="flex items-center gap-2 px-6 py-2 bg-blue-50 border-b border-blue-200 flex-shrink-0">
-          <span className="text-sm font-medium text-blue-700">{selectedDealIds.length} selected</span>
+        <div className="flex flex-shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-accent-soft)] px-6 py-2">
+          <span className="text-sm font-medium text-[var(--color-accent)]">{selectedDealIds.length} selected</span>
           <select
             value={bulkOwnerId}
             onChange={(e) => setBulkOwnerId(e.target.value)}
-            className="text-xs border border-blue-200 rounded-md px-2 py-1 bg-white text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
             <option value="">Change owner</option>
             <option value="__unassigned__">Unassigned</option>
@@ -364,7 +369,7 @@ export default function DealsPage() {
           <select
             value={bulkStatus}
             onChange={(e) => setBulkStatus(e.target.value)}
-            className="text-xs border border-blue-200 rounded-md px-2 py-1 bg-white text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
             <option value="">Change lead type / status</option>
             <option value="open">Open</option>
@@ -390,7 +395,7 @@ export default function DealsPage() {
           >
             Apply
           </Button>
-          <button onClick={() => setRowSelection({})} className="text-xs text-slate-500 ml-auto hover:text-slate-700">
+          <button onClick={() => setRowSelection({})} className="ml-auto text-sm text-[var(--color-text-2)] hover:text-[var(--color-text-1)]">
             Clear selection
           </button>
         </div>
@@ -399,7 +404,7 @@ export default function DealsPage() {
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {!selectedPipelineId ? (
-          <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+          <div className="flex h-full items-center justify-center text-sm text-[var(--color-text-3)]">
             Select a pipeline
           </div>
         ) : viewMode === 'kanban' ? (
@@ -413,7 +418,7 @@ export default function DealsPage() {
               onDealClick={(deal) => setSelectedDealId(String(deal.id))}
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+            <div className="flex h-full items-center justify-center text-sm text-[var(--color-text-3)]">
               No stages in this pipeline.
             </div>
           )

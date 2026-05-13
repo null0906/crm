@@ -14,6 +14,7 @@ import { ChevronUp, ChevronDown, ChevronsUpDown, Trash2, ExternalLink } from 'lu
 import { trpc } from '@/lib/trpc';
 import { formatCurrency, formatDate, formatRelative } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
+import { TableSkeleton } from '@/components/shared/LoadingSkeleton';
 import { toast } from 'sonner';
 
 interface Deal {
@@ -51,11 +52,30 @@ interface DealTableProps {
 
 const columnHelper = createColumnHelper<Deal>();
 
-const STATUS_COLORS: Record<string, string> = {
-  open: 'bg-blue-50 text-blue-700 border border-blue-200',
-  won: 'bg-green-50 text-green-700 border border-green-200',
-  lost: 'bg-red-50 text-red-700 border border-red-200',
+const STATUS_STYLES: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+  open: {
+    bg: 'var(--color-status-new-bg)',
+    border: 'var(--color-status-new-border)',
+    text: 'var(--color-status-new-text)',
+    dot: 'var(--color-status-new-dot)',
+  },
+  won: {
+    bg: 'var(--color-success-bg)',
+    border: 'var(--color-status-contacted-border)',
+    text: 'var(--color-success)',
+    dot: 'var(--color-success)',
+  },
+  lost: {
+    bg: 'var(--color-danger-bg)',
+    border: 'var(--color-status-unqualified-border)',
+    text: 'var(--color-danger)',
+    dot: 'var(--color-danger)',
+  },
 };
+
+function EmptyCell() {
+  return <span className="select-none font-mono text-base text-[var(--color-border-strong)]">—</span>;
+}
 
 export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSelection, onRowSelectionChange }: DealTableProps) {
   const utils = trpc.useUtils();
@@ -99,7 +119,7 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
           type="checkbox"
           checked={table.getIsAllRowsSelected()}
           onChange={table.getToggleAllRowsSelectedHandler()}
-          className="rounded border-slate-300"
+          className="h-3.5 w-3.5 rounded-[3px] border-[var(--color-border-strong)] accent-[var(--color-accent)]"
         />
       ),
       cell: (info) => (
@@ -108,7 +128,7 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
           checked={info.row.getIsSelected()}
           onChange={info.row.getToggleSelectedHandler()}
           onClick={(e) => e.stopPropagation()}
-          className="rounded border-slate-300"
+          className="h-3.5 w-3.5 rounded-[3px] border-[var(--color-border-strong)] accent-[var(--color-accent)]"
         />
       ),
     }),
@@ -117,7 +137,7 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
       cell: (info) => (
         <button
           onClick={() => onDealClick(info.row.original.id)}
-          className="text-left font-medium text-slate-900 hover:text-blue-600 transition-colors flex items-center gap-1.5 group"
+          className="group flex items-center gap-1.5 text-left text-[13.5px] font-semibold text-[var(--color-text-1)] transition-colors hover:text-[var(--color-accent)]"
         >
           {info.getValue()}
           <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -127,9 +147,9 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
     columnHelper.accessor('stageName', {
       header: 'Stage',
       cell: (info) => {
-        const color = info.row.original.stageColor ?? '#6366f1';
+        const color = info.row.original.stageColor ?? 'var(--color-stage-neutral)';
         return (
-          <span className="flex items-center gap-1.5 text-sm text-slate-700">
+          <span className="flex items-center gap-1.5 text-sm text-[var(--color-text-2)]">
             <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
             {info.getValue() ?? '—'}
           </span>
@@ -139,7 +159,7 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
     columnHelper.accessor('amount', {
       header: 'Value',
       cell: (info) => (
-        <span className="font-medium text-slate-900">
+        <span className="font-mono text-base font-semibold text-[var(--color-text-1)]">
           {formatCurrency(info.getValue(), info.row.original.currency)}
         </span>
       ),
@@ -148,8 +168,13 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
       header: 'Status',
       cell: (info) => {
         const status = info.getValue();
+        const style = STATUS_STYLES[status] ?? STATUS_STYLES.open!;
         return (
-          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${STATUS_COLORS[status] ?? 'bg-slate-100 text-slate-700'}`}>
+          <span
+            style={{ background: style.bg, borderColor: style.border, color: style.text }}
+            className="inline-flex items-center gap-[5px] rounded-[5px] border px-2 py-[3px] text-[11.5px] font-semibold capitalize tracking-[0.01em]"
+          >
+            <span style={{ background: style.dot }} className="h-[5px] w-[5px] rounded-full" />
             {status}
           </span>
         );
@@ -159,41 +184,41 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
       header: 'Prob.',
       cell: (info) => {
         const val = info.getValue();
-        if (val === null || val === undefined) return <span className="text-slate-400">—</span>;
+        if (val === null || val === undefined) return <EmptyCell />;
         return (
           <div className="flex items-center gap-2">
-            <div className="w-12 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-1.5 w-12 overflow-hidden rounded-full bg-[var(--color-avatar-bg)]">
               <div
-                className="h-full bg-blue-500 rounded-full"
+                className="h-full rounded-full bg-[var(--color-accent)]"
                 style={{ width: `${val}%` }}
               />
             </div>
-            <span className="text-xs text-slate-600">{val}%</span>
+            <span className="text-xs text-[var(--color-text-2)]">{val}%</span>
           </div>
         );
       },
     }),
     columnHelper.accessor('primaryContactName', {
       header: 'Contact',
-      cell: (info) => <span className="text-slate-700">{info.getValue() ?? '—'}</span>,
+      cell: (info) => info.getValue() ? <span className="text-[var(--color-text-2)]">{info.getValue()}</span> : <EmptyCell />,
     }),
     columnHelper.accessor('companyName', {
       header: 'Company',
-      cell: (info) => <span className="text-slate-700">{info.getValue() ?? '—'}</span>,
+      cell: (info) => info.getValue() ? <span className="font-medium text-[var(--color-company)]">{info.getValue()}</span> : <EmptyCell />,
     }),
     columnHelper.accessor('ownerName', {
       header: 'Owner',
-      cell: (info) => <span className="text-slate-700">{info.getValue() ?? '—'}</span>,
+      cell: (info) => info.getValue() ? <span className="text-[var(--color-text-2)]">{info.getValue()}</span> : <EmptyCell />,
     }),
     columnHelper.accessor('expectedCloseDate', {
       header: 'Close Date',
       cell: (info) => {
         const val = info.getValue();
-        if (!val) return <span className="text-slate-400">—</span>;
+        if (!val) return <EmptyCell />;
         const date = new Date(val);
         const isOverdue = date < new Date() && info.row.original.status === 'open';
         return (
-          <span className={`text-sm ${isOverdue ? 'text-red-600 font-medium' : 'text-slate-700'}`}>
+          <span className={`font-mono text-sm ${isOverdue ? 'font-medium text-[var(--color-danger)]' : 'text-[var(--color-text-2)]'}`}>
             {formatDate(val)}
           </span>
         );
@@ -201,7 +226,7 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
     }),
     columnHelper.accessor('createdAt', {
       header: 'Created',
-      cell: (info) => <span className="text-slate-500 text-sm">{formatRelative(info.getValue())}</span>,
+      cell: (info) => <span className="font-mono text-sm text-[var(--color-text-2)]">{formatRelative(info.getValue())}</span>,
     }),
     columnHelper.display({
       id: 'actions',
@@ -214,7 +239,7 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
               deleteDeal.mutate({ id: info.row.original.id });
             }
           }}
-          className="opacity-0 group-hover/row:opacity-100 w-7 h-7 flex items-center justify-center rounded hover:bg-red-50 text-red-400 transition-all"
+          className="flex h-7 w-7 items-center justify-center rounded text-[var(--color-text-3)] opacity-0 transition-all hover:bg-[var(--color-danger-bg)] hover:text-[var(--color-danger)] group-hover/row:opacity-100"
           title="Delete"
         >
           <Trash2 className="w-3.5 h-3.5" />
@@ -238,16 +263,14 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-48">
-        <div className="text-sm text-slate-400">Loading deals...</div>
-      </div>
+      <TableSkeleton rows={8} cols={8} />
     );
   }
 
   if (items.length === 0) {
     return (
       <div className="flex items-center justify-center h-48">
-        <div className="text-sm text-slate-400">No deals in this pipeline yet.</div>
+        <div className="text-sm text-[var(--color-text-3)]">No deals in this pipeline yet.</div>
       </div>
     );
   }
@@ -257,15 +280,15 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
       <div className="flex-1 overflow-auto">
         <table className="w-full text-sm border-collapse">
           <thead className="sticky top-0 z-10">
-            <tr className="bg-slate-50 border-b border-slate-200">
+            <tr className="border-b-2 border-[var(--color-header-border)] bg-linear-to-b from-[var(--color-header-start)] to-[var(--color-header-end)]">
               {table.getFlatHeaders().map((header) => (
                 <th
                   key={header.id}
-                  className="text-left px-4 py-2.5 font-medium text-slate-600 whitespace-nowrap select-none"
+                  className="h-[38px] whitespace-nowrap px-3.5 text-left text-[10.5px] font-bold uppercase tracking-[0.05em] text-[var(--color-header-text)] select-none"
                 >
                   {header.isPlaceholder ? null : (
                     <button
-                      className={`flex items-center gap-1 ${header.column.getCanSort() ? 'cursor-pointer hover:text-slate-900' : ''}`}
+                      className={`flex items-center gap-1 ${header.column.getCanSort() ? 'cursor-pointer hover:text-[var(--color-text-1)]' : ''}`}
                       onClick={header.column.getToggleSortingHandler()}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
@@ -284,14 +307,14 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody>
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className="group/row hover:bg-slate-50 transition-colors"
+                className="group/row h-11 border-b border-[var(--color-row-border)] bg-[var(--color-surface)] transition-[background,box-shadow] duration-100 hover:bg-[var(--color-row-hover)] hover:shadow-[inset_3px_0_0_var(--color-accent)]"
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-4 py-3 align-middle">
+                  <td key={cell.id} className="h-11 whitespace-nowrap px-3.5 align-middle text-base">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -303,8 +326,8 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
 
       {/* Pagination */}
       {(cursor || hasMore) && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-white flex-shrink-0">
-          <p className="text-sm text-slate-500">
+        <div className="flex flex-shrink-0 items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+          <p className="text-sm text-[var(--color-text-3)]">
             {items.length} deal{items.length !== 1 ? 's' : ''} shown
           </p>
           <div className="flex items-center gap-2">

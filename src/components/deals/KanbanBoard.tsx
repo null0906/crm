@@ -37,55 +37,80 @@ interface KanbanColumnProps {
   onDealClick: (deal: Record<string, unknown>) => void;
 }
 
+function getStageColor(stage: Stage) {
+  return stage.color || 'var(--color-stage-neutral)';
+}
+
+function DealCardSkeleton() {
+  return (
+    <div className="rounded-[10px] border border-l-[3px] border-[var(--color-border-ui)] border-l-[var(--color-header-border)] bg-[var(--color-surface)] p-3.5 shadow-sm">
+      <div className="skeleton mb-3 h-3.5 w-3/4" />
+      <div className="skeleton mb-3 h-[18px] w-2/5" />
+      <div className="flex flex-col gap-1.5">
+        <div className="skeleton h-3 w-[55%]" />
+        <div className="skeleton h-3 w-[45%]" />
+        <div className="skeleton h-3 w-[60%]" />
+      </div>
+    </div>
+  );
+}
+
 function KanbanColumn({ stage, deals, onAddDeal, onDealClick }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
 
   const totalValue = deals.reduce((sum, d) => sum + (parseFloat(d.amount as string) || 0), 0);
+  const stageColor = getStageColor(stage);
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex flex-col w-[272px] flex-shrink-0 rounded-xl transition-colors duration-150 ${isOver ? 'bg-blue-50/60' : 'bg-slate-50/80'}`}
+      className={`kanban-column flex w-[280px] flex-shrink-0 flex-col rounded-[10px] transition-[background,outline] duration-150 ${isOver ? 'drag-over bg-[rgba(37,99,235,0.04)] outline-2 outline-dashed outline-[rgba(37,99,235,0.30)] outline-offset-4' : 'bg-[rgba(241,243,248,0.65)]'}`}
     >
       {/* Column header */}
-      <div className="flex items-center justify-between px-3 pt-3 pb-2">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <div className="flex items-center gap-2 min-w-0">
           <div
-            className="w-2 h-2 rounded-full flex-shrink-0"
-            style={{ backgroundColor: stage.color ?? '#94A3B8' }}
+            className="h-2 w-2 flex-shrink-0 rounded-full"
+            style={{
+              backgroundColor: stageColor,
+              boxShadow: `0 0 0 3px color-mix(in srgb, ${stageColor} 22%, transparent)`,
+            }}
           />
-          <span className="text-[12px] font-semibold text-slate-600 truncate">{stage.name}</span>
-          <span className="text-[10px] font-semibold text-slate-400 bg-slate-200/80 rounded-full px-1.5 py-0.5 min-w-[18px] text-center flex-shrink-0">
+          <span className="truncate text-base font-semibold text-[var(--color-text-1)]">{stage.name}</span>
+          <span className="min-w-[20px] flex-shrink-0 rounded-full bg-[var(--color-avatar-bg)] px-2 py-0.5 text-center text-xs font-semibold text-[var(--color-neutral)]">
             {deals.length}
           </span>
         </div>
-        <button
-          onClick={() => onAddDeal(stage.id)}
-          className="w-5 h-5 rounded-md flex items-center justify-center text-slate-300 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
+        {totalValue > 0 && (
+          <span className="ml-auto font-mono text-[11.5px] font-semibold text-[var(--color-company)]">
+            {formatCurrency(totalValue)}
+          </span>
+        )}
       </div>
-
-      {totalValue > 0 && (
-        <div className="px-3 pb-2 text-[11px] text-slate-400 font-semibold font-data">
-          {formatCurrency(totalValue)}
-        </div>
-      )}
 
       {/* Cards */}
       <div className="flex-1 px-2 pb-3 space-y-2 min-h-[100px]">
         <SortableContext items={deals.map((d) => d.id as string)} strategy={verticalListSortingStrategy}>
-          {deals.map((deal) => (
-            <DealCard key={deal.id as string} deal={deal} onClick={() => onDealClick(deal)} />
+          {deals.map((deal, index) => (
+            <div key={deal.id as string} style={{ animationDelay: `${Math.min(index, 5) * 35}ms` }}>
+              <DealCard deal={deal} stageColor={stageColor} onClick={() => onDealClick(deal)} />
+            </div>
           ))}
         </SortableContext>
 
         {deals.length === 0 && (
-          <div className="h-16 flex items-center justify-center text-[11px] text-slate-300 border border-dashed border-slate-200 rounded-lg">
+          <div className="flex h-16 items-center justify-center rounded-lg border border-dashed border-[var(--color-border-strong)] text-xs text-[var(--color-text-3)]">
             Drop here
           </div>
         )}
+
+        <button
+          onClick={() => onAddDeal(stage.id)}
+          className="mt-1 flex h-[34px] w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--color-border-strong)] bg-transparent text-sm font-medium text-[var(--color-text-3)] transition-[border-color,color,background] duration-150 hover:border-[var(--color-status-new-dot)] hover:bg-[var(--color-row-hover)] hover:text-[var(--color-accent)]"
+        >
+          <Plus className="h-[13px] w-[13px]" />
+          Add deal
+        </button>
       </div>
     </div>
   );
@@ -198,9 +223,20 @@ export function KanbanBoard({ pipelineId, stages, onAddDeal, onDealClick, search
 
   if (isLoading) {
     return (
-      <div className="flex gap-4 p-4 overflow-x-auto h-full">
+      <div className="flex h-full gap-3 overflow-x-auto p-4">
         {stages.map((stage) => (
-          <div key={stage.id} className="w-72 flex-shrink-0 h-48 rounded-xl bg-slate-100 animate-pulse" />
+          <div key={stage.id} className="w-[280px] flex-shrink-0 rounded-[10px] bg-[rgba(241,243,248,0.65)] p-2">
+            <div className="mb-3 flex items-center gap-2 px-1 pt-1">
+              <div className="skeleton h-2 w-2 rounded-full" />
+              <div className="skeleton h-3.5 w-28" />
+              <div className="skeleton ml-auto h-3 w-14" />
+            </div>
+            <div className="space-y-2">
+              <DealCardSkeleton />
+              <DealCardSkeleton />
+              <DealCardSkeleton />
+            </div>
+          </div>
         ))}
       </div>
     );
@@ -214,7 +250,7 @@ export function KanbanBoard({ pipelineId, stages, onAddDeal, onDealClick, search
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-3 p-4 overflow-x-auto h-full items-start">
+      <div className="flex h-full items-start gap-3 overflow-x-auto p-4">
         {stages.map((stage) => (
           <KanbanColumn
             key={stage.id}
@@ -227,7 +263,10 @@ export function KanbanBoard({ pipelineId, stages, onAddDeal, onDealClick, search
       </div>
 
       <DragOverlay>
-        {activeDeal ? <DealCard deal={activeDeal} /> : null}
+        {activeDeal ? <DealCard deal={activeDeal} stageColor={(() => {
+          const activeStage = stages.find((stage) => stage.id === findStageForDeal(String(activeDeal.id)));
+          return activeStage ? getStageColor(activeStage) : undefined;
+        })()} /> : null}
       </DragOverlay>
     </DndContext>
   );

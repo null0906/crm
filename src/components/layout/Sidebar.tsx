@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Users, Building2, TrendingUp, Activity, LayoutDashboard,
-  Settings, ChevronLeft, ChevronRight, Shield, Handshake, Sparkles,
+  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -52,44 +52,43 @@ export function Sidebar() {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          'flex flex-col h-screen bg-white border-r border-slate-200',
+          'sidebar flex flex-col h-screen border-r border-[var(--color-border-ui)] bg-linear-to-b from-[var(--color-sidebar-start)] to-[var(--color-sidebar-end)]',
           'transition-all duration-200 flex-shrink-0 sticky top-0',
-          collapsed ? 'w-[60px]' : 'w-[240px]'
+          collapsed ? 'w-[60px]' : 'w-[220px]'
         )}
       >
         {/* Logo */}
         <div
           className={cn(
-            'flex items-center h-14 border-b border-slate-100 flex-shrink-0',
+            'sidebar-logo-area flex h-14 items-center border-b border-[var(--color-border-ui)] flex-shrink-0',
             collapsed ? 'justify-center px-0' : 'px-4 gap-2.5'
           )}
         >
-          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-blue-500 flex-shrink-0 shadow-[0_1px_3px_rgba(67,97,238,0.3)]">
-            <Shield className="w-4 h-4 text-white" strokeWidth={1.75} />
+          <div className="sidebar-logo-icon flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[7px] bg-linear-to-br from-[var(--color-accent)] to-[var(--color-accent-hover)] text-[14px] font-bold text-[var(--color-text-inverse)] shadow-[0_2px_8px_rgba(37,99,235,0.30)]">
+            S
           </div>
           {!collapsed && (
             <div className="flex flex-col leading-none">
-              <span className="text-sm font-semibold text-slate-900 tracking-tight">SecComply</span>
-              <span className="text-[10px] text-slate-400 font-medium tracking-wide mt-0.5">Command Center</span>
+              <span className="text-[14px] font-bold text-[var(--color-text-1)] tracking-[-0.02em]">SecComply</span>
+              <span className="mt-px text-2xs font-normal text-[var(--color-text-3)]">Command Center</span>
             </div>
           )}
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-5">
-          <NavSection title="Main"     items={mainNav}     collapsed={collapsed} pathname={pathname} />
+        <nav className="flex-1 overflow-y-auto py-3 space-y-4">
+          <NavSection title=""         items={mainNav}     collapsed={collapsed} pathname={pathname} />
           <NavSection title="Insights" items={insightsNav} collapsed={collapsed} pathname={pathname} />
           <NavSection title="Admin"    items={adminNav}    collapsed={collapsed} pathname={pathname} />
         </nav>
 
         {/* Collapse toggle */}
-        <div className="border-t border-slate-100 p-2">
+        <div className="border-t border-[var(--color-border-ui)] p-2">
           <button
             onClick={() => setCollapsed(!collapsed)}
             className={cn(
-              'w-full flex items-center h-8 rounded-lg',
-              'text-slate-400 hover:text-slate-600 hover:bg-slate-50',
-              'transition-colors duration-150',
+              'w-full flex items-center h-8 rounded-md',
+              'text-[var(--color-text-3)] hover:text-[var(--color-accent)] hover:bg-[rgba(37,99,235,0.05)]',
               collapsed ? 'justify-center' : 'justify-end px-2'
             )}
           >
@@ -102,23 +101,32 @@ export function Sidebar() {
         {/* User */}
         <div
           className={cn(
-            'border-t border-slate-100 p-3 flex items-center gap-2.5',
+            'sidebar-user-section h-[56px] border-t border-[var(--color-border-ui)] bg-[rgba(37,99,235,0.02)] px-3 flex items-center gap-2.5',
             collapsed && 'justify-center'
           )}
         >
-          <Avatar className="w-7 h-7 flex-shrink-0">
+          <Avatar className="h-[30px] w-[30px] flex-shrink-0 rounded-lg">
             <AvatarImage src={(user?.image as string) ?? undefined} />
-            <AvatarFallback className="text-[10px] font-semibold bg-blue-100 text-blue-700">
+            <AvatarFallback className="rounded-lg bg-linear-to-br from-[var(--color-accent)] to-[var(--color-purple)] text-xs font-bold text-[var(--color-text-inverse)] shadow-[0_2px_6px_rgba(37,99,235,0.25)]">
               {getInitials(firstName, lastName)}
             </AvatarFallback>
           </Avatar>
           {!collapsed && (
-            <div className="flex flex-col min-w-0 leading-none">
-              <span className="text-xs font-semibold text-slate-800 truncate">
+            <>
+            <div className="flex flex-col min-w-0 leading-none flex-1">
+              <span className="text-base font-semibold text-[var(--color-text-1)] truncate">
                 {firstName} {lastName}
               </span>
-              <span className="text-[10px] text-slate-400 truncate mt-0.5">{email}</span>
+              <span className="text-xs text-[var(--color-text-3)] truncate mt-0.5">{email}</span>
             </div>
+            <Link
+              href="/settings"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-3)] hover:bg-[rgba(37,99,235,0.06)] hover:text-[var(--color-accent)]"
+              aria-label="Settings"
+            >
+              <Settings className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </Link>
+            </>
           )}
         </div>
       </aside>
@@ -140,7 +148,10 @@ function NavSection({
   return (
     <div>
       {!collapsed && (
-        <p className="px-2 mb-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-[0.06em]">
+        <p className={cn(
+          'nav-section-label px-4 pb-1 pt-1 text-[9.5px] font-bold text-[var(--color-nav-section)] uppercase tracking-[0.08em]',
+          !title && 'sr-only'
+        )}>
           {title}
         </p>
       )}
@@ -173,24 +184,19 @@ function NavItemComponent({
     <Link
       href={item.href}
       className={cn(
-        'relative flex items-center gap-2.5 rounded-lg px-2 py-2',
-        'text-sm font-medium transition-colors duration-100',
+        'nav-item group relative mx-2 my-px flex h-[34px] items-center gap-[9px] rounded-[7px] px-2.5',
+        'text-base transition-all duration-150 ease-[var(--ease-spring)]',
         isActive
-          ? 'bg-blue-50 text-blue-600'
-          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+          ? 'active bg-linear-to-br from-[rgba(37,99,235,0.10)] to-[rgba(37,99,235,0.06)] text-[var(--color-accent-hover)] font-semibold shadow-[inset_0_0_0_1px_rgba(37,99,235,0.15)] after:absolute after:right-2.5 after:h-[5px] after:w-[5px] after:rounded-full after:bg-[var(--color-accent)] after:shadow-[0_0_6px_rgba(37,99,235,0.5)]'
+          : 'text-[var(--color-text-2)] font-normal hover:bg-[rgba(37,99,235,0.05)] hover:text-[var(--color-accent-deep)]',
         collapsed && 'justify-center px-2'
       )}
     >
-      {/* Active indicator bar */}
-      {isActive && (
-        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-blue-500 rounded-r-full" />
-      )}
-
       <Icon
         className={cn(
           'flex-shrink-0',
-          isActive ? 'text-blue-500' : 'text-slate-400',
-          collapsed ? 'w-5 h-5' : 'w-4 h-4'
+          isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-3)] group-hover:text-[var(--color-accent)]',
+          collapsed ? 'w-4 h-4' : 'w-4 h-4'
         )}
         strokeWidth={1.75}
       />
@@ -200,7 +206,7 @@ function NavItemComponent({
       )}
 
       {!collapsed && item.badge !== undefined && item.badge > 0 && (
-        <span className="ml-auto text-[10px] bg-blue-500 text-white rounded-full px-1.5 py-px font-semibold font-mono leading-none">
+        <span className="ml-auto text-2xs bg-[var(--color-accent)] text-[var(--color-text-inverse)] rounded-full px-1.5 py-px font-semibold font-mono leading-none">
           {item.badge}
         </span>
       )}

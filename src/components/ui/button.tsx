@@ -5,10 +5,10 @@ import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
   [
-    'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg',
-    'text-sm font-medium tracking-[-0.01em]',
+    'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md',
+    'text-sm font-medium tracking-[-0.005em]',
     'transition-all duration-150 ease-out',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2',
+    'focus-visible:outline-none',
     'disabled:pointer-events-none disabled:opacity-50',
     'select-none',
   ].join(' '),
@@ -16,49 +16,46 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: [
-          'bg-blue-500 text-white',
-          'shadow-[0_1px_2px_rgba(16,24,40,0.08)]',
-          'hover:bg-blue-600 hover:shadow-[0_1px_3px_rgba(16,24,40,0.12)]',
-          'active:bg-blue-700 active:shadow-none',
+          'btn-primary border-0 bg-linear-to-br from-[var(--color-accent)] to-[var(--color-accent-hover)] text-[var(--color-text-inverse)] font-semibold',
+          'shadow-[0_1px_3px_rgba(37,99,235,0.30),_0_1px_2px_rgba(37,99,235,0.20)]',
+          'hover:from-[var(--color-accent-hover)] hover:to-[var(--color-accent-deep)] hover:shadow-[0_4px_10px_rgba(37,99,235,0.35),_0_2px_4px_rgba(37,99,235,0.20)] hover:-translate-y-px',
+          'active:translate-y-0 active:shadow-[0_1px_3px_rgba(37,99,235,0.20)]',
         ].join(' '),
 
         destructive: [
-          'bg-red-500 text-white',
-          'shadow-[0_1px_2px_rgba(16,24,40,0.08)]',
-          'hover:bg-red-600',
-          'active:bg-red-700',
+          'bg-[var(--color-danger)] text-[var(--color-text-inverse)]',
+          'shadow-xs',
+          'hover:brightness-95',
         ].join(' '),
 
         outline: [
-          'border border-slate-200 bg-white text-slate-700',
-          'shadow-[0_1px_2px_rgba(16,24,40,0.04)]',
-          'hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900',
-          'active:bg-slate-100',
+          'border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-1)]',
+          'shadow-xs',
+          'hover:bg-[var(--color-surface-alt)] hover:border-[var(--color-border-strong)]',
+          'active:bg-[var(--color-surface-alt)]',
         ].join(' '),
 
         secondary: [
-          'bg-slate-100 text-slate-700',
-          'hover:bg-slate-200 hover:text-slate-900',
-          'active:bg-slate-200',
+          'bg-[var(--color-surface-alt)] text-[var(--color-text-2)]',
+          'hover:text-[var(--color-text-1)]',
         ].join(' '),
 
         ghost: [
-          'text-slate-600',
-          'hover:bg-slate-100 hover:text-slate-900',
-          'active:bg-slate-200',
+          'text-[var(--color-text-2)]',
+          'hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text-1)]',
         ].join(' '),
 
         link: [
-          'text-blue-500 underline-offset-4',
-          'hover:underline hover:text-blue-600',
+          'text-[var(--color-accent)] underline-offset-4',
+          'hover:underline hover:text-[var(--color-accent-hover)]',
         ].join(' '),
       },
 
       size: {
-        default: 'h-9 px-4 py-2',
-        sm:      'h-8 px-3 text-xs rounded-md',
+        default: 'h-8 px-3 py-2',
+        sm:      'h-[30px] px-2.5 text-sm rounded-md',
         lg:      'h-10 px-5',
-        icon:    'h-9 w-9 p-0',
+        icon:    'h-8 w-8 p-0',
         'icon-sm': 'h-7 w-7 p-0 rounded-md',
       },
     },

@@ -10,18 +10,15 @@ import { trpc } from '@/lib/trpc';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { TableSkeleton } from '@/components/shared/LoadingSkeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { ContactForm } from '@/components/contacts/ContactForm';
 import { ContactStatusBadge } from '@/components/contacts/ContactStatusBadge';
-import { TagBadge } from '@/components/tags/TagBadge';
 import { TagInput } from '@/components/tags/TagInput';
 import { ContactDetail } from '@/components/contacts/ContactDetail';
-import { formatDate, formatRelative, getInitials } from '@/lib/formatters';
+import { formatDate, formatRelative } from '@/lib/formatters';
 import { toast } from 'sonner';
 import { PAGE_SIZES, CONTACT_SOURCES, CONTACT_STATUSES } from '@/lib/constants';
 import { SavedViewsBar } from '@/components/saved-views/SavedViewsBar';
@@ -29,6 +26,32 @@ import { ImportWizard } from '@/components/import-export/ImportWizard';
 import { exportToCSV } from '@/lib/export-csv';
 
 type Contact = Record<string, unknown>;
+
+function EmptyCell() {
+  return <span className="cell-empty select-none font-mono text-base text-[var(--color-border-strong)]">—</span>;
+}
+
+function formatPhone(value: unknown) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  if (/\s|-|\(|\)/.test(raw)) return raw;
+  return raw.replace(/(\d{5})(?=\d)/g, '$1 ');
+}
+
+function TableAvatar({ name }: { name: string }) {
+  const initials = name
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  return (
+    <div className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[5px] border border-[var(--color-border)] bg-[var(--color-avatar-bg)] font-sans text-[10px] font-semibold tracking-[0.02em] text-[var(--color-neutral)]">
+      {initials || '•'}
+    </div>
+  );
+}
 
 export default function ContactsPage() {
   const [search, setSearch] = useState('');
@@ -145,7 +168,7 @@ export default function ContactsPage() {
           type="checkbox"
           checked={table.getIsAllRowsSelected()}
           onChange={table.getToggleAllRowsSelectedHandler()}
-          className="rounded border-slate-300"
+          className="h-3.5 w-3.5 rounded-[3px] border-[var(--color-border-strong)] accent-[var(--color-accent)]"
         />
       ),
       cell: ({ row }) => (
@@ -154,7 +177,7 @@ export default function ContactsPage() {
           checked={row.getIsSelected()}
           onChange={row.getToggleSelectedHandler()}
           onClick={(e) => e.stopPropagation()}
-          className="rounded border-slate-300"
+          className="h-3.5 w-3.5 rounded-[3px] border-[var(--color-border-strong)] accent-[var(--color-accent)]"
         />
       ),
       size: 40,
@@ -166,15 +189,12 @@ export default function ContactsPage() {
         const c = row.original;
         const first = c.firstName as string;
         const last = c.lastName as string;
+        const fullName = `${first ?? ''} ${last ?? ''}`.trim();
         return (
-          <div className="flex items-center gap-2">
-            <Avatar className="w-7 h-7 flex-shrink-0">
-              <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
-                {getInitials(first, last)}
-              </AvatarFallback>
-            </Avatar>
+          <div className="flex items-center gap-[9px]">
+            <TableAvatar name={fullName} />
             <button
-              className="text-sm font-medium text-blue-600 hover:underline text-left"
+              className="cell-name text-left text-[13.5px] font-semibold tracking-[-0.01em] text-[var(--color-text-1)] hover:text-[var(--color-accent)]"
               onClick={(e) => { e.stopPropagation(); setSelectedContact(c); }}
             >
               {first} {last}
@@ -186,34 +206,58 @@ export default function ContactsPage() {
     {
       accessorKey: 'email',
       header: 'Email',
-      cell: ({ row }) => (
-        <span className="text-sm text-slate-600 font-mono">{String(row.original.email ?? '—')}</span>
-      ),
+      cell: ({ row }) => {
+        const email = String(row.original.email ?? '').trim();
+        return email
+          ? <span className="cell-email font-mono text-sm text-[var(--color-neutral)]">{email}</span>
+          : <EmptyCell />;
+      },
     },
     {
       accessorKey: 'phone',
       header: 'Phone',
-      cell: ({ row }) => <span className="text-sm text-slate-600">{String(row.original.phone ?? '—')}</span>,
+      cell: ({ row }) => {
+        const phone = formatPhone(row.original.phone);
+        return phone
+          ? <span className="cell-phone font-mono text-sm tracking-[0.03em] text-[var(--color-neutral)]">{phone}</span>
+          : <EmptyCell />;
+      },
     },
     {
       accessorKey: 'company',
       header: 'Company',
-      cell: ({ row }) => <span className="text-sm text-slate-700">{String(row.original.companyName ?? '—')}</span>,
+      cell: ({ row }) => {
+        const company = String(row.original.companyName ?? '').trim();
+        return company
+          ? <span className="cell-company text-base font-medium text-[var(--color-company)] hover:text-[var(--color-accent)]">{company}</span>
+          : <EmptyCell />;
+      },
     },
     {
       accessorKey: 'jobTitle',
       header: 'Job Title',
-      cell: ({ row }) => <span className="text-sm text-slate-600">{String(row.original.jobTitle ?? '—')}</span>,
+      cell: ({ row }) => {
+        const title = String(row.original.jobTitle ?? '').trim();
+        return title
+          ? <span className="cell-jobtitle block max-w-[180px] truncate text-sm text-[var(--color-text-3)]" title={title}>{title}</span>
+          : <EmptyCell />;
+      },
     },
     {
       accessorKey: 'city',
       header: 'City',
-      cell: ({ row }) => <span className="text-sm text-slate-600">{String(row.original.city ?? '—')}</span>,
+      cell: ({ row }) => {
+        const city = String(row.original.city ?? '').trim();
+        return city ? <span className="text-sm text-[var(--color-text-3)]">{city}</span> : <EmptyCell />;
+      },
     },
     {
       accessorKey: 'country',
       header: 'Country',
-      cell: ({ row }) => <span className="text-sm text-slate-600">{String(row.original.country ?? '—')}</span>,
+      cell: ({ row }) => {
+        const country = String(row.original.country ?? '').trim();
+        return country ? <span className="text-sm text-[var(--color-text-3)]">{country}</span> : <EmptyCell />;
+      },
     },
     {
       accessorKey: 'status',
@@ -226,15 +270,13 @@ export default function ContactsPage() {
       cell: ({ row }) => {
         const first = row.original.ownerFirstName as string | undefined;
         const last = row.original.ownerLastName as string | undefined;
-        if (!first) return <span className="text-sm text-slate-400">—</span>;
+        if (!first) return <EmptyCell />;
+        const ownerName = `${first} ${last ?? ''}`.trim();
         return (
-          <div className="flex items-center gap-1.5">
-            <Avatar className="w-5 h-5">
-              <AvatarFallback className="text-xs bg-slate-200 text-slate-600">
-                {getInitials(first, last)}
-              </AvatarFallback>
-            </Avatar>
-            <span className="text-sm text-slate-600">{first}</span>
+          <div className="flex items-center">
+            <div title={ownerName}>
+              <TableAvatar name={ownerName} />
+            </div>
           </div>
         );
       },
@@ -244,7 +286,7 @@ export default function ContactsPage() {
       header: 'Last Contacted',
       cell: ({ row }) => {
         const date = row.original.lastContactedAt as Date | null;
-        return <span className="text-sm text-slate-500">{date ? formatRelative(date) : '—'}</span>;
+        return date ? <span className="font-mono text-sm text-[var(--color-text-2)]">{formatRelative(date)}</span> : <EmptyCell />;
       },
     },
     {
@@ -252,17 +294,17 @@ export default function ContactsPage() {
       header: 'Created',
       cell: ({ row }) => {
         const date = row.original.createdAt as Date;
-        return <span className="text-sm text-slate-500">{formatDate(date)}</span>;
+        return <span className="font-mono text-sm text-[var(--color-text-2)]">{formatDate(date)}</span>;
       },
     },
     {
       id: 'actions',
       header: '',
       cell: ({ row }) => (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="row-actions flex items-center justify-end gap-1">
           <button
             onClick={(e) => { e.stopPropagation(); setEditContact(row.original); }}
-            className="p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-3)] hover:bg-[var(--color-accent-soft)] hover:text-[var(--color-accent)]"
             title="Edit"
           >
             <Pencil className="w-3.5 h-3.5" />
@@ -273,7 +315,7 @@ export default function ContactsPage() {
               setDeleteId(String(row.original.id));
               setDeleteOpen(true);
             }}
-            className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-3)] hover:bg-[var(--color-danger-bg)] hover:text-[var(--color-danger)]"
             title="Delete"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -295,70 +337,22 @@ export default function ContactsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
-        <div>
-          <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Contacts</h1>
-          <p className="text-xs text-slate-400 mt-0.5">{data ? `${data.total ?? data.items.length} contacts` : 'Loading...'}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              const rows = contacts.map((c) => ({
-                firstName: String(c.firstName ?? ''),
-                lastName: String(c.lastName ?? ''),
-                email: String(c.email ?? ''),
-                phone: String(c.phone ?? ''),
-                jobTitle: String(c.jobTitle ?? ''),
-                company: String(c.companyName ?? ''),
-                status: String(c.status ?? ''),
-                city: String(c.city ?? ''),
-                country: String(c.country ?? ''),
-              }));
-              exportToCSV(rows, 'contacts.csv');
-            }}
-          >
-            <Download className="w-4 h-4" />
-            Export
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => { setRelinkResult(null); setRelinkOpen(true); }}
-            title="Auto-link contacts to companies using existing data"
-          >
-            <Link2 className="w-4 h-4" />
-            Auto Re-link
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
-            <Upload className="w-4 h-4" />
-            Import
-          </Button>
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="w-4 h-4" />
-            Add Contact
-          </Button>
-        </div>
-      </div>
-
       {/* Filter Bar */}
-      <div className="flex flex-col gap-2 px-6 py-2.5 bg-white border-b border-slate-100">
+      <div className="flex flex-col gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-4">
         <div className="flex items-center gap-3">
           <div className="relative flex-1 max-w-[280px]">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-3)]" />
             <Input
               placeholder="Search contacts..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-8 text-[13px]"
+              className="h-8 pl-8 text-base"
             />
           </div>
 
           <div className="flex items-center gap-1">
             <button
-              className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${!statusFilter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
+              className={`h-[26px] rounded-sm border px-2.5 text-sm transition-colors ${!statusFilter ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)] font-medium' : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-2)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text-1)]'}`}
               onClick={() => setStatusFilter('')}
             >
               All
@@ -366,7 +360,7 @@ export default function ContactsPage() {
             {CONTACT_STATUSES.slice(0, 5).map((s) => (
               <button
                 key={s.value}
-                className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${statusFilter === s.value ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
+                className={`h-[26px] rounded-sm border px-2.5 text-sm transition-colors ${statusFilter === s.value ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)] font-medium' : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-2)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text-1)]'}`}
                 onClick={() => setStatusFilter(statusFilter === s.value ? '' : s.value)}
               >
                 {s.label}
@@ -377,7 +371,7 @@ export default function ContactsPage() {
           <select
             value={ownerFilter}
             onChange={(e) => setOwnerFilter(e.target.value)}
-            className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-text-2)] focus-visible:border-[var(--color-border-focus)]"
           >
             <option value="">All owners</option>
             {users.map((u) => (
@@ -389,8 +383,8 @@ export default function ContactsPage() {
             onClick={() => setShowAdvancedFilters((current) => !current)}
             className={`inline-flex items-center gap-1 text-[11px] font-medium px-2.5 py-1 rounded-md border transition-colors ${
               showAdvancedFilters || sourceFilter || locationFilter || cityFilter || countryFilter || filterTags.length > 0 || dateFrom || dateTo
-                ? 'border-blue-200 bg-blue-50 text-blue-700'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]'
+                : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-2)] hover:bg-[var(--color-surface-alt)]'
             }`}
           >
             More Filters
@@ -419,12 +413,51 @@ export default function ContactsPage() {
             }}
           />
 
-          <div className="ml-auto flex items-center gap-1">
-            <span className="text-xs text-slate-500">Show</span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const rows = contacts.map((c) => ({
+                  firstName: String(c.firstName ?? ''),
+                  lastName: String(c.lastName ?? ''),
+                  email: String(c.email ?? ''),
+                  phone: String(c.phone ?? ''),
+                  jobTitle: String(c.jobTitle ?? ''),
+                  company: String(c.companyName ?? ''),
+                  status: String(c.status ?? ''),
+                  city: String(c.city ?? ''),
+                  country: String(c.country ?? ''),
+                }));
+                exportToCSV(rows, 'contacts.csv');
+              }}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setRelinkResult(null); setRelinkOpen(true); }}
+              title="Auto-link contacts to companies using existing data"
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              Auto Re-link
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="h-3.5 w-3.5" />
+              Import
+            </Button>
+            <div className="h-4 w-px bg-[var(--color-border)]" />
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Add Contact
+            </Button>
+            <span className="ml-2 text-sm text-[var(--color-text-3)]">Show</span>
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
-              className="text-xs border border-slate-200 rounded px-1 py-0.5 bg-white"
+              className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
             >
               {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -436,7 +469,7 @@ export default function ContactsPage() {
             <select
               value={sourceFilter}
               onChange={(e) => setSourceFilter(e.target.value)}
-              className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+              className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-text-2)] focus-visible:border-[var(--color-border-focus)]"
             >
               <option value="">All sources</option>
               {CONTACT_SOURCES.map((source) => (
@@ -447,19 +480,19 @@ export default function ContactsPage() {
               placeholder="Location"
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
-              className="h-8 w-[140px] text-[11px]"
+              className="h-7 w-[140px] text-sm"
             />
             <Input
               placeholder="City"
               value={cityFilter}
               onChange={(e) => setCityFilter(e.target.value)}
-              className="h-8 w-[120px] text-[11px]"
+              className="h-7 w-[120px] text-sm"
             />
             <Input
               placeholder="Country"
               value={countryFilter}
               onChange={(e) => setCountryFilter(e.target.value)}
-              className="h-8 w-[120px] text-[11px]"
+              className="h-7 w-[120px] text-sm"
             />
             <div className="min-w-[220px] max-w-[320px]">
               <TagInput value={filterTags} onChange={setFilterTags} placeholder="Filter by tags..." />
@@ -469,15 +502,15 @@ export default function ContactsPage() {
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+                className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 font-mono text-sm text-[var(--color-text-2)] focus-visible:border-[var(--color-border-focus)]"
                 title="Created from"
               />
-              <span className="text-xs text-slate-400">–</span>
+              <span className="text-xs text-[var(--color-text-3)]">–</span>
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="text-[11px] border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-600"
+                className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 font-mono text-sm text-[var(--color-text-2)] focus-visible:border-[var(--color-border-focus)]"
                 title="Created to"
               />
             </div>
@@ -494,7 +527,7 @@ export default function ContactsPage() {
                   setDateFrom('');
                   setDateTo('');
                 }}
-                className="text-[11px] text-slate-400 hover:text-slate-600"
+                className="text-sm text-[var(--color-text-3)] hover:text-[var(--color-text-2)]"
               >
                 Clear All
               </button>
@@ -505,12 +538,12 @@ export default function ContactsPage() {
 
       {/* Bulk actions */}
       {selectedIds.length > 0 && (
-        <div className="flex items-center gap-2 px-6 py-2 bg-blue-50 border-b border-blue-200">
-          <span className="text-sm font-medium text-blue-700">{selectedIds.length} selected</span>
+        <div className="flex items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-accent-soft)] px-6 py-2">
+          <span className="text-sm font-medium text-[var(--color-accent)]">{selectedIds.length} selected</span>
           <select
             value={bulkOwnerId}
             onChange={(e) => setBulkOwnerId(e.target.value)}
-            className="text-xs border border-blue-200 rounded-md px-2 py-1 bg-white text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
             <option value="">Change owner</option>
             <option value="__unassigned__">Unassigned</option>
@@ -521,7 +554,7 @@ export default function ContactsPage() {
           <select
             value={bulkStatus}
             onChange={(e) => setBulkStatus(e.target.value)}
-            className="text-xs border border-blue-200 rounded-md px-2 py-1 bg-white text-slate-600"
+            className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
             <option value="">Change lead type</option>
             {CONTACT_STATUSES.map((status) => (
@@ -557,14 +590,14 @@ export default function ContactsPage() {
             <Trash2 className="w-3 h-3 mr-1" />
             Delete
           </Button>
-          <button onClick={() => setRowSelection({})} className="text-xs text-slate-500 ml-auto hover:text-slate-700">
+          <button onClick={() => setRowSelection({})} className="ml-auto text-sm text-[var(--color-text-2)] hover:text-[var(--color-text-1)]">
             Clear selection
           </button>
         </div>
       )}
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto bg-[var(--color-bg)]">
         {isLoading ? (
           <TableSkeleton rows={10} cols={8} />
         ) : contacts.length === 0 ? (
@@ -575,14 +608,14 @@ export default function ContactsPage() {
             icon={<Users className="w-8 h-8" />}
           />
         ) : (
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50/80 border-b border-slate-100 sticky top-0 z-10">
+          <table className="w-full border-collapse text-left">
+            <thead className="sticky top-0 z-10 bg-linear-to-b from-[var(--color-header-start)] to-[var(--color-header-end)]">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className="px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-[0.06em] whitespace-nowrap"
+                      className="h-[38px] border-b-2 border-[var(--color-header-border)] px-3.5 text-left text-[10.5px] font-bold uppercase tracking-[0.05em] text-[var(--color-header-text)] whitespace-nowrap"
                     >
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     </th>
@@ -591,14 +624,15 @@ export default function ContactsPage() {
               ))}
             </thead>
             <tbody>
-              {table.getRowModel().rows.map((row) => (
+              {table.getRowModel().rows.map((row, index) => (
                 <tr
                   key={row.id}
-                  className="border-b border-slate-100 hover:bg-blue-50/40 cursor-pointer transition-colors duration-100 group"
+                  className={`group h-11 cursor-pointer border-b border-[var(--color-row-border)] bg-[var(--color-surface)] transition-[background,box-shadow] duration-100 hover:bg-[var(--color-row-hover)] hover:shadow-[inset_3px_0_0_var(--color-accent)] ${row.getIsSelected() ? 'table-row-selected' : ''}`}
+                  style={{ animationDelay: `${Math.min(index, 8) * 25}ms` }}
                   onClick={() => setSelectedContact(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-3 py-2">
+                    <td key={cell.id} className="h-11 whitespace-nowrap px-3.5 text-base text-[var(--color-text-1)]">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -611,9 +645,9 @@ export default function ContactsPage() {
 
       {/* Pagination */}
       {data && (
-        <div className="flex items-center justify-between px-6 py-3 bg-white border-t border-slate-200">
-          <span className="text-xs text-slate-500">
-            Showing {contacts.length} contacts
+        <div className="flex items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5">
+          <span className="text-sm text-[var(--color-text-3)]">
+            Showing {contacts.length} of {data.total ?? contacts.length} contacts
           </span>
           <div className="flex items-center gap-2">
             {cursor && (
@@ -693,33 +727,33 @@ export default function ContactsPage() {
       {/* Auto Re-link modal */}
       {relinkOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 space-y-4">
+          <div className="mx-4 w-full max-w-sm space-y-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-up)] p-6 shadow-xl">
             {!relinkResult ? (
               <>
                 <div>
-                  <h3 className="text-base font-semibold text-slate-900 mb-1">Auto Re-link Contacts to Companies</h3>
-                  <p className="text-sm text-slate-500 leading-relaxed">
+                  <h3 className="mb-1 text-lg font-semibold text-[var(--color-text-1)]">Auto Re-link Contacts to Companies</h3>
+                  <p className="text-sm leading-relaxed text-[var(--color-text-2)]">
                     This will scan all contacts and automatically link them to their companies using:
                   </p>
-                  <ul className="mt-2 space-y-1 text-sm text-slate-500 list-disc list-inside">
+                  <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-[var(--color-text-2)]">
                     <li>Company name text already stored on the contact</li>
                     <li>Company linked to deals where this contact appears</li>
                   </ul>
-                  <p className="text-sm text-slate-500 mt-2">
+                  <p className="mt-2 text-sm text-[var(--color-text-2)]">
                     Missing companies will be created automatically. No contacts will be deleted or duplicated.
                   </p>
                 </div>
                 <div className="flex gap-2 pt-1">
                   <button
                     onClick={() => setRelinkOpen(false)}
-                    className="flex-1 px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                    className="flex-1 rounded-md border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text-2)] hover:bg-[var(--color-surface-alt)]"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => relinkMutation.mutate()}
                     disabled={relinkMutation.isPending}
-                    className="flex-1 px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 transition-colors font-medium"
+                    className="flex-1 rounded-md bg-[var(--color-accent)] px-4 py-2 text-sm font-medium text-[var(--color-text-inverse)] hover:bg-[var(--color-accent-hover)] disabled:opacity-60"
                   >
                     {relinkMutation.isPending ? 'Running...' : 'Run Re-link'}
                   </button>
@@ -728,25 +762,25 @@ export default function ContactsPage() {
             ) : (
               <>
                 <div>
-                  <h3 className="text-base font-semibold text-slate-900 mb-3">Re-link Complete</h3>
+                  <h3 className="mb-3 text-lg font-semibold text-[var(--color-text-1)]">Re-link Complete</h3>
                   <div className="grid grid-cols-3 gap-3">
-                    <div className="text-center p-3 bg-blue-50 border border-blue-100 rounded-xl">
-                      <p className="text-2xl font-bold text-blue-700">{relinkResult.contactsLinkedByName}</p>
-                      <p className="text-[11px] text-blue-600 mt-0.5 leading-tight">Linked by company name</p>
+                    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-accent-soft)] p-3 text-center">
+                      <p className="text-2xl font-bold text-[var(--color-accent)]">{relinkResult.contactsLinkedByName}</p>
+                      <p className="mt-0.5 text-xs leading-tight text-[var(--color-accent)]">Linked by company name</p>
                     </div>
-                    <div className="text-center p-3 bg-purple-50 border border-purple-100 rounded-xl">
-                      <p className="text-2xl font-bold text-purple-700">{relinkResult.contactsLinkedByDeal}</p>
-                      <p className="text-[11px] text-purple-600 mt-0.5 leading-tight">Linked via deal</p>
+                    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-purple-bg)] p-3 text-center">
+                      <p className="text-2xl font-bold text-[var(--color-purple)]">{relinkResult.contactsLinkedByDeal}</p>
+                      <p className="mt-0.5 text-xs leading-tight text-[var(--color-purple)]">Linked via deal</p>
                     </div>
-                    <div className="text-center p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
-                      <p className="text-2xl font-bold text-emerald-700">{relinkResult.companiesCreated}</p>
-                      <p className="text-[11px] text-emerald-600 mt-0.5 leading-tight">Companies created</p>
+                    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-success-bg)] p-3 text-center">
+                      <p className="text-2xl font-bold text-[var(--color-success)]">{relinkResult.companiesCreated}</p>
+                      <p className="mt-0.5 text-xs leading-tight text-[var(--color-success)]">Companies created</p>
                     </div>
                   </div>
                 </div>
                 <button
                   onClick={() => setRelinkOpen(false)}
-                  className="w-full px-4 py-2 text-sm rounded-lg bg-slate-900 text-white hover:bg-slate-700 transition-colors font-medium"
+                  className="w-full rounded-md bg-[var(--color-text-1)] px-4 py-2 text-sm font-medium text-[var(--color-text-inverse)] hover:opacity-90"
                 >
                   Done
                 </button>

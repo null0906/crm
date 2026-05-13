@@ -51,7 +51,7 @@ export function TagInput({ value, onChange, placeholder = 'Add tag...', classNam
   return (
     <div className={cn('relative', className)}>
       <div
-        className="flex flex-wrap gap-1 min-h-9 px-2 py-1.5 rounded-md border border-slate-200 bg-white cursor-text focus-within:ring-2 focus-within:ring-blue-500"
+        className="flex min-h-7 cursor-text flex-wrap gap-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 focus-within:border-[var(--color-border-focus)] focus-within:bg-[var(--color-surface)]"
         onClick={() => inputRef.current?.focus()}
       >
         {value.map((tag) => (
@@ -70,14 +70,14 @@ export function TagInput({ value, onChange, placeholder = 'Add tag...', classNam
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           onKeyDown={handleKeyDown}
           placeholder={value.length === 0 ? placeholder : ''}
-          className="flex-1 min-w-20 text-xs outline-none bg-transparent placeholder:text-slate-400"
+          className="min-w-20 flex-1 bg-transparent text-sm text-[var(--color-text-1)] outline-none placeholder:text-[var(--color-text-3)]"
         />
       </div>
 
       {open && (query || filteredTags.length > 0) && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-md border border-slate-200 bg-white shadow-lg max-h-48 overflow-y-auto">
+        <div className="dropdown-panel absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto">
           {filteredTags.length === 0 && (
-            <div className="px-3 py-2 text-xs text-slate-500">
+            <div className="px-3 py-2 text-sm text-[var(--color-text-3)]">
               {query ? `No tags matching "${query}"` : 'No tags available'}
             </div>
           )}
@@ -85,13 +85,13 @@ export function TagInput({ value, onChange, placeholder = 'Add tag...', classNam
             <button
               key={tag.id}
               type="button"
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 text-left"
+              className="dropdown-item w-full text-left"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => addTag({ id: tag.id, name: tag.name, color: tag.color ?? '#6B7280', categoryId: tag.categoryId })}
+              onClick={() => addTag({ id: tag.id, name: tag.name, color: tag.color ?? 'var(--color-neutral)', categoryId: tag.categoryId })}
             >
               <span
-                className="w-3 h-3 rounded-full flex-shrink-0"
-                style={{ backgroundColor: tag.color ?? '#6B7280' }}
+                className="h-2 w-2 flex-shrink-0 rounded-full"
+                style={{ backgroundColor: tag.color ?? 'var(--color-neutral)' }}
               />
               {tag.name}
             </button>

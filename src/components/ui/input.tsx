@@ -9,22 +9,22 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, type,
       type={type}
       className={cn(
         // Base
-        'flex h-9 w-full rounded-lg px-3 py-1.5',
+        'flex h-8 w-full rounded-md px-3 py-1.5',
         // Typography
-        'text-sm text-slate-900 placeholder:text-slate-400',
+        'text-base text-[var(--color-text-1)] placeholder:text-[var(--color-text-3)]',
         // Background — slightly recessed to distinguish from card surface
-        'bg-slate-50 border border-slate-200',
+        'bg-[var(--color-bg)] border border-[var(--color-border)]',
         // Shadow — subtle inset depth
-        'shadow-[0_1px_2px_rgba(16,24,40,0.04)]',
+        'shadow-none',
         // Transitions
         'transition-all duration-150',
         // Focus — accent border + ring glow
-        'focus-visible:outline-none focus-visible:bg-white',
-        'focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20',
+        'focus-visible:bg-[var(--color-surface)]',
+        'focus-visible:border-[var(--color-border-focus)]',
         // File input
-        'file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-slate-700',
+        'file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-[var(--color-text-2)]',
         // Disabled
-        'disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-slate-100',
+        'disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-[var(--color-surface-alt)]',
         className
       )}
       ref={ref}
