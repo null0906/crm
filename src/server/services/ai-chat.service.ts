@@ -39,6 +39,7 @@ type AmbiguityCheck = {
 type ParsedGeminiResponse =
   | { phase: 'clarify'; question: string; options?: ClarificationOption[] }
   | { phase: 'query'; sql: string; explanation?: string }
+  | { phase: 'answer'; answer: string; followUpSuggestions?: string[] }
   | null;
 
 export type AiChatResponse = {
@@ -148,9 +149,10 @@ For clarifying questions: List the options clearly and ask what they want. Keep 
 
 For no results: Say so clearly and suggest why the filter may be too narrow.
 
-IMPORTANT: Respond in one JSON object only:
+IMPORTANT: For this SQL-planning step, respond in one JSON object only:
 {"phase":"clarify","question":"...","options":[{"label":"..."}]} if clarification is needed, OR
 {"phase":"query","sql":"SELECT ...","explanation":"what this query does"} if a safe read-only query should run.
+Do not use phase "answer" in this step. CRM data answers must come from SQL results.
 `.trim();
 }
 
@@ -211,7 +213,16 @@ function parseGeminiJsonBlock(response: string): ParsedGeminiResponse {
   if (!rawJson) return null;
 
   try {
-    const parsed = JSON.parse(rawJson) as Partial<ParsedGeminiResponse>;
+    const parsed = JSON.parse(rawJson) as {
+      phase?: string;
+      question?: unknown;
+      options?: unknown;
+      sql?: unknown;
+      explanation?: unknown;
+      answer?: unknown;
+      follow_up_suggestions?: unknown;
+      followUpSuggestions?: unknown;
+    };
     if (parsed?.phase === 'clarify' && typeof parsed.question === 'string') {
       return {
         phase: 'clarify',
@@ -226,11 +237,34 @@ function parseGeminiJsonBlock(response: string): ParsedGeminiResponse {
         explanation: typeof parsed.explanation === 'string' ? parsed.explanation : undefined,
       };
     }
+    if (parsed?.phase === 'answer' && typeof parsed.answer === 'string') {
+      const suggestions = Array.isArray(parsed.follow_up_suggestions)
+        ? parsed.follow_up_suggestions
+        : parsed.followUpSuggestions;
+
+      return {
+        phase: 'answer',
+        answer: parsed.answer,
+        followUpSuggestions: Array.isArray(suggestions)
+          ? suggestions.filter((suggestion): suggestion is string => typeof suggestion === 'string')
+          : undefined,
+      };
+    }
   } catch {
     return null;
   }
 
   return null;
+}
+
+function formatAnswer(answer: string, followUpSuggestions: string[] = []): string {
+  if (!followUpSuggestions.length) return answer;
+
+  const suggestions = followUpSuggestions
+    .map((suggestion) => `- ${suggestion}`)
+    .join('\n');
+
+  return `${answer}\n\nSuggested next steps:\n${suggestions}`;
 }
 
 function formatClarification(question: string, options: ClarificationOption[] = []): string {
@@ -409,6 +443,21 @@ export async function handleMessage(
       };
     }
 
+    if (parsed.phase === 'answer') {
+      const content = formatAnswer(parsed.answer, parsed.followUpSuggestions);
+      const message = await storeAssistantMessage({ db, sessionId, content });
+
+      return {
+        message: {
+          id: message.id,
+          role: 'assistant',
+          content,
+          wasClarification: false,
+          createdAt: message.createdAt,
+        },
+      };
+    }
+
     const validation = validateGeneratedSql(parsed.sql);
     if (!validation.valid) {
       await writeAuditLog({
@@ -453,11 +502,24 @@ ${JSON.stringify(rows, null, 2)}
 Format this into a concise, useful CRM answer. If there are no rows, say that clearly and suggest a likely next step.
 `.trim();
 
-    const formattedResponse = await generateChatResponse(formatterPrompt, [], systemPrompt);
+    const formattingSystemPrompt = `
+You format SecComply CRM query results into concise, readable Markdown for the user.
+Return plain Markdown text only.
+Do not return JSON.
+Do not wrap the answer in a phase object.
+Lead with the direct answer, then include useful context or suggested next steps if helpful.
+`.trim();
+
+    const formattedResponse = await generateChatResponse(formatterPrompt, [], formattingSystemPrompt);
+    const parsedFormattedResponse = parseGeminiJsonBlock(formattedResponse);
+    const content = parsedFormattedResponse?.phase === 'answer'
+      ? formatAnswer(parsedFormattedResponse.answer, parsedFormattedResponse.followUpSuggestions)
+      : formattedResponse;
+
     const message = await storeAssistantMessage({
       db,
       sessionId,
-      content: formattedResponse,
+      content,
       sqlQuery: parsed.sql,
       queryResultCount: rows.length,
     });
@@ -466,7 +528,7 @@ Format this into a concise, useful CRM answer. If there are no rows, say that cl
       message: {
         id: message.id,
         role: 'assistant',
-        content: formattedResponse,
+        content,
         wasClarification: false,
         createdAt: message.createdAt,
       },
