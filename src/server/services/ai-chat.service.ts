@@ -4,6 +4,8 @@ import {
   aiChatMessages,
   aiChatSessions,
   contactTags,
+  deals,
+  pipelines,
   roles,
   tagCategories,
   tags,
@@ -54,6 +56,66 @@ export type AiChatResponse = {
 };
 
 const friendlyError = 'I had trouble processing that query. Try rephrasing, or contact your admin.';
+
+function formatCurrencyAmount(value: number, currency = 'INR'): string {
+  const normalizedCurrency = (currency || 'INR').toUpperCase();
+  const locale = normalizedCurrency === 'INR' ? 'en-IN' : 'en-US';
+
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: normalizedCurrency,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${normalizedCurrency} ${value.toLocaleString(locale, { maximumFractionDigits: 2 })}`;
+  }
+}
+
+function isPipelineValueQuestion(query: string): boolean {
+  const normalized = query.toLowerCase();
+  const mentionsDeals = /\b(deal|deals|pipeline)\b/.test(normalized);
+  const asksValue = /\b(value|amount|total|worth|sum)\b/.test(normalized);
+  return mentionsDeals && asksValue;
+}
+
+async function answerPipelineValueQuestion(query: string, db: DbClient): Promise<string | null> {
+  if (!isPipelineValueQuestion(query)) return null;
+
+  const normalized = query.toLowerCase();
+  const onlyOpenDeals = /\bopen\b/.test(normalized) || /\bpipeline value\b/.test(normalized);
+  const salesPipelineOnly = /\bsales\b/.test(normalized);
+
+  const rows = await db
+    .select({
+      currency: sql<string>`COALESCE(${deals.currency}, 'INR')`,
+      dealCount: sql<number>`COUNT(*)::int`,
+      totalValue: sql<string>`COALESCE(SUM(COALESCE(${deals.amount}, 0)::numeric), 0)::text`,
+    })
+    .from(deals)
+    .leftJoin(pipelines, eq(deals.pipelineId, pipelines.id))
+    .where(and(
+      sql`${deals.deletedAt} IS NULL`,
+      onlyOpenDeals ? eq(deals.status, 'open') : undefined,
+      salesPipelineOnly ? ilike(pipelines.name, '%sales%') : undefined
+    ))
+    .groupBy(sql`COALESCE(${deals.currency}, 'INR')`)
+    .orderBy(sql`COALESCE(${deals.currency}, 'INR')`);
+
+  const dealCount = rows.reduce((sum, row) => sum + Number(row.dealCount ?? 0), 0);
+  const totals = rows.map((row) => {
+    const value = Number(row.totalValue ?? 0);
+    return formatCurrencyAmount(value, row.currency);
+  });
+
+  const scope = `${onlyOpenDeals ? 'open ' : ''}${salesPipelineOnly ? 'sales pipeline' : 'pipeline'} deals`;
+
+  if (rows.length === 0 || dealCount === 0) {
+    return `There are no ${scope} with a value recorded.`;
+  }
+
+  return `You have **${dealCount} ${scope}** with a total value of **${totals.join(' + ')}**.\n\nI used each deal's stored currency, so INR amounts are shown as rupees rather than dollars.`;
+}
 
 export function buildSystemPrompt(userContext: UserContext): string {
   return `
@@ -127,6 +189,8 @@ Permissions JSON: ${JSON.stringify(userContext.permissions)}
 
 ## RBAC Rules for SQL Generation
 - Always add WHERE deleted_at IS NULL to contacts, companies, activities, and deals queries when those tables are used
+- Never guess currency. Deal values are stored in deals.amount and deals.currency. When aggregating deal amount, include deals.currency in SELECT and GROUP BY unless the user explicitly asks for a single-currency conversion.
+- Format INR as INR/₹, USD as USD/$, and never use $ for deal values unless deals.currency = 'USD'.
 - If user role is 'sales_rep' or permissions are own-scoped, add owner filters:
   - contacts.owner_id = '${userContext.userId}' for contacts
   - deals.owner_id = '${userContext.userId}' for deals
@@ -382,6 +446,22 @@ export async function handleMessage(
 
     const userContext = await getUserContext(userId, db);
     const systemPrompt = buildSystemPrompt(userContext);
+    const pipelineValueAnswer = await answerPipelineValueQuestion(userMessage, db);
+
+    if (pipelineValueAnswer) {
+      const message = await storeAssistantMessage({ db, sessionId, content: pipelineValueAnswer });
+
+      return {
+        message: {
+          id: message.id,
+          role: 'assistant',
+          content: pipelineValueAnswer,
+          wasClarification: false,
+          createdAt: message.createdAt,
+        },
+      };
+    }
+
     const ambiguity = await checkForAmbiguity(userMessage, db);
 
     if (ambiguity.isAmbiguous) {
@@ -444,18 +524,19 @@ export async function handleMessage(
     }
 
     if (parsed.phase === 'answer') {
-      const content = formatAnswer(parsed.answer, parsed.followUpSuggestions);
-      const message = await storeAssistantMessage({ db, sessionId, content });
-
-      return {
-        message: {
-          id: message.id,
-          role: 'assistant',
-          content,
-          wasClarification: false,
-          createdAt: message.createdAt,
+      await writeAuditLog({
+        userId,
+        action: 'api_access',
+        entityType: 'ai_chat',
+        entityId: sessionId,
+        entityName: 'Rejected direct AI answer',
+        metadata: {
+          reason: 'Gemini returned a direct CRM data answer before SQL execution',
+          answer: parsed.answer,
         },
-      };
+      });
+
+      throw new Error('AI returned a direct answer before querying CRM data');
     }
 
     const validation = validateGeneratedSql(parsed.sql);
@@ -507,6 +588,7 @@ You format SecComply CRM query results into concise, readable Markdown for the u
 Return plain Markdown text only.
 Do not return JSON.
 Do not wrap the answer in a phase object.
+Respect currency fields exactly. Use ₹/INR only for INR rows and $/USD only for USD rows. Never invent or convert currencies.
 Lead with the direct answer, then include useful context or suggested next steps if helpful.
 `.trim();
 
