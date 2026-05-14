@@ -43,7 +43,7 @@ function getStageColor(stage: Stage) {
 
 function DealCardSkeleton() {
   return (
-    <div className="rounded-[10px] border border-l-[3px] border-[var(--color-border-ui)] border-l-[var(--color-header-border)] bg-[var(--color-surface)] p-3.5 shadow-sm">
+    <div className="m-[6px_8px_0] rounded-[10px] border border-l-[3px] border-[var(--border-subtle)] border-l-[var(--border-default)] bg-[var(--surface-card)] p-3.5 shadow-[var(--shadow-card)]">
       <div className="skeleton mb-3 h-3.5 w-3/4" />
       <div className="skeleton mb-3 h-[18px] w-2/5" />
       <div className="flex flex-col gap-1.5">
@@ -64,10 +64,10 @@ function KanbanColumn({ stage, deals, onAddDeal, onDealClick }: KanbanColumnProp
   return (
     <div
       ref={setNodeRef}
-      className={`kanban-column flex w-[280px] flex-shrink-0 flex-col rounded-[10px] transition-[background,outline] duration-150 ${isOver ? 'drag-over bg-[rgba(37,99,235,0.04)] outline-2 outline-dashed outline-[rgba(37,99,235,0.30)] outline-offset-4' : 'bg-[rgba(241,243,248,0.65)]'}`}
+      className={`kanban-column flex w-[282px] flex-shrink-0 flex-col rounded-[14px] border border-white/80 pb-2.5 shadow-[0_1px_3px_rgba(15,20,40,0.06)] backdrop-blur-md transition-[background,box-shadow,border-color] duration-150 ${isOver ? 'is-over bg-[rgba(45,91,227,0.06)] border-[var(--accent-medium)] shadow-[0_0_0_2px_var(--accent-medium)]' : 'bg-[rgba(255,255,255,0.55)]'}`}
     >
       {/* Column header */}
-      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+      <div className="kanban-column-header relative z-[5] flex items-center gap-2 rounded-t-[14px] border-b border-[rgba(226,229,240,0.7)] bg-[rgba(255,255,255,0.70)] px-3.5 pb-2.5 pt-3 backdrop-blur-md">
         <div className="flex items-center gap-2 min-w-0">
           <div
             className="h-2 w-2 flex-shrink-0 rounded-full"
@@ -76,20 +76,20 @@ function KanbanColumn({ stage, deals, onAddDeal, onDealClick }: KanbanColumnProp
               boxShadow: `0 0 0 3px color-mix(in srgb, ${stageColor} 22%, transparent)`,
             }}
           />
-          <span className="truncate text-base font-semibold text-[var(--color-text-1)]">{stage.name}</span>
-          <span className="min-w-[20px] flex-shrink-0 rounded-full bg-[var(--color-avatar-bg)] px-2 py-0.5 text-center text-xs font-semibold text-[var(--color-neutral)]">
+          <span className="truncate text-[12.5px] font-bold tracking-[-0.01em] text-[var(--text-primary)]">{stage.name}</span>
+          <span className="min-w-[20px] flex-shrink-0 rounded-full bg-[rgba(0,0,0,0.06)] px-2 py-0.5 text-center text-xs font-semibold text-[var(--text-secondary)]">
             {deals.length}
           </span>
         </div>
         {totalValue > 0 && (
-          <span className="ml-auto font-mono text-[11.5px] font-semibold text-[var(--color-company)]">
+          <span className="ml-auto font-mono text-[12px] font-bold tracking-[-0.02em] text-[var(--text-secondary)]">
             {formatCurrency(totalValue)}
           </span>
         )}
       </div>
 
       {/* Cards */}
-      <div className="flex-1 px-2 pb-3 space-y-2 min-h-[100px]">
+      <div className="flex-1 min-h-[100px] pb-1">
         <SortableContext items={deals.map((d) => d.id as string)} strategy={verticalListSortingStrategy}>
           {deals.map((deal, index) => (
             <div key={deal.id as string} style={{ animationDelay: `${Math.min(index, 5) * 35}ms` }}>
@@ -99,14 +99,14 @@ function KanbanColumn({ stage, deals, onAddDeal, onDealClick }: KanbanColumnProp
         </SortableContext>
 
         {deals.length === 0 && (
-          <div className="flex h-16 items-center justify-center rounded-lg border border-dashed border-[var(--color-border-strong)] text-xs text-[var(--color-text-3)]">
+          <div className="mx-2 mt-2 flex h-16 items-center justify-center rounded-lg border border-dashed border-[var(--border-strong)] text-xs text-[var(--text-tertiary)]">
             Drop here
           </div>
         )}
 
         <button
           onClick={() => onAddDeal(stage.id)}
-          className="mt-1 flex h-[34px] w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--color-border-strong)] bg-transparent text-sm font-medium text-[var(--color-text-3)] transition-[border-color,color,background] duration-150 hover:border-[var(--color-status-new-dot)] hover:bg-[var(--color-row-hover)] hover:text-[var(--color-accent)]"
+          className="mx-2 mt-2 flex h-[34px] w-[calc(100%-16px)] items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border-strong)] bg-transparent text-sm font-medium text-[var(--text-tertiary)] transition-[border-color,color,background] duration-150 hover:border-[var(--accent-medium)] hover:bg-[var(--accent-light)] hover:text-[var(--accent)]"
         >
           <Plus className="h-[13px] w-[13px]" />
           Add deal
@@ -223,9 +223,9 @@ export function KanbanBoard({ pipelineId, stages, onAddDeal, onDealClick, search
 
   if (isLoading) {
     return (
-      <div className="flex h-full gap-3 overflow-x-auto p-4">
+      <div className="flex h-full gap-3 overflow-x-auto bg-[var(--surface-page)] p-4">
         {stages.map((stage) => (
-          <div key={stage.id} className="w-[280px] flex-shrink-0 rounded-[10px] bg-[rgba(241,243,248,0.65)] p-2">
+          <div key={stage.id} className="w-[282px] flex-shrink-0 rounded-[14px] border border-white/80 bg-[rgba(255,255,255,0.55)] p-2 shadow-[0_1px_3px_rgba(15,20,40,0.06)] backdrop-blur-md">
             <div className="mb-3 flex items-center gap-2 px-1 pt-1">
               <div className="skeleton h-2 w-2 rounded-full" />
               <div className="skeleton h-3.5 w-28" />
@@ -250,7 +250,7 @@ export function KanbanBoard({ pipelineId, stages, onAddDeal, onDealClick, search
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex h-full items-start gap-3 overflow-x-auto p-4">
+      <div className="flex h-full items-start gap-3 overflow-x-auto bg-[var(--surface-page)] p-4">
         {stages.map((stage) => (
           <KanbanColumn
             key={stage.id}

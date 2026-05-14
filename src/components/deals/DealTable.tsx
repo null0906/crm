@@ -263,32 +263,34 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
 
   if (isLoading) {
     return (
-      <TableSkeleton rows={8} cols={8} />
+      <div className="m-4 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-card)] shadow-sm">
+        <TableSkeleton rows={8} cols={8} />
+      </div>
     );
   }
 
   if (items.length === 0) {
     return (
-      <div className="flex items-center justify-center h-48">
-        <div className="text-sm text-[var(--color-text-3)]">No deals in this pipeline yet.</div>
+      <div className="m-4 flex h-48 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-card)] shadow-sm">
+        <div className="text-sm text-[var(--text-tertiary)]">No deals in this pipeline yet.</div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="m-4 flex h-[calc(100%-32px)] flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-card)] shadow-sm">
       <div className="flex-1 overflow-auto">
         <table className="w-full text-sm border-collapse">
           <thead className="sticky top-0 z-10">
-            <tr className="border-b-2 border-[var(--color-header-border)] bg-linear-to-b from-[var(--color-header-start)] to-[var(--color-header-end)]">
+            <tr className="border-b border-[var(--border-default)] bg-[var(--surface-subtle)]">
               {table.getFlatHeaders().map((header) => (
                 <th
                   key={header.id}
-                  className="h-[38px] whitespace-nowrap px-3.5 text-left text-[10.5px] font-bold uppercase tracking-[0.05em] text-[var(--color-header-text)] select-none"
+                  className="h-9 whitespace-nowrap px-4 text-left text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--text-tertiary)] select-none"
                 >
                   {header.isPlaceholder ? null : (
                     <button
-                      className={`flex items-center gap-1 ${header.column.getCanSort() ? 'cursor-pointer hover:text-[var(--color-text-1)]' : ''}`}
+                      className={`flex items-center gap-1 ${header.column.getCanSort() ? 'cursor-pointer hover:text-[var(--text-primary)]' : ''}`}
                       onClick={header.column.getToggleSortingHandler()}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
@@ -311,10 +313,10 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className="group/row h-11 border-b border-[var(--color-row-border)] bg-[var(--color-surface)] transition-[background,box-shadow] duration-100 hover:bg-[var(--color-row-hover)] hover:shadow-[inset_3px_0_0_var(--color-accent)]"
+                className="group/row h-12 border-b border-[var(--border-subtle)] bg-[var(--surface-card)] transition-[background,box-shadow] duration-100 last:border-b-0 hover:bg-[var(--accent-light)] hover:shadow-[inset_3px_0_0_var(--accent)]"
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="h-11 whitespace-nowrap px-3.5 align-middle text-base">
+                  <td key={cell.id} className="h-12 whitespace-nowrap px-4 align-middle text-base">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -326,8 +328,8 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
 
       {/* Pagination */}
       {(cursor || hasMore) && (
-        <div className="flex flex-shrink-0 items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
-          <p className="text-sm text-[var(--color-text-3)]">
+        <div className="flex flex-shrink-0 items-center justify-between border-t border-[var(--border-subtle)] bg-[var(--surface-card)] px-4 py-3">
+          <p className="text-sm text-[var(--text-tertiary)]">
             {items.length} deal{items.length !== 1 ? 's' : ''} shown
           </p>
           <div className="flex items-center gap-2">

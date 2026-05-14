@@ -1,8 +1,11 @@
 import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { db as defaultDb } from '@/server/db';
 import {
+  activities,
   aiChatMessages,
   aiChatSessions,
+  companies,
+  contacts,
   contactTags,
   deals,
   pipelines,
@@ -117,6 +120,152 @@ async function answerPipelineValueQuestion(query: string, db: DbClient): Promise
   return `You have **${dealCount} ${scope}** with a total value of **${totals.join(' + ')}**.\n\nI used each deal's stored currency, so INR amounts are shown as rupees rather than dollars.`;
 }
 
+function parseUserActivityQuestion(query: string): { name: string; includeTasks: boolean; includeAutomated: boolean } | null {
+  const normalized = query.toLowerCase();
+  if (!/\bactivit(y|ies)\b/.test(normalized)) return null;
+  if (!/\b(this week|week)\b/.test(normalized)) return null;
+
+  const nameMatch =
+    query.match(/\bshow\s+me\s+([a-z][a-z\s.'-]{1,60}?)(?:'s|\s+activity|\s+activities)/i) ??
+    query.match(/\b([a-z][a-z\s.'-]{1,60}?)(?:'s)\s+activit(?:y|ies)\b/i);
+
+  const name = nameMatch?.[1]?.trim().replace(/\s+/g, ' ');
+  if (!name) return null;
+
+  return {
+    name,
+    includeTasks: /\b(task|tasks|reminder|reminders|todo|to-do)\b/i.test(query),
+    includeAutomated: /\b(automated|automation|system)\b/i.test(query),
+  };
+}
+
+function getCurrentIstWeekRange(now = new Date()): { start: Date; end: Date } {
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(now.getTime() + istOffsetMs);
+  const day = istNow.getUTCDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const mondayIstMidnight = Date.UTC(
+    istNow.getUTCFullYear(),
+    istNow.getUTCMonth(),
+    istNow.getUTCDate() + diffToMonday,
+    0,
+    0,
+    0,
+    0
+  );
+
+  return {
+    start: new Date(mondayIstMidnight - istOffsetMs),
+    end: new Date(mondayIstMidnight + 7 * 24 * 60 * 60 * 1000 - istOffsetMs),
+  };
+}
+
+function formatActivityType(type: string): string {
+  return type
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatActivityTimestamp(value: Date): string {
+  return value.toLocaleString('en-IN', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  });
+}
+
+async function answerUserActivityQuestion(query: string, db: DbClient): Promise<string | null> {
+  const parsed = parseUserActivityQuestion(query);
+  if (!parsed) return null;
+
+  const matchingUsers = await db
+    .select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      email: users.email,
+    })
+    .from(users)
+    .where(and(
+      sql`${users.status} != 'inactive'`,
+      sql`concat_ws(' ', ${users.firstName}, ${users.lastName}) ILIKE ${`%${parsed.name}%`}`
+    ))
+    .limit(5);
+
+  if (matchingUsers.length === 0) {
+    return `I could not find a CRM user matching **${parsed.name}**. Try using their full name.`;
+  }
+
+  if (matchingUsers.length > 1) {
+    return `I found multiple users matching **${parsed.name}**:\n\n${matchingUsers
+      .map((user, index) => `${index + 1}. ${[user.firstName, user.lastName].filter(Boolean).join(' ')} (${user.email})`)
+      .join('\n')}\n\nPlease ask again with the full name.`;
+  }
+
+  const [matchedUser] = matchingUsers;
+  const { start, end } = getCurrentIstWeekRange();
+  const typeFilter = parsed.includeTasks
+    ? undefined
+    : sql`${activities.activityType} != 'task'`;
+  const automationFilter = parsed.includeAutomated
+    ? undefined
+    : sql`COALESCE(${activities.isAutomated}, false) = false`;
+
+  const rows = await db
+    .select({
+      activityType: activities.activityType,
+      subject: activities.subject,
+      occurredAt: activities.occurredAt,
+      contactFirstName: contacts.firstName,
+      contactLastName: contacts.lastName,
+      companyName: companies.name,
+      dealTitle: deals.title,
+    })
+    .from(activities)
+    .leftJoin(contacts, eq(activities.contactId, contacts.id))
+    .leftJoin(companies, eq(activities.companyId, companies.id))
+    .leftJoin(deals, eq(activities.dealId, deals.id))
+    .where(and(
+      eq(activities.performedBy, matchedUser!.id),
+      sql`${activities.deletedAt} IS NULL`,
+      sql`${activities.occurredAt} >= ${start}`,
+      sql`${activities.occurredAt} < ${end}`,
+      typeFilter,
+      automationFilter
+    ))
+    .orderBy(desc(activities.occurredAt))
+    .limit(25);
+
+  const displayName = [matchedUser!.firstName, matchedUser!.lastName].filter(Boolean).join(' ') || parsed.name;
+
+  if (rows.length === 0) {
+    const filteredNote = parsed.includeTasks || parsed.includeAutomated
+      ? ''
+      : ' I excluded automated CRM tasks and stale-deal reminders from this activity view.';
+    return `I did not find any human activity logged by **${displayName}** this week.${filteredNote}`;
+  }
+
+  const lines = rows.map((row) => {
+    const related = [
+      [row.contactFirstName, row.contactLastName].filter(Boolean).join(' '),
+      row.companyName,
+      row.dealTitle ? `Deal: ${row.dealTitle}` : '',
+    ].filter(Boolean);
+    const relatedText = related.length ? ` — ${related.join(' · ')}` : '';
+    return `- **${formatActivityType(row.activityType)}:** ${row.subject || 'No subject'}${relatedText} _(${formatActivityTimestamp(row.occurredAt)})_`;
+  });
+
+  const exclusions = parsed.includeTasks || parsed.includeAutomated
+    ? ''
+    : '\n\nI excluded automated system tasks and stale-deal reminders so this reflects actual logged activity.';
+  const capped = rows.length === 25 ? '\n\nShowing the latest 25 activities for this week.' : '';
+
+  return `**${displayName} has ${rows.length} human activit${rows.length === 1 ? 'y' : 'ies'} logged this week:**\n\n${lines.join('\n')}${capped}${exclusions}`;
+}
+
 export function buildSystemPrompt(userContext: UserContext): string {
   return `
 You are the SecComply CRM Intelligence Assistant. You help the sales team and management query their CRM data using natural language.
@@ -191,6 +340,8 @@ Permissions JSON: ${JSON.stringify(userContext.permissions)}
 - Always add WHERE deleted_at IS NULL to contacts, companies, activities, and deals queries when those tables are used
 - Never guess currency. Deal values are stored in deals.amount and deals.currency. When aggregating deal amount, include deals.currency in SELECT and GROUP BY unless the user explicitly asks for a single-currency conversion.
 - Format INR as INR/₹, USD as USD/$, and never use $ for deal values unless deals.currency = 'USD'.
+- When a user asks for someone's "activity", default to human logged activity: activities.performed_by = that user's id, activities.is_automated = false, and exclude activity_type = 'task' unless they explicitly ask for tasks/reminders/automations.
+- Do not treat stale-deal reminders such as "Deal stuck..." as sales activity unless the user explicitly asks for automated tasks.
 - If user role is 'sales_rep' or permissions are own-scoped, add owner filters:
   - contacts.owner_id = '${userContext.userId}' for contacts
   - deals.owner_id = '${userContext.userId}' for deals
@@ -331,6 +482,52 @@ function formatAnswer(answer: string, followUpSuggestions: string[] = []): strin
   return `${answer}\n\nSuggested next steps:\n${suggestions}`;
 }
 
+function humanizeColumnName(column: string): string {
+  return column
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (value instanceof Date) return value.toLocaleString('en-IN');
+  if (typeof value === 'number') return Number.isInteger(value) ? value.toLocaleString('en-IN') : value.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.map(formatCellValue).join(', ');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function formatRowsDeterministically(userMessage: string, rows: Array<Record<string, unknown>>): string {
+  if (rows.length === 0) {
+    return 'I did not find any matching CRM records for that query. You can try broadening the filter or using the exact tag/source name.';
+  }
+
+  const columns = Object.keys(rows[0] ?? {});
+  const countColumn = columns.find((column) => /(^|_)(count|total|lead_count|deal_count)($|_)/i.test(column));
+  const nameColumn = columns.find((column) => /(name|title|tag|source|stage|status|owner|company|contact)/i.test(column));
+
+  if (rows.length === 1 && countColumn) {
+    const label = nameColumn ? ` for **${formatCellValue(rows[0]?.[nameColumn])}**` : '';
+    return `I found **${formatCellValue(rows[0]?.[countColumn])}** result${label}.`;
+  }
+
+  const visibleRows = rows.slice(0, 20);
+  const header = `Here are the results for: **${userMessage}**`;
+  const tableHeader = `| ${columns.map(humanizeColumnName).join(' | ')} |`;
+  const divider = `| ${columns.map(() => '---').join(' | ')} |`;
+  const tableRows = visibleRows.map((row) => `| ${columns.map((column) => formatCellValue(row[column]).replace(/\|/g, '\\|')).join(' | ')} |`);
+  const cappedNote = rows.length > visibleRows.length ? `\n\nShowing the first ${visibleRows.length} of ${rows.length} rows.` : '';
+
+  return `${header}\n\n${[tableHeader, divider, ...tableRows].join('\n')}${cappedNote}`;
+}
+
+function isJsonLikeInternalResponse(response: string): boolean {
+  const trimmed = response.trim();
+  return trimmed.startsWith('{') && /"phase"\s*:\s*"(query|clarify|answer)"/i.test(trimmed);
+}
+
 function formatClarification(question: string, options: ClarificationOption[] = []): string {
   if (!options.length) return question;
   const lines = options.map((option, index) => {
@@ -447,6 +644,7 @@ export async function handleMessage(
     const userContext = await getUserContext(userId, db);
     const systemPrompt = buildSystemPrompt(userContext);
     const pipelineValueAnswer = await answerPipelineValueQuestion(userMessage, db);
+    const userActivityAnswer = await answerUserActivityQuestion(userMessage, db);
 
     if (pipelineValueAnswer) {
       const message = await storeAssistantMessage({ db, sessionId, content: pipelineValueAnswer });
@@ -456,6 +654,20 @@ export async function handleMessage(
           id: message.id,
           role: 'assistant',
           content: pipelineValueAnswer,
+          wasClarification: false,
+          createdAt: message.createdAt,
+        },
+      };
+    }
+
+    if (userActivityAnswer) {
+      const message = await storeAssistantMessage({ db, sessionId, content: userActivityAnswer });
+
+      return {
+        message: {
+          id: message.id,
+          role: 'assistant',
+          content: userActivityAnswer,
           wasClarification: false,
           createdAt: message.createdAt,
         },
@@ -596,7 +808,9 @@ Lead with the direct answer, then include useful context or suggested next steps
     const parsedFormattedResponse = parseGeminiJsonBlock(formattedResponse);
     const content = parsedFormattedResponse?.phase === 'answer'
       ? formatAnswer(parsedFormattedResponse.answer, parsedFormattedResponse.followUpSuggestions)
-      : formattedResponse;
+      : parsedFormattedResponse || isJsonLikeInternalResponse(formattedResponse)
+        ? formatRowsDeterministically(userMessage, rows)
+        : formattedResponse;
 
     const message = await storeAssistantMessage({
       db,

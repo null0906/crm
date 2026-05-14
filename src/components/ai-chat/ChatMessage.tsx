@@ -22,6 +22,40 @@ function formatTime(value: string | Date): string {
   return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 }
 
+function getDisplayContent(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith('{')) return content;
+
+  try {
+    const parsed = JSON.parse(trimmed) as {
+      phase?: string;
+      answer?: unknown;
+      follow_up_suggestions?: unknown;
+      followUpSuggestions?: unknown;
+    };
+
+    if (parsed.phase === 'answer' && typeof parsed.answer === 'string') {
+      const suggestions = Array.isArray(parsed.follow_up_suggestions)
+        ? parsed.follow_up_suggestions
+        : parsed.followUpSuggestions;
+      const followUps = Array.isArray(suggestions)
+        ? suggestions.filter((suggestion): suggestion is string => typeof suggestion === 'string')
+        : [];
+
+      if (followUps.length === 0) return parsed.answer;
+      return `${parsed.answer}\n\nSuggested next steps:\n${followUps.map((suggestion) => `- ${suggestion}`).join('\n')}`;
+    }
+
+    if (parsed.phase === 'query') {
+      return 'I prepared an internal CRM query, but it was not formatted into a readable answer. Please send the question again and I will return the result directly.';
+    }
+  } catch {
+    return content;
+  }
+
+  return content;
+}
+
 export function ChatMessage({
   message,
   onOptionSelect,
@@ -33,9 +67,10 @@ export function ChatMessage({
 }) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === 'user';
+  const displayContent = isUser ? message.content : getDisplayContent(message.content);
 
   const copyMessage = async () => {
-    await navigator.clipboard.writeText(message.content);
+    await navigator.clipboard.writeText(displayContent);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1200);
   };
@@ -65,7 +100,7 @@ export function ChatMessage({
           )}
 
           {isUser ? (
-            <p className="whitespace-pre-wrap">{message.content}</p>
+            <p className="whitespace-pre-wrap">{displayContent}</p>
           ) : (
             <div className="ai-chat-markdown pr-6">
               <ReactMarkdown
@@ -83,7 +118,7 @@ export function ChatMessage({
                   p: ({ children }) => <p className="mb-2 last:mb-0 whitespace-pre-wrap">{children}</p>,
                 }}
               >
-                {message.content}
+                {displayContent}
               </ReactMarkdown>
             </div>
           )}

@@ -340,9 +340,9 @@ export default function ContactsPage() {
   });
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="contacts-page flex h-full flex-col bg-[var(--surface-page)]">
       {/* Filter Bar */}
-      <div className="flex flex-col gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-4">
+      <div className="filter-bar flex flex-col gap-2 bg-[var(--surface-page)] px-6 pb-0 pt-3">
         <div className="flex items-center gap-3">
           <div className="relative flex-1 max-w-[280px]">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-3)]" />
@@ -356,7 +356,7 @@ export default function ContactsPage() {
 
           <div className="flex items-center gap-1">
             <button
-              className={`h-[26px] rounded-sm border px-2.5 text-sm transition-colors ${!statusFilter ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)] font-medium' : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-2)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text-1)]'}`}
+              className={`status-pill h-7 rounded-md border px-3 text-[12.5px] transition-all ${!statusFilter ? 'border-[var(--accent)] bg-[var(--accent)] text-white font-semibold shadow-[0_1px_4px_rgba(45,91,227,0.30)]' : 'border-[var(--border-subtle)] bg-[var(--surface-card)] text-[var(--text-secondary)] hover:border-[var(--accent-medium)] hover:bg-[var(--accent-light)] hover:text-[var(--accent)]'}`}
               onClick={() => setStatusFilter('')}
             >
               All
@@ -364,7 +364,7 @@ export default function ContactsPage() {
             {CONTACT_STATUSES.slice(0, 5).map((s) => (
               <button
                 key={s.value}
-                className={`h-[26px] rounded-sm border px-2.5 text-sm transition-colors ${statusFilter === s.value ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-accent)] font-medium' : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-2)] hover:bg-[var(--color-surface-alt)] hover:text-[var(--color-text-1)]'}`}
+                className={`status-pill h-7 rounded-md border px-3 text-[12.5px] transition-all ${statusFilter === s.value ? 'border-[var(--accent)] bg-[var(--accent)] text-white font-semibold shadow-[0_1px_4px_rgba(45,91,227,0.30)]' : 'border-[var(--border-subtle)] bg-[var(--surface-card)] text-[var(--text-secondary)] hover:border-[var(--accent-medium)] hover:bg-[var(--accent-light)] hover:text-[var(--accent)]'}`}
                 onClick={() => setStatusFilter(statusFilter === s.value ? '' : s.value)}
               >
                 {s.label}
@@ -619,7 +619,8 @@ export default function ContactsPage() {
       )}
 
       {/* Table */}
-      <div className="flex-1 overflow-auto bg-[var(--color-bg)]">
+      <div className="table-container mx-6 my-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-card)] shadow-sm">
+        <div className="flex-1 overflow-auto bg-[var(--surface-card)]">
         {isLoading ? (
           <TableSkeleton rows={10} cols={8} />
         ) : contacts.length === 0 ? (
@@ -631,13 +632,13 @@ export default function ContactsPage() {
           />
         ) : (
           <table className="w-full border-collapse text-left">
-            <thead className="sticky top-0 z-10 bg-linear-to-b from-[var(--color-header-start)] to-[var(--color-header-end)]">
+            <thead className="sticky top-0 z-10 bg-[var(--surface-subtle)]">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className="h-[38px] border-b-2 border-[var(--color-header-border)] px-3.5 text-left text-[10.5px] font-bold uppercase tracking-[0.05em] text-[var(--color-header-text)] whitespace-nowrap"
+                      className="h-9 border-b border-[var(--border-default)] px-4 text-left text-[10.5px] font-bold uppercase tracking-[0.06em] text-[var(--text-tertiary)] whitespace-nowrap"
                     >
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     </th>
@@ -649,12 +650,12 @@ export default function ContactsPage() {
               {table.getRowModel().rows.map((row, index) => (
                 <tr
                   key={row.id}
-                  className={`group h-11 cursor-pointer border-b border-[var(--color-row-border)] bg-[var(--color-surface)] transition-[background,box-shadow] duration-100 hover:bg-[var(--color-row-hover)] hover:shadow-[inset_3px_0_0_var(--color-accent)] ${row.getIsSelected() ? 'table-row-selected' : ''}`}
+                  className={`group h-12 cursor-pointer border-b border-[var(--border-subtle)] bg-[var(--surface-card)] transition-[background,box-shadow] duration-100 last:border-b-0 hover:bg-[var(--accent-light)] hover:shadow-[inset_3px_0_0_var(--accent)] ${row.getIsSelected() ? 'table-row-selected' : ''}`}
                   style={{ animationDelay: `${Math.min(index, 8) * 25}ms` }}
                   onClick={() => setSelectedContact(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="h-11 whitespace-nowrap px-3.5 text-base text-[var(--color-text-1)]">
+                    <td key={cell.id} className="h-12 whitespace-nowrap px-4 text-base text-[var(--text-primary)]">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -663,12 +664,12 @@ export default function ContactsPage() {
             </tbody>
           </table>
         )}
-      </div>
+        </div>
 
       {/* Pagination */}
       {data && (
-        <div className="flex items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5">
-          <span className="text-sm text-[var(--color-text-3)]">
+        <div className="flex items-center justify-between border-t border-[var(--border-subtle)] bg-[var(--surface-card)] px-4 py-2.5">
+          <span className="text-sm text-[var(--text-tertiary)]">
             Showing {contacts.length} of {data.total ?? contacts.length} contacts
           </span>
           <div className="flex items-center gap-2">
@@ -685,6 +686,7 @@ export default function ContactsPage() {
           </div>
         </div>
       )}
+      </div>
 
       {/* Create modal */}
       <SlideOverPanel

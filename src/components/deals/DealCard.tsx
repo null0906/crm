@@ -13,15 +13,15 @@ interface DealCardProps {
 }
 
 const STAGE_COLORS: Record<string, string> = {
-  'lead in': 'var(--color-stage-neutral)',
-  qualified: 'var(--color-status-new-text)',
-  discovery: 'var(--color-purple)',
-  demo: 'var(--color-warning)',
-  scoping: 'var(--color-orange-500)',
-  proposal: 'var(--color-pink-500)',
-  negotiation: 'var(--color-danger)',
-  won: 'var(--color-success)',
-  lost: 'var(--color-neutral)',
+  'lead in': 'var(--stage-lead-in)',
+  qualified: 'var(--stage-qualified)',
+  discovery: 'var(--stage-discovery)',
+  demo: 'var(--stage-demo)',
+  scoping: 'var(--stage-scoping)',
+  proposal: 'var(--stage-proposal)',
+  negotiation: 'var(--stage-negotiation)',
+  won: 'var(--stage-won)',
+  lost: 'var(--stage-lost)',
 };
 
 function getStageColor(deal: Record<string, unknown>, explicitStageColor?: string | null) {
@@ -82,8 +82,9 @@ export function DealCard({ deal, onClick, stageColor }: DealCardProps) {
       : dndTransform,
     transition: transition ?? 'box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease',
     opacity: isDragging ? 0.95 : 1,
+    '--stage-color': getStageColor(deal, stageColor),
     borderLeftColor: getStageColor(deal, stageColor),
-  };
+  } as React.CSSProperties & Record<'--stage-color', string>;
 
   const amount = deal.amount as number | string | null | undefined;
   const currency = String(deal.currency ?? 'INR');
@@ -107,37 +108,39 @@ export function DealCard({ deal, onClick, stageColor }: DealCardProps) {
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className={`deal-card group cursor-grab overflow-hidden rounded-[10px] border border-l-[3px] border-[var(--color-border-ui)] bg-[var(--color-surface)] px-3.5 py-3 shadow-sm transition-[box-shadow,transform,border-color] duration-150 hover:-translate-y-px hover:border-[var(--color-border-strong)] hover:shadow-[0_4px_12px_rgba(17,19,24,0.10),_0_2px_4px_rgba(17,19,24,0.06)] active:cursor-grabbing ${isDragging ? 'dragging' : ''}`}
+      className={`deal-card group m-[6px_8px_0] cursor-grab overflow-hidden rounded-[10px] border border-l-[3px] border-[var(--border-subtle)] bg-[var(--surface-card)] px-[13px] py-3 shadow-[var(--shadow-card)] transition-[box-shadow,transform,border-color] duration-150 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:border-[var(--border-default)] hover:shadow-[var(--shadow-card-hover)] active:cursor-grabbing ${isDragging ? 'dragging' : ''}`}
     >
       <p
-        className="mb-2.5 break-words text-[13.5px] font-semibold leading-snug tracking-[-0.01em] text-[var(--color-text-1)] transition-colors group-hover:text-[var(--color-accent)]"
+        className="mb-[9px] break-words text-[13.5px] font-semibold leading-[1.35] tracking-[-0.015em] text-[var(--text-primary)] transition-colors group-hover:text-[var(--accent)]"
         title={String(deal.title ?? '')}
       >
         {deal.title as string}
       </p>
 
       {isVelocitySlow && (
-        <div className="mb-2 inline-flex items-center gap-1 rounded-md border border-[var(--color-status-nurturing-border)] bg-[var(--color-warning-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-warning)]">
+        <div className="mb-2 inline-flex items-center gap-1 rounded-md border border-[var(--status-nurturing-border)] bg-[var(--status-nurturing-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--status-nurturing-text)]">
           <Clock className="h-3 w-3" strokeWidth={1.75} />
           Slow
         </div>
       )}
 
-      <div className="mb-2.5 flex items-center justify-between gap-3">
+      <div className="mb-[11px] flex items-baseline justify-between gap-3">
         {amount !== null && amount !== undefined && (
-          <span className="break-all font-mono text-lg font-bold tracking-[-0.02em] text-[var(--color-text-1)]">
+          <span className="break-all font-mono text-[17px] font-extrabold leading-none tracking-[-0.03em] text-[var(--text-primary)]">
             {formatCurrency(amount, currency)}
           </span>
         )}
         {probability !== null && probability !== undefined && (
           <span
             style={getProbabilityTone(probability)}
-            className="ml-auto rounded border px-2 py-0.5 text-xs font-semibold"
+            className="ml-auto rounded-md border px-2 py-0.5 text-xs font-bold"
           >
             {probability}%
           </span>
         )}
       </div>
+
+      <div className="mb-[9px] h-px bg-[var(--border-subtle)] opacity-70" />
 
       <div className="flex flex-col gap-1.5">
         {primaryContactName && <MetaRow icon={User} text={primaryContactName} />}

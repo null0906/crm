@@ -12,6 +12,33 @@ function getBaseUrl() {
   return `http://localhost:${process.env.PORT ?? 3000}`;
 }
 
+async function fetchWithCarrierTimeoutAndRetry(
+  url: Parameters<typeof fetch>[0],
+  options: Parameters<typeof fetch>[1] = {}
+): Promise<Response> {
+  const maxAttempts = 2;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30000);
+
+    try {
+      return await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (attempt >= maxAttempts) {
+        throw error;
+      }
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  throw new Error('Network request failed');
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -35,6 +62,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         }),
         httpBatchLink({
           url: `${getBaseUrl()}/api/trpc`,
+          fetch: fetchWithCarrierTimeoutAndRetry,
           headers() {
             return {};
           },

@@ -52,7 +52,7 @@ export function Sidebar() {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          'sidebar flex flex-col h-screen border-r border-[var(--color-border-ui)] bg-linear-to-b from-[var(--color-sidebar-start)] to-[var(--color-sidebar-end)]',
+          'sidebar flex h-screen flex-col border-r border-[var(--border-subtle)] bg-[var(--surface-card)] shadow-[2px_0_8px_rgba(15,20,40,0.05)]',
           'transition-all duration-200 flex-shrink-0 sticky top-0',
           collapsed ? 'w-[60px]' : 'w-[220px]'
         )}
@@ -60,11 +60,11 @@ export function Sidebar() {
         {/* Logo */}
         <div
           className={cn(
-            'sidebar-logo-area flex h-14 items-center border-b border-[var(--color-border-ui)] flex-shrink-0',
+            'sidebar-logo-area flex h-14 items-center border-b border-[var(--border-subtle)] flex-shrink-0',
             collapsed ? 'justify-center px-0' : 'px-4 gap-2.5'
           )}
         >
-          <div className="sidebar-logo-icon flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[7px] bg-linear-to-br from-[var(--color-accent)] to-[var(--color-accent-hover)] text-[14px] font-bold text-[var(--color-text-inverse)] shadow-[0_2px_8px_rgba(37,99,235,0.30)]">
+          <div className="sidebar-logomark flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-[var(--accent)] to-[var(--accent-deep)] text-[14px] font-extrabold tracking-[-0.03em] text-[var(--text-inverse)] shadow-[0_2px_8px_rgba(45,91,227,0.35),inset_0_1px_0_rgba(255,255,255,0.15)]">
             S
           </div>
           {!collapsed && (
@@ -83,12 +83,12 @@ export function Sidebar() {
         </nav>
 
         {/* Collapse toggle */}
-        <div className="border-t border-[var(--color-border-ui)] p-2">
+        <div className="border-t border-[var(--border-subtle)] p-2">
           <button
             onClick={() => setCollapsed(!collapsed)}
             className={cn(
               'w-full flex items-center h-8 rounded-md',
-              'text-[var(--color-text-3)] hover:text-[var(--color-accent)] hover:bg-[rgba(37,99,235,0.05)]',
+              'text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)]',
               collapsed ? 'justify-center' : 'justify-end px-2'
             )}
           >
@@ -101,13 +101,13 @@ export function Sidebar() {
         {/* User */}
         <div
           className={cn(
-            'sidebar-user-section h-[56px] border-t border-[var(--color-border-ui)] bg-[rgba(37,99,235,0.02)] px-3 flex items-center gap-2.5',
+            'sidebar-user-section h-[56px] border-t border-[var(--border-subtle)] bg-[rgba(45,91,227,0.025)] px-3 flex items-center gap-2.5',
             collapsed && 'justify-center'
           )}
         >
           <Avatar className="h-[30px] w-[30px] flex-shrink-0 rounded-lg">
             <AvatarImage src={(user?.image as string) ?? undefined} />
-            <AvatarFallback className="rounded-lg bg-linear-to-br from-[var(--color-accent)] to-[var(--color-purple)] text-xs font-bold text-[var(--color-text-inverse)] shadow-[0_2px_6px_rgba(37,99,235,0.25)]">
+            <AvatarFallback className="rounded-lg bg-linear-to-br from-[var(--accent)] to-[var(--stage-discovery)] text-xs font-bold text-[var(--text-inverse)] shadow-[0_2px_6px_rgba(45,91,227,0.25)]">
               {getInitials(firstName, lastName)}
             </AvatarFallback>
           </Avatar>
@@ -117,11 +117,11 @@ export function Sidebar() {
               <span className="text-base font-semibold text-[var(--color-text-1)] truncate">
                 {firstName} {lastName}
               </span>
-              <span className="text-xs text-[var(--color-text-3)] truncate mt-0.5">{email}</span>
+              <span className="text-xs text-[var(--text-tertiary)] truncate mt-0.5">{email}</span>
             </div>
             <Link
               href="/settings"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-3)] hover:bg-[rgba(37,99,235,0.06)] hover:text-[var(--color-accent)]"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-tertiary)] hover:bg-[var(--accent-light)] hover:text-[var(--accent)]"
               aria-label="Settings"
             >
               <Settings className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -187,15 +187,15 @@ function NavItemComponent({
         'nav-item group relative mx-2 my-px flex h-[34px] items-center gap-[9px] rounded-[7px] px-2.5',
         'text-base transition-all duration-150 ease-[var(--ease-spring)]',
         isActive
-          ? 'active bg-linear-to-br from-[rgba(37,99,235,0.10)] to-[rgba(37,99,235,0.06)] text-[var(--color-accent-hover)] font-semibold shadow-[inset_0_0_0_1px_rgba(37,99,235,0.15)] after:absolute after:right-2.5 after:h-[5px] after:w-[5px] after:rounded-full after:bg-[var(--color-accent)] after:shadow-[0_0_6px_rgba(37,99,235,0.5)]'
-          : 'text-[var(--color-text-2)] font-normal hover:bg-[rgba(37,99,235,0.05)] hover:text-[var(--color-accent-deep)]',
+          ? 'active border border-[var(--accent-medium)] bg-[var(--accent-light)] text-[var(--accent)] font-semibold after:absolute after:right-[9px] after:h-[5px] after:w-[5px] after:rounded-full after:bg-[var(--accent)] after:shadow-[0_0_0_3px_var(--accent-light),0_0_8px_var(--accent-glow)]'
+          : 'text-[var(--text-secondary)] font-normal hover:bg-[var(--accent-light)] hover:text-[var(--accent)]',
         collapsed && 'justify-center px-2'
       )}
     >
       <Icon
         className={cn(
           'flex-shrink-0',
-          isActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-3)] group-hover:text-[var(--color-accent)]',
+          isActive ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)] group-hover:text-[var(--accent)]',
           collapsed ? 'w-4 h-4' : 'w-4 h-4'
         )}
         strokeWidth={1.75}
@@ -206,7 +206,7 @@ function NavItemComponent({
       )}
 
       {!collapsed && item.badge !== undefined && item.badge > 0 && (
-        <span className="ml-auto text-2xs bg-[var(--color-accent)] text-[var(--color-text-inverse)] rounded-full px-1.5 py-px font-semibold font-mono leading-none">
+        <span className="ml-auto text-2xs bg-[var(--accent)] text-[var(--text-inverse)] rounded-full px-1.5 py-px font-semibold font-mono leading-none">
           {item.badge}
         </span>
       )}

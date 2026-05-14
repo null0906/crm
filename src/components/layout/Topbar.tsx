@@ -38,20 +38,20 @@ export function Topbar() {
 
   return (
     <>
-      <header className="topbar sticky top-0 z-30 flex h-[52px] items-center gap-3 border-b border-[var(--color-border-ui)] bg-[var(--color-surface)] px-6 shadow-[0_1px_0_var(--color-border-ui),_0_2px_4px_rgba(17,19,24,0.03)]">
+      <header className="topbar sticky top-0 z-30 flex h-[52px] items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-card)] px-6 shadow-[0_1px_0_var(--border-subtle),_0_2px_6px_rgba(15,20,40,0.04)]">
         <div className="min-w-[180px] leading-tight">
-          <h1 className="topbar-title text-lg font-bold tracking-[-0.02em] text-[var(--color-text-1)]">{pageTitle}</h1>
-          <p className="topbar-subtitle mt-px text-[11.5px] font-normal text-[var(--color-text-3)]">{getPageSubtext(pathname)}</p>
+          <h1 className="topbar-title text-lg font-bold tracking-[-0.025em] text-[var(--text-primary)]">{pageTitle}</h1>
+          <p className="topbar-subtitle mt-px text-[11px] font-normal text-[var(--text-tertiary)]">{getPageSubtext(pathname)}</p>
         </div>
 
         <button
           onClick={() => setCmdOpen(true)}
           className={cn(
             'topbar-search mx-auto flex h-8 w-[260px] items-center gap-2 rounded-lg px-3',
-            'border border-[var(--color-header-border)] bg-[var(--color-header-start)]',
-            'text-base text-[var(--color-text-3)]',
-            'hover:bg-[var(--color-surface)] hover:border-[var(--color-border-strong)]',
-            'focus-visible:bg-[var(--color-surface)] focus-visible:border-[var(--color-border-focus)] focus-visible:shadow-[0_0_0_3px_rgba(37,99,235,0.10)]',
+            'border border-[var(--border-subtle)] bg-[var(--surface-input)]',
+            'text-base text-[var(--text-tertiary)]',
+            'hover:bg-[var(--surface-card)] hover:border-[var(--border-strong)]',
+            'focus-visible:bg-[var(--surface-card)] focus-visible:border-[var(--border-focus)] focus-visible:shadow-[0_0_0_3px_rgba(45,91,227,0.10)]',
           )}
         >
           <Search className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.75} />
@@ -71,16 +71,16 @@ export function Topbar() {
               <button
                 className={cn(
                   'flex items-center gap-2 rounded-md p-1 ml-1',
-                  'hover:bg-[var(--color-surface-alt)]'
+                  'hover:bg-[var(--accent-light)]'
                 )}
               >
                 <Avatar className="w-7 h-7">
                   <AvatarImage src={(user?.image as string) ?? undefined} />
-                  <AvatarFallback className="text-xs font-semibold bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
+                  <AvatarFallback className="text-xs font-semibold bg-[var(--accent-light)] text-[var(--accent)]">
                     {getInitials(firstName, lastName)}
                   </AvatarFallback>
                 </Avatar>
-                <span className="text-base font-medium text-[var(--color-text-1)] hidden md:block pr-0.5">
+                <span className="text-base font-medium text-[var(--text-primary)] hidden md:block pr-0.5">
                   {firstName}
                 </span>
               </button>
@@ -89,14 +89,14 @@ export function Topbar() {
             <DropdownMenuContent align="end" className="w-56 dropdown-panel">
               <DropdownMenuLabel className="pb-2">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-base font-semibold text-[var(--color-text-1)]">{firstName} {lastName}</span>
-                  <span className="text-xs text-[var(--color-text-3)] font-normal">{user?.email as string}</span>
+                  <span className="text-base font-semibold text-[var(--text-primary)]">{firstName} {lastName}</span>
+                  <span className="text-xs text-[var(--text-tertiary)] font-normal">{user?.email as string}</span>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/settings" className="gap-2">
-                  <Settings className="w-3.5 h-3.5 text-[var(--color-text-3)]" strokeWidth={1.75} />
+                  <Settings className="w-3.5 h-3.5 text-[var(--text-tertiary)]" strokeWidth={1.75} />
                   Settings
                 </Link>
               </DropdownMenuItem>

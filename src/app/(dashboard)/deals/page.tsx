@@ -119,8 +119,8 @@ export default function DealsPage() {
 
   if (pipelinesLoading) {
     return (
-      <div className="flex h-full items-start gap-3 p-4">
-        <div className="w-[280px] rounded-[10px] bg-[rgba(241,243,248,0.65)] p-3">
+      <div className="flex h-full items-start gap-3 bg-[var(--surface-page)] p-4">
+        <div className="w-[282px] rounded-[14px] border border-white/80 bg-[rgba(255,255,255,0.55)] p-3 shadow-sm backdrop-blur-md">
           <div className="skeleton mb-4 h-3.5 w-32" />
           <div className="space-y-2">
             <div className="skeleton h-24 w-full rounded-[10px]" />
@@ -134,7 +134,7 @@ export default function DealsPage() {
 
   if (pipelines.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex h-full items-center justify-center bg-[var(--surface-page)]">
         <div className="text-center">
           <LayoutGrid className="mx-auto mb-3 h-10 w-10 text-[var(--color-border-strong)]" />
           <p className="font-medium text-[var(--color-text-2)]">No pipelines found</p>
@@ -145,19 +145,19 @@ export default function DealsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden bg-[var(--surface-page)]">
       {/* Header */}
-      <div className="flex flex-shrink-0 items-center justify-between border-b border-[var(--color-border-ui)] bg-[var(--color-surface)] px-6 py-3 shadow-[0_1px_0_var(--color-border-ui),_0_2px_4px_rgba(17,19,24,0.03)]">
+      <div className="flex flex-shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--surface-card)] px-6 py-3 shadow-[0_1px_0_var(--border-subtle),_0_2px_6px_rgba(15,20,40,0.04)]">
         <div className="flex items-center gap-4">
           {/* Pipeline tabs */}
-          <div className="pipeline-tab-bar flex items-center gap-1 rounded-[9px] border border-[var(--color-header-border)] bg-[var(--color-avatar-bg)] p-[3px]">
+          <div className="pipeline-tab-bar flex items-center gap-1 rounded-[9px] border border-[var(--border-default)] bg-[var(--surface-input)] p-[3px]">
             {pipelines.map((pipeline) => (
               <button
                 key={String(pipeline.id)}
                 className={`pipeline-tab h-[30px] rounded-[7px] px-3.5 text-[12.5px] font-medium transition-all duration-150 ease-[var(--ease-spring)] whitespace-nowrap ${
                   selectedPipelineId === String(pipeline.id)
-                    ? 'bg-[var(--color-surface)] text-[var(--color-text-1)] shadow-[0_1px_3px_rgba(17,19,24,0.10),_0_1px_2px_rgba(17,19,24,0.06)] font-semibold'
-                    : 'text-[var(--color-neutral)] hover:bg-[rgba(255,255,255,0.7)] hover:text-[var(--color-company)]'
+                    ? 'bg-[var(--surface-card)] text-[var(--text-primary)] shadow-[0_1px_3px_rgba(15,20,40,0.10),_0_1px_2px_rgba(15,20,40,0.06)] font-semibold'
+                    : 'text-[var(--text-tertiary)] hover:bg-[rgba(255,255,255,0.7)] hover:text-[var(--text-secondary)]'
                 }`}
                 onClick={() => setSelectedPipelineId(String(pipeline.id))}
               >
@@ -169,17 +169,17 @@ export default function DealsPage() {
 
         <div className="flex items-center gap-2">
           {/* View toggle */}
-          <div className="flex items-center rounded-[9px] border border-[var(--color-header-border)] bg-[var(--color-avatar-bg)] p-[3px]">
+          <div className="flex items-center rounded-[9px] border border-[var(--border-default)] bg-[var(--surface-input)] p-[3px]">
             <button
               onClick={() => setViewMode('kanban')}
-              className={`rounded-[7px] p-1.5 transition-all ${viewMode === 'kanban' ? 'bg-[var(--color-surface)] text-[var(--color-text-1)] shadow-sm' : 'text-[var(--color-text-3)] hover:text-[var(--color-company)]'}`}
+              className={`rounded-[7px] p-1.5 transition-all ${viewMode === 'kanban' ? 'bg-[var(--surface-card)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
               title="Kanban view"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`rounded-[7px] p-1.5 transition-all ${viewMode === 'table' ? 'bg-[var(--color-surface)] text-[var(--color-text-1)] shadow-sm' : 'text-[var(--color-text-3)] hover:text-[var(--color-company)]'}`}
+              className={`rounded-[7px] p-1.5 transition-all ${viewMode === 'table' ? 'bg-[var(--surface-card)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
               title="Table view"
             >
               <List className="w-3.5 h-3.5" />
@@ -208,7 +208,7 @@ export default function DealsPage() {
 
       {/* Filter bar */}
       {showFilters && (
-        <div className="flex flex-shrink-0 flex-wrap items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)] px-6 py-2.5">
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-page)] px-6 py-2.5">
           <div className="relative min-w-[240px] flex-1 max-w-[320px]">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-3)]" />
             <Input
@@ -402,7 +402,7 @@ export default function DealsPage() {
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden bg-[var(--surface-page)]">
         {!selectedPipelineId ? (
           <div className="flex h-full items-center justify-center text-sm text-[var(--color-text-3)]">
             Select a pipeline
