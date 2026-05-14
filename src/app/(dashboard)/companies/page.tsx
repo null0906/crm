@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import {
   useReactTable, getCoreRowModel, flexRender,
-  type ColumnDef, type RowSelectionState,
+  type ColumnDef, type RowSelectionState, type VisibilityState,
 } from '@tanstack/react-table';
 import { Plus, Search, Building2, Pencil, Trash2, ChevronDown } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
@@ -22,6 +22,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDate } from '@/lib/formatters';
 import { PAGE_SIZES, COMPANY_SIZES, COMPANY_STATUSES, COMPANY_TYPES } from '@/lib/constants';
 import { toast } from 'sonner';
+import { ColumnVisibilityMenu } from '@/components/shared/ColumnVisibilityMenu';
 
 type Company = Record<string, unknown>;
 
@@ -40,6 +41,7 @@ export default function CompaniesPage() {
   const [dateTo, setDateTo] = useState<string>('');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [pageSize, setPageSize] = useState(50);
   const [cursor, setCursor] = useState<string | undefined>();
   const [createOpen, setCreateOpen] = useState(false);
@@ -130,6 +132,7 @@ export default function CompaniesPage() {
         />
       ),
       size: 40,
+      enableHiding: false,
     },
     {
       accessorKey: 'name',
@@ -229,22 +232,24 @@ export default function CompaniesPage() {
         </div>
       ),
       size: 60,
+      enableHiding: false,
     },
   ];
 
   const table = useReactTable({
     data: companies,
     columns,
-    state: { rowSelection },
+    state: { rowSelection, columnVisibility },
     getRowId: (row) => String(row.id),
     onRowSelectionChange: setRowSelection,
+    onColumnVisibilityChange: setColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
   });
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col bg-[var(--surface-page)]">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
+      <div className="flex flex-col gap-3 border-b border-slate-100 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between md:px-6">
         <div>
           <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Companies</h1>
           <p className="text-xs text-slate-400 mt-0.5">{data ? `${data.total ?? data.items.length} companies` : 'Loading...'}</p>
@@ -256,9 +261,9 @@ export default function CompaniesPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-2 px-6 py-2.5 bg-white border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-[280px]">
+      <div className="flex flex-col gap-2 border-b border-slate-100 bg-white px-4 py-2.5 md:px-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[220px] flex-1 max-w-[280px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <Input
               placeholder="Search companies..."
@@ -268,7 +273,7 @@ export default function CompaniesPage() {
             />
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex max-w-full items-center gap-1 overflow-x-auto">
             <button
               className={`text-[11px] font-medium px-2.5 py-1 rounded-md transition-colors ${!typeFilter ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}
               onClick={() => setTypeFilter('')}
@@ -309,7 +314,9 @@ export default function CompaniesPage() {
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
           </button>
 
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-2">
+            <ColumnVisibilityMenu table={table} />
+            <div className="flex items-center gap-1">
             <span className="text-xs text-slate-500">Show</span>
             <select
               value={pageSize}
@@ -318,6 +325,7 @@ export default function CompaniesPage() {
             >
               {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
+            </div>
           </div>
         </div>
 

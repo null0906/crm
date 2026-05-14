@@ -3,8 +3,9 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Calendar, Clock, User, Building2, Briefcase } from 'lucide-react';
+import { Calendar, CheckSquare, Clock, User, Building2, Briefcase, Users } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/formatters';
+import { isDeliveryPipeline } from '@/lib/pipeline-utils';
 
 interface DealCardProps {
   deal: Record<string, unknown>;
@@ -51,6 +52,21 @@ function getProbabilityTone(probability: number) {
     background: 'var(--color-neutral-bg)',
     borderColor: 'var(--color-border)',
   };
+}
+
+function getProgressColor(deal: Record<string, unknown>): string {
+  const progress = Number(deal.projectProgressPercent ?? 0);
+  if (deal.isDelayed) return '#EF4444';
+  if (progress >= 80) return '#16A34A';
+  if (progress >= 40) return 'var(--accent)';
+  return '#94A3B8';
+}
+
+function formatCardDate(value: unknown): string | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  return formatDate(date);
 }
 
 function MetaRow({
@@ -100,6 +116,13 @@ export function DealCard({ deal, onClick, stageColor }: DealCardProps) {
     (deal.ownerName as string | null | undefined) ??
     ([deal.ownerFirstName, deal.ownerLastName].filter(Boolean).join(' ').trim() || null);
   const isVelocitySlow = Boolean(deal.isVelocitySlow);
+  const showProjectFields = isDeliveryPipeline(deal.pipelineType as string | null | undefined);
+  const projectStartDate = formatCardDate(deal.projectStartDate);
+  const projectEndDate = formatCardDate((deal.revisedEndDate as string | null | undefined) ?? deal.projectEndDate);
+  const projectProgressPercent = Number(deal.projectProgressPercent ?? 0);
+  const taskCount = Number(deal.taskCount ?? 0);
+  const completedTaskCount = Number(deal.completedTaskCount ?? 0);
+  const teamMemberCount = Number(deal.teamMemberCount ?? 0);
 
   return (
     <div
@@ -150,6 +173,38 @@ export function DealCard({ deal, onClick, stageColor }: DealCardProps) {
 
         {expectedCloseDate && <MetaRow icon={Calendar} text={formatDate(new Date(expectedCloseDate))} muted />}
       </div>
+
+      {showProjectFields && (
+        <div className="mt-3 space-y-2 border-t border-[var(--border-subtle)] pt-2">
+          {projectStartDate && projectEndDate && (
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-2 text-[10.5px] text-[var(--text-tertiary)]">
+                <span>{projectStartDate}</span>
+                <span className={deal.isDelayed ? 'font-semibold text-red-600' : ''}>
+                  {deal.isDelayed ? 'Delayed · ' : ''}{projectEndDate}
+                </span>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-[var(--surface-subtle)]">
+                <div
+                  className="h-full rounded-full transition-[width] duration-500 ease-out"
+                  style={{ width: `${Math.min(100, Math.max(0, projectProgressPercent))}%`, background: getProgressColor(deal) }}
+                />
+              </div>
+              <span className="mt-1 block text-[10.5px] text-[var(--text-tertiary)]">
+                {projectProgressPercent}% complete
+              </span>
+            </div>
+          )}
+
+          {taskCount > 0 && (
+            <MetaRow icon={CheckSquare} text={`${completedTaskCount}/${taskCount} tasks`} muted />
+          )}
+
+          {teamMemberCount > 0 && (
+            <MetaRow icon={Users} text={`${teamMemberCount} team member${teamMemberCount === 1 ? '' : 's'}`} muted />
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { sendTaskDueReminders } from '@/server/services/task-reminder.service';
 import {
   calculatePipelineBenchmarks,
   createStaleAlerts,
+  detectDelayedDeals,
   recalculateLeadScores,
   registerAutomationEventListeners,
   sendMorningBriefings,
@@ -45,6 +46,12 @@ export function initializeCron(): void {
   cron.schedule('0 3 * * *', () => {
     createStaleAlerts().catch((err) => {
       console.error('[Cron] createStaleAlerts error:', err);
+    });
+  });
+
+  cron.schedule('30 2 * * *', () => {
+    detectDelayedDeals().catch((err) => {
+      console.error('[Cron] detectDelayedDeals error:', err);
     });
   });
 

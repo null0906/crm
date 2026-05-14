@@ -18,6 +18,8 @@ import { digestRouter } from './routers/digest.router';
 import { automationRouter } from './routers/automation.router';
 import { partnerRouter } from './routers/partner.router';
 import { aiChatRouter } from './routers/ai-chat.router';
+import { dealTasksRouter } from './routers/deal-tasks.router';
+import { demoRecordsRouter } from './routers/demo-records.router';
 
 export const appRouter = router({
   contacts: contactRouter,
@@ -39,6 +41,8 @@ export const appRouter = router({
   automation: automationRouter,
   partners: partnerRouter,
   aiChat: aiChatRouter,
+  dealTasks: dealTasksRouter,
+  demoRecords: demoRecordsRouter,
 });
 
 export type AppRouter = typeof appRouter;

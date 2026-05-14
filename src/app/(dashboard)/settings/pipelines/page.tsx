@@ -31,6 +31,13 @@ const STAGE_COLORS = [
   '#F59E0B', '#F97316', '#10B981', '#EF4444', '#06B6D4',
 ];
 
+const PIPELINE_TYPE_OPTIONS = [
+  { value: 'sales', label: 'Sales Pipeline' },
+  { value: 'active_delivery', label: 'Active Delivery / Projects' },
+  { value: 'partner', label: 'Partner Pipeline' },
+  { value: 'compliance', label: 'Compliance Pipeline' },
+] as const;
+
 export default function PipelinesSettingsPage() {
   const utils = trpc.useUtils();
   const { data: pipelines = [], isLoading } = trpc.pipelines.list.useQuery();
@@ -135,6 +142,7 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
 
   const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery({ id: pipelineId });
   const stages = (pipelineData?.stages as Array<Record<string, unknown>>) ?? [];
+  const pipelineType = String(pipelineData?.pipelineType ?? pipeline.pipelineType ?? 'sales');
   const [draftStages, setDraftStages] = useState<Array<Record<string, unknown>>>([]);
 
   React.useEffect(() => {
@@ -191,6 +199,17 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
       void utils.deals.list.invalidate();
     },
     onError: (err) => toast.error('Failed to delete stage', { description: err.message }),
+  });
+
+  const updatePipeline = trpc.pipelines.update.useMutation({
+    onSuccess: () => {
+      toast.success('Pipeline type updated');
+      void utils.pipelines.getWithStages.invalidate({ id: pipelineId });
+      void utils.pipelines.list.invalidate();
+      void utils.deals.byStage.invalidate();
+      void utils.deals.list.invalidate();
+    },
+    onError: (err) => toast.error('Failed to update pipeline type', { description: err.message }),
   });
 
   function handleAddStage() {
@@ -277,6 +296,26 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
         {/* Expanded stage editor */}
         {expanded && (
           <div className="border-t border-slate-100 px-5 py-4">
+            <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+              <Label className="text-xs font-semibold text-slate-600">Pipeline Type</Label>
+              <select
+                value={pipelineType}
+                onChange={(e) => updatePipeline.mutate({
+                  id: pipelineId,
+                  pipelineType: e.target.value as 'sales' | 'active_delivery' | 'partner' | 'compliance',
+                })}
+                disabled={updatePipeline.isPending}
+                className="mt-1 flex h-8 w-full rounded-md border border-blue-100 bg-white px-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {PIPELINE_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+                This controls which features are available for deals in this pipeline. Active Delivery and Compliance pipelines show project fields, timeline, and team members.
+              </p>
+            </div>
+
             <div className="flex items-center justify-between gap-3 mb-3">
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Stages</p>

@@ -52,7 +52,7 @@ export function Sidebar() {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          'sidebar flex h-screen flex-col border-r border-[var(--border-subtle)] bg-[var(--surface-card)] shadow-[2px_0_8px_rgba(15,20,40,0.05)]',
+          'sidebar hidden h-screen flex-col border-r border-[var(--border-subtle)] bg-[var(--surface-card)] shadow-[2px_0_8px_rgba(15,20,40,0.05)] md:flex',
           'transition-all duration-200 flex-shrink-0 sticky top-0',
           collapsed ? 'w-[60px]' : 'w-[220px]'
         )}

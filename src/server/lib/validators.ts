@@ -24,6 +24,8 @@ export const contactCreateSchema = z.object({
   department: optionalStringMax(100),
   companyName: optionalStringMax(255),
   companyId: optionalUuid(),
+  referredByPartnerId: optionalUuid(),
+  referralDate: optionalDate(),
   linkedinUrl: optionalUrl(),
   source: z.preprocess(emptyToUndefined, z.enum(['apollo', 'manual', 'website', 'referral', 'event', 'cold_outreach']).optional()),
   status: z.enum(['new', 'contacted', 'qualified', 'unqualified', 'nurturing', 'converted', 'lost', 'archived']).default('new'),
@@ -104,6 +106,18 @@ export const dealCreateSchema = z.object({
   primaryContactId: optionalUuid(),
   companyId: optionalUuid(),
   partnerCompanyId: optionalUuid(),
+  referredByPartnerId: optionalUuid(),
+  projectStartDate: optionalDate(),
+  projectEndDate: optionalDate(),
+  projectActualEndDate: optionalDate(),
+  projectProgressPercent: z.number().int().min(0).max(100).optional().nullable(),
+  isDelayed: z.boolean().optional(),
+  delayReason: optionalString(),
+  revisedEndDate: optionalDate(),
+  primaryContactName: optionalStringMax(255),
+  primaryContactEmail: optionalEmail(),
+  primaryContactPhone: optionalStringMax(30),
+  primaryContactTitle: optionalStringMax(150),
   ownerId: optionalUuid(),
   customFields: z.record(z.string(), z.unknown()).default({}),
   tagIds: z.array(z.string().uuid()).default([]),
@@ -116,6 +130,53 @@ export const dealBulkUpdateSchema = z.object({
   status: z.enum(['open', 'won', 'lost', 'abandoned']).optional(),
   tagIdsToAdd: z.array(z.string().uuid()).optional(),
 });
+
+export const dealProgressUpdateSchema = z.object({
+  id: z.string().uuid(),
+  progressPercent: z.number().int().min(0).max(100),
+  isDelayed: z.boolean().optional(),
+  delayReason: optionalString(),
+  revisedEndDate: optionalDate(),
+});
+
+export const dealTaskCreateSchema = z.object({
+  dealId: z.string().uuid(),
+  title: z.string().min(1).max(255),
+  description: optionalString(),
+  assignedTo: optionalUuid(),
+  dueDate: optionalDate(),
+  priority: z.enum(['low', 'medium', 'high', 'urgent']).default('medium'),
+});
+
+export const dealTaskUpdateSchema = z.object({
+  title: z.string().min(1).max(255).optional(),
+  description: optionalString(),
+  assignedTo: optionalUuid(),
+  dueDate: optionalDate(),
+  priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+  status: z.enum(['pending', 'in_progress', 'completed', 'blocked']).optional(),
+  position: z.number().int().optional(),
+});
+
+export const demoRecordCreateSchema = z.object({
+  contactId: optionalUuid(),
+  dealId: optionalUuid(),
+  companyId: optionalUuid(),
+  callType: z.enum(['discovery', 'demo', 'follow_up', 'proposal_walkthrough', 'onboarding', 'check_in']).default('demo'),
+  scheduledAt: optionalDateTime(),
+  durationMinutes: z.number().int().min(0).optional().nullable(),
+  outcome: z.enum(['completed', 'no_show', 'rescheduled', 'cancelled', 'interested', 'not_interested', 'needs_follow_up']).optional().nullable(),
+  attendees: optionalString(),
+  clientRequirements: optionalString(),
+  painPoints: optionalString(),
+  objections: optionalString(),
+  nextAction: optionalString(),
+  nextActionDate: optionalDate(),
+  demoNotes: optionalString(),
+  conductedBy: optionalUuid(),
+});
+
+export const demoRecordUpdateSchema = demoRecordCreateSchema.partial();
 
 // Activity schemas
 export const activityCreateSchema = z.object({

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Calendar, DollarSign, Pencil, Trash2, BellRing } from 'lucide-react';
+import { X, Calendar, DollarSign, Pencil, Trash2, BellRing, AlertTriangle, CheckSquare, Users } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -13,6 +13,7 @@ import { ActivityFeed } from '@/components/activities/ActivityFeed';
 import { DealForm } from './DealForm';
 import { DealReminderDialog } from './DealReminderDialog';
 import { formatDate, formatRelative, formatCurrency } from '@/lib/formatters';
+import { isDeliveryPipeline } from '@/lib/pipeline-utils';
 import { toast } from 'sonner';
 
 interface DealDetailProps {
@@ -34,6 +35,10 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
+  const [progressDraft, setProgressDraft] = useState(0);
+  const [delayDraft, setDelayDraft] = useState(false);
+  const [delayReasonDraft, setDelayReasonDraft] = useState('');
+  const [revisedEndDateDraft, setRevisedEndDateDraft] = useState('');
 
   const { data: deal, isLoading } = trpc.deals.getById.useQuery(
     { id: dealId },
@@ -52,6 +57,24 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
     onError: (err) => toast.error('Failed to delete', { description: err.message }),
   });
 
+  const updateProgress = trpc.deals.updateProgress.useMutation({
+    onSuccess: () => {
+      toast.success('Project progress updated');
+      void utils.deals.getById.invalidate({ id: dealId });
+      void utils.deals.byStage.invalidate();
+      void utils.activities.list.invalidate();
+    },
+    onError: (err) => toast.error('Failed to update project progress', { description: err.message }),
+  });
+
+  React.useEffect(() => {
+    if (!deal) return;
+    setProgressDraft(Number(deal.projectProgressPercent ?? 0));
+    setDelayDraft(Boolean(deal.isDelayed));
+    setDelayReasonDraft(String(deal.delayReason ?? ''));
+    setRevisedEndDateDraft(String(deal.revisedEndDate ?? ''));
+  }, [deal]);
+
   if (!open) return null;
 
   const title = deal?.title as string | undefined;
@@ -61,6 +84,10 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
   const expectedCloseDate = deal?.expectedCloseDate as string | null | undefined;
   const primaryContactFirstName = deal?.primaryContactFirstName as string | null | undefined;
   const primaryContactLastName = deal?.primaryContactLastName as string | null | undefined;
+  const primaryContactName = deal?.primaryContactName as string | null | undefined;
+  const primaryContactEmail = deal?.primaryContactEmail as string | null | undefined;
+  const primaryContactPhone = deal?.primaryContactPhone as string | null | undefined;
+  const primaryContactTitle = deal?.primaryContactTitle as string | null | undefined;
   const companyName = deal?.companyName as string | null | undefined;
   const partnerCompanyName = deal?.partnerCompanyName as string | null | undefined;
   const stageName = deal?.stageName as string | null | undefined;
@@ -79,6 +106,15 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
   const primaryContactId = deal?.primaryContactId as string | null | undefined;
   const companyId = deal?.companyId as string | null | undefined;
   const ownerId = deal?.ownerId as string | null | undefined;
+  const showProjectTab = isDeliveryPipeline(deal?.pipelineType as string | null | undefined);
+  const projectStartDate = deal?.projectStartDate as string | null | undefined;
+  const projectEndDate = deal?.projectEndDate as string | null | undefined;
+  const projectActualEndDate = deal?.projectActualEndDate as string | null | undefined;
+  const isDelayed = Boolean(deal?.isDelayed);
+  const delayReason = deal?.delayReason as string | null | undefined;
+  const revisedEndDate = deal?.revisedEndDate as string | null | undefined;
+  const tasks = (deal?.tasks as Array<Record<string, unknown>> | undefined) ?? [];
+  const teamMembers = (deal?.teamMembers as Array<Record<string, unknown>> | undefined) ?? [];
 
   const editDefaults = deal ? {
     title: title ?? '',
@@ -95,6 +131,14 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
     primaryContactId: primaryContactId ?? '',
     companyId: companyId ?? '',
     partnerCompanyId: (deal?.partnerCompanyId as string | null | undefined) ?? '',
+    referredByPartnerId: (deal?.referredByPartnerId as string | null | undefined) ?? '',
+    projectStartDate: (deal?.projectStartDate as string | null | undefined) ?? '',
+    projectEndDate: (deal?.projectEndDate as string | null | undefined) ?? '',
+    projectActualEndDate: (deal?.projectActualEndDate as string | null | undefined) ?? '',
+    projectProgressPercent: Number(deal?.projectProgressPercent ?? 0),
+    isDelayed: Boolean(deal?.isDelayed),
+    delayReason: (deal?.delayReason as string | null | undefined) ?? '',
+    revisedEndDate: (deal?.revisedEndDate as string | null | undefined) ?? '',
     ownerId: ownerId ?? '',
   } : undefined;
 
@@ -182,6 +226,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
               <Tabs defaultValue="overview">
                 <TabsList>
                   <TabsTrigger value="overview">Overview</TabsTrigger>
+                  {showProjectTab && <TabsTrigger value="project">Project</TabsTrigger>}
                   <TabsTrigger value="activity">Activity</TabsTrigger>
                   <TabsTrigger value="history">Stage History</TabsTrigger>
                 </TabsList>
@@ -221,7 +266,152 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                       <p className="text-sm text-red-700">{lostReason}</p>
                     </div>
                   )}
+
+                  <PrimaryContactCard
+                    contactId={primaryContactId}
+                    name={primaryContactName ?? [primaryContactFirstName, primaryContactLastName].filter(Boolean).join(' ')}
+                    title={primaryContactTitle}
+                    email={primaryContactEmail}
+                    phone={primaryContactPhone}
+                  />
                 </TabsContent>
+
+                {showProjectTab && (
+                  <TabsContent value="project" className="mt-4">
+                    <div className="space-y-4">
+                      <div className="rounded-xl border border-slate-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Project Details</p>
+                            <h3 className="mt-1 text-sm font-semibold text-slate-900">Delivery timeline and progress</h3>
+                          </div>
+                          {isDelayed && (
+                            <span className="inline-flex items-center gap-1 rounded-md border border-red-100 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600">
+                              <AlertTriangle className="h-3 w-3" />
+                              Delayed
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-3">
+                          <InfoField label="Start Date" value={projectStartDate ? formatDate(new Date(projectStartDate)) : 'Not set'} />
+                          <InfoField label="End Date" value={projectEndDate ? formatDate(new Date(projectEndDate)) : 'Not set'} />
+                          {revisedEndDate && <InfoField label="Revised End" value={formatDate(new Date(revisedEndDate))} />}
+                          {projectActualEndDate && <InfoField label="Actual End" value={formatDate(new Date(projectActualEndDate))} />}
+                        </div>
+
+                        <div className="mt-4">
+                          <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
+                            <span>Progress</span>
+                            <span className="font-semibold text-slate-800">{progressDraft}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            value={progressDraft}
+                            onChange={(e) => setProgressDraft(Number(e.target.value))}
+                            className="w-full accent-blue-600"
+                          />
+                          <div className="mt-3 space-y-2 rounded-lg bg-slate-50 p-3">
+                            <label className="flex items-center gap-2 text-sm text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={delayDraft}
+                                onChange={(e) => setDelayDraft(e.target.checked)}
+                                className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                              />
+                              Mark as delayed
+                            </label>
+                            {delayDraft && (
+                              <div className="grid grid-cols-1 gap-2">
+                                <input
+                                  value={delayReasonDraft}
+                                  onChange={(e) => setDelayReasonDraft(e.target.value)}
+                                  placeholder="Delay reason"
+                                  className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                />
+                                <input
+                                  type="date"
+                                  value={revisedEndDateDraft}
+                                  onChange={(e) => setRevisedEndDateDraft(e.target.value)}
+                                  className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm"
+                                />
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            className="mt-3"
+                            disabled={updateProgress.isPending}
+                            onClick={() => updateProgress.mutate({
+                              id: dealId,
+                              progressPercent: progressDraft,
+                              isDelayed: delayDraft,
+                              delayReason: delayDraft ? delayReasonDraft : '',
+                              revisedEndDate: delayDraft ? revisedEndDateDraft : '',
+                            })}
+                          >
+                            {updateProgress.isPending ? 'Saving...' : 'Update Progress'}
+                          </Button>
+                        </div>
+
+                        {delayReason && (
+                          <div className="mt-4 rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-700">
+                            <span className="font-semibold">Delay Reason:</span> {delayReason}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="rounded-xl border border-slate-200 bg-white p-4">
+                          <div className="mb-3 flex items-center gap-2">
+                            <Users className="h-4 w-4 text-slate-400" />
+                            <h3 className="text-sm font-semibold text-slate-900">Assigned Team</h3>
+                          </div>
+                          {teamMembers.length === 0 ? (
+                            <p className="text-sm text-slate-400">No team members assigned yet.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {teamMembers.map((member) => (
+                                <div key={String(member.id)} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                                  <span className="font-medium text-slate-700">
+                                    {[member.firstName, member.lastName].filter(Boolean).join(' ') || String(member.email ?? '')}
+                                  </span>
+                                  <span className="text-xs capitalize text-slate-400">{String(member.role ?? 'member')}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 bg-white p-4">
+                          <div className="mb-3 flex items-center gap-2">
+                            <CheckSquare className="h-4 w-4 text-slate-400" />
+                            <h3 className="text-sm font-semibold text-slate-900">Tasks</h3>
+                          </div>
+                          {tasks.length === 0 ? (
+                            <p className="text-sm text-slate-400">No delivery tasks yet.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {tasks.slice(0, 8).map((task) => (
+                                <div key={String(task.id)} className="rounded-lg bg-slate-50 px-3 py-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="truncate text-sm font-medium text-slate-700">{String(task.title ?? '')}</p>
+                                    <span className="text-xs capitalize text-slate-400">{String(task.status ?? 'pending').replace('_', ' ')}</span>
+                                  </div>
+                                  {Boolean(task.dueDate) && (
+                                    <p className="mt-0.5 text-xs text-slate-400">Due {formatDate(new Date(String(task.dueDate)))}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </TabsContent>
+                )}
 
                 <TabsContent value="activity" className="mt-4">
                   <ActivityFeed dealId={dealId} />
@@ -313,6 +503,56 @@ function InfoField({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
       <p className="text-sm text-slate-800">{value}</p>
+    </div>
+  );
+}
+
+function PrimaryContactCard({
+  contactId,
+  name,
+  title,
+  email,
+  phone,
+}: {
+  contactId?: string | null;
+  name?: string | null;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}) {
+  if (!contactId && !name) return null;
+  const initials = (name || 'PC')
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.06em] text-slate-400">Primary Contact</p>
+      <div className="flex items-center gap-3">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-xs font-bold text-slate-500">
+          {initials}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-slate-900">{name || 'Primary contact'}</p>
+          {title && <p className="truncate text-xs text-slate-500">{title}</p>}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-col gap-1">
+        {email && (
+          <a href={`mailto:${email}`} className="font-mono text-xs text-blue-600 hover:text-blue-700">
+            {email}
+          </a>
+        )}
+        {phone && <p className="font-mono text-xs text-slate-600">{phone}</p>}
+      </div>
+      {contactId && (
+        <a href={`/contacts/${contactId}`} className="mt-2 block text-xs font-medium text-blue-600 hover:text-blue-700">
+          View full contact →
+        </a>
+      )}
     </div>
   );
 }

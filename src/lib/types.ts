@@ -11,6 +11,8 @@ export type CompanySize = '1-10' | '11-50' | '51-200' | '201-500' | '501-1000' |
 
 export type DealStatus = 'open' | 'won' | 'lost' | 'abandoned';
 export type StageType = 'active' | 'won' | 'lost';
+export type PipelineType = 'sales' | 'active_delivery' | 'partner' | 'compliance';
+export type DealTaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked';
 
 export type ActivityType =
   | 'call' | 'email_sent' | 'email_received' | 'meeting' | 'note'

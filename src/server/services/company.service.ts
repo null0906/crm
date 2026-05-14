@@ -1,5 +1,5 @@
 import { db } from '@/server/db';
-import { activities, companies, companyTags, tags, contacts, users } from '@/server/db/schema';
+import { activities, companies, companyTags, tags, contacts, users, deals, pipelines } from '@/server/db/schema';
 import { eq, and, isNull, or, ilike, inArray, sql, lt, desc, asc, count, sum } from 'drizzle-orm';
 import type { NewCompany } from '@/server/db/schema';
 import type { FilterConfig, PaginatedResult, SessionUser } from '@/lib/types';
@@ -183,15 +183,29 @@ export async function getCompanyById(
   // Roll-up metrics
   const [metrics] = await db
     .select({
-      contactCount: count(contacts.id),
+      contactCount: count(sql`DISTINCT ${contacts.id}`),
+      pipelineValue: sql<string>`COALESCE(SUM(CASE WHEN ${deals.status} = 'open' THEN ${deals.amount} ELSE 0 END), 0)`,
+      openDeals: sql<number>`COUNT(DISTINCT CASE WHEN ${deals.status} = 'open' THEN ${deals.id} END)::int`,
+      activeProjects: sql<number>`COUNT(DISTINCT CASE WHEN ${pipelines.pipelineType} IN ('active_delivery', 'compliance') AND ${deals.status} = 'open' THEN ${deals.id} END)::int`,
+      lastActivityAt: sql<Date | null>`MAX(${activities.occurredAt})`,
     })
-    .from(contacts)
-    .where(and(eq(contacts.companyId, id), isNull(contacts.deletedAt)));
+    .from(companies)
+    .leftJoin(contacts, and(eq(contacts.companyId, companies.id), isNull(contacts.deletedAt)))
+    .leftJoin(deals, and(eq(deals.companyId, companies.id), isNull(deals.deletedAt)))
+    .leftJoin(pipelines, eq(pipelines.id, deals.pipelineId))
+    .leftJoin(activities, eq(activities.companyId, companies.id))
+    .where(eq(companies.id, id));
 
   return {
     ...company,
     tags: companyTagRows.map((r) => r.tag),
-    metrics: { contactCount: metrics?.contactCount ?? 0 },
+    metrics: {
+      contactCount: metrics?.contactCount ?? 0,
+      pipelineValue: metrics?.pipelineValue ?? '0',
+      openDeals: metrics?.openDeals ?? 0,
+      activeProjects: metrics?.activeProjects ?? 0,
+      lastActivityAt: metrics?.lastActivityAt ?? company.lastContactedAt ?? null,
+    },
   };
 }
 

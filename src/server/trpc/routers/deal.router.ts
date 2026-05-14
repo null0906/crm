@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
-import { dealCreateSchema, dealUpdateSchema, dealBulkUpdateSchema, filterConfigSchema, paginationSchema, sortSchema } from '@/server/lib/validators';
+import { dealCreateSchema, dealUpdateSchema, dealBulkUpdateSchema, dealProgressUpdateSchema, filterConfigSchema, paginationSchema, sortSchema } from '@/server/lib/validators';
 import * as dealService from '@/server/services/deal.service';
 
 export const dealRouter = router({
@@ -62,6 +62,15 @@ export const dealRouter = router({
       return deal;
     }),
 
+  getProjectDetails: protectedProcedure
+    .use(requirePermission('deals', 'read'))
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const deal = await dealService.getProjectDetails(ctx.user!, input.id);
+      if (!deal) throw new TRPCError({ code: 'NOT_FOUND', message: 'Deal not found' });
+      return deal;
+    }),
+
   create: protectedProcedure
     .use(requirePermission('deals', 'create'))
     .input(dealCreateSchema)
@@ -83,6 +92,40 @@ export const dealRouter = router({
         ...data,
         amount: data.amount?.toString(),
       } as Parameters<typeof dealService.updateDeal>[2]);
+    }),
+
+  updateProgress: protectedProcedure
+    .use(requirePermission('deals', 'update'))
+    .input(dealProgressUpdateSchema)
+    .mutation(async ({ ctx, input }) => {
+      return dealService.updateProjectProgress(ctx.user!, input.id, {
+        progressPercent: input.progressPercent,
+        isDelayed: input.isDelayed,
+        delayReason: input.delayReason,
+        revisedEndDate: input.revisedEndDate,
+      });
+    }),
+
+  addTeamMember: protectedProcedure
+    .use(requirePermission('deals', 'update'))
+    .input(z.object({
+      dealId: z.string().uuid(),
+      userId: z.string().uuid(),
+      role: z.string().max(50).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      return dealService.addTeamMember(ctx.user!, input.dealId, input.userId, input.role);
+    }),
+
+  removeTeamMember: protectedProcedure
+    .use(requirePermission('deals', 'update'))
+    .input(z.object({
+      dealId: z.string().uuid(),
+      userId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await dealService.removeTeamMember(ctx.user!, input.dealId, input.userId);
+      return { success: true };
     }),
 
   delete: protectedProcedure

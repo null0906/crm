@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, jsonb, integer, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, jsonb, integer, date, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users';
 import { companies } from './companies';
@@ -20,6 +20,8 @@ export const contacts = pgTable(
     department: varchar('department', { length: 100 }),
     companyName: varchar('company_name', { length: 255 }),
     companyId: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
+    referredByPartnerId: uuid('referred_by_partner_id').references(() => companies.id, { onDelete: 'set null' }),
+    referralDate: date('referral_date'),
     linkedinUrl: text('linkedin_url'),
     // CRM metadata
     source: varchar('source', { length: 50 }).$type<ContactSource>(),

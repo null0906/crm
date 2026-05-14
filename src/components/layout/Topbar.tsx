@@ -38,16 +38,16 @@ export function Topbar() {
 
   return (
     <>
-      <header className="topbar sticky top-0 z-30 flex h-[52px] items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--surface-card)] px-6 shadow-[0_1px_0_var(--border-subtle),_0_2px_6px_rgba(15,20,40,0.04)]">
-        <div className="min-w-[180px] leading-tight">
+      <header className="topbar sticky top-0 z-30 flex h-[52px] items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-card)] px-3 shadow-[0_1px_0_var(--border-subtle),_0_2px_6px_rgba(15,20,40,0.04)] sm:gap-3 md:px-6">
+        <div className="min-w-0 leading-tight sm:min-w-[180px]">
           <h1 className="topbar-title text-lg font-bold tracking-[-0.025em] text-[var(--text-primary)]">{pageTitle}</h1>
-          <p className="topbar-subtitle mt-px text-[11px] font-normal text-[var(--text-tertiary)]">{getPageSubtext(pathname)}</p>
+          <p className="topbar-subtitle mt-px hidden text-[11px] font-normal text-[var(--text-tertiary)] sm:block">{getPageSubtext(pathname)}</p>
         </div>
 
         <button
           onClick={() => setCmdOpen(true)}
           className={cn(
-            'topbar-search mx-auto flex h-8 w-[260px] items-center gap-2 rounded-lg px-3',
+            'topbar-search mx-auto hidden h-8 w-[260px] items-center gap-2 rounded-lg px-3 sm:flex',
             'border border-[var(--border-subtle)] bg-[var(--surface-input)]',
             'text-base text-[var(--text-tertiary)]',
             'hover:bg-[var(--surface-card)] hover:border-[var(--border-strong)]',
@@ -62,7 +62,7 @@ export function Topbar() {
         </button>
 
         {/* Right side */}
-        <div className="flex items-center gap-1 ml-auto">
+        <div className="ml-auto flex items-center gap-1">
           <NotificationBell />
 
           {/* User menu */}

@@ -1,6 +1,6 @@
 import { pgTable, uuid, varchar, text, boolean, timestamp, integer, jsonb, index, unique } from 'drizzle-orm/pg-core';
 import { users } from './users';
-import type { StageType } from '@/lib/types';
+import type { PipelineType, StageType } from '@/lib/types';
 
 export const pipelines = pgTable('pipelines', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -8,6 +8,7 @@ export const pipelines = pgTable('pipelines', {
   description: text('description'),
   isDefault: boolean('is_default').default(false),
   isActive: boolean('is_active').default(true),
+  pipelineType: varchar('pipeline_type', { length: 20 }).$type<PipelineType>().default('sales'),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   position: integer('position').default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

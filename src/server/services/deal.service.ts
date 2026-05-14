@@ -1,5 +1,5 @@
 import { db } from '@/server/db';
-import { deals, dealTags, dealContacts, dealStageHistory, tags, companies, contacts, users, pipelineStages, pipelines, activities } from '@/server/db/schema';
+import { deals, dealTags, dealContacts, dealStageHistory, dealTeamMembers, dealTasks, tags, companies, contacts, users, pipelineStages, pipelines, activities } from '@/server/db/schema';
 import { eq, and, isNull, or, ilike, sql, lt, desc, asc, inArray, SQL, type SQLWrapper } from 'drizzle-orm';
 import type { NewDeal } from '@/server/db/schema';
 import type { DealStatus, FilterConfig, PaginatedResult, SessionUser, StageType } from '@/lib/types';
@@ -201,6 +201,46 @@ async function validatePartnerAssignment(pipelineId: string, partnerCompanyId?: 
   }
 }
 
+async function resolvePrimaryContactSnapshot(primaryContactId?: string | null) {
+  if (!primaryContactId) {
+    return {
+      primaryContactName: null,
+      primaryContactEmail: null,
+      primaryContactPhone: null,
+      primaryContactTitle: null,
+    };
+  }
+
+  const [contact] = await db
+    .select({
+      firstName: contacts.firstName,
+      lastName: contacts.lastName,
+      email: contacts.email,
+      phone: contacts.phone,
+      mobile: contacts.mobile,
+      jobTitle: contacts.jobTitle,
+    })
+    .from(contacts)
+    .where(and(eq(contacts.id, primaryContactId), isNull(contacts.deletedAt)))
+    .limit(1);
+
+  if (!contact) {
+    return {
+      primaryContactName: null,
+      primaryContactEmail: null,
+      primaryContactPhone: null,
+      primaryContactTitle: null,
+    };
+  }
+
+  return {
+    primaryContactName: [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim() || null,
+    primaryContactEmail: contact.email ?? null,
+    primaryContactPhone: contact.phone ?? contact.mobile ?? null,
+    primaryContactTitle: contact.jobTitle ?? null,
+  };
+}
+
 export async function listDeals(
   user: SessionUser,
   opts: {
@@ -286,7 +326,19 @@ export async function listDeals(
       ownerId: deals.ownerId,
       companyId: deals.companyId,
       partnerCompanyId: deals.partnerCompanyId,
+      referredByPartnerId: deals.referredByPartnerId,
       primaryContactId: deals.primaryContactId,
+      primaryContactSnapshotName: deals.primaryContactName,
+      primaryContactEmail: deals.primaryContactEmail,
+      primaryContactPhone: deals.primaryContactPhone,
+      primaryContactTitle: deals.primaryContactTitle,
+      projectStartDate: deals.projectStartDate,
+      projectEndDate: deals.projectEndDate,
+      projectActualEndDate: deals.projectActualEndDate,
+      projectProgressPercent: deals.projectProgressPercent,
+      isDelayed: deals.isDelayed,
+      delayReason: deals.delayReason,
+      revisedEndDate: deals.revisedEndDate,
       customFields: deals.customFields,
       positionInStage: deals.positionInStage,
       isVelocitySlow: deals.isVelocitySlow,
@@ -297,14 +349,20 @@ export async function listDeals(
       ownerName: sql<string | null>`NULLIF(TRIM(CONCAT(${users.firstName}, ' ', ${users.lastName})), '')`,
       companyName: companies.name,
       partnerCompanyName: sql<string | null>`(SELECT c.name FROM companies c WHERE c.id = ${deals.partnerCompanyId})`,
+      referredByPartnerName: sql<string | null>`(SELECT c.name FROM companies c WHERE c.id = ${deals.referredByPartnerId})`,
       stageName: pipelineStages.name,
       stageColor: pipelineStages.color,
-      primaryContactName: sql<string | null>`NULLIF(TRIM(CONCAT(${contactsAlias.firstName}, ' ', ${contactsAlias.lastName})), '')`,
+      pipelineType: pipelines.pipelineType,
+      taskCount: sql<number>`(SELECT COUNT(*)::int FROM deal_tasks dt WHERE dt.deal_id = ${deals.id})`,
+      completedTaskCount: sql<number>`(SELECT COUNT(*)::int FROM deal_tasks dt WHERE dt.deal_id = ${deals.id} AND dt.status = 'completed')`,
+      teamMemberCount: sql<number>`(SELECT COUNT(*)::int FROM deal_team_members dtm WHERE dtm.deal_id = ${deals.id})`,
+      primaryContactName: sql<string | null>`COALESCE(${deals.primaryContactName}, NULLIF(TRIM(CONCAT(${contactsAlias.firstName}, ' ', ${contactsAlias.lastName})), ''))`,
     })
     .from(deals)
     .leftJoin(users, eq(deals.ownerId, users.id))
     .leftJoin(companies, eq(deals.companyId, companies.id))
     .leftJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
+    .leftJoin(pipelines, eq(deals.pipelineId, pipelines.id))
     .leftJoin(contactsAlias, eq(deals.primaryContactId, contactsAlias.id))
     .where(and(...conditions))
     .orderBy(sort?.direction === 'asc' ? asc(deals.createdAt) : desc(deals.createdAt), desc(deals.id))
@@ -391,7 +449,19 @@ export async function getDealsByStage(
       ownerId: deals.ownerId,
       companyId: deals.companyId,
       partnerCompanyId: deals.partnerCompanyId,
+      referredByPartnerId: deals.referredByPartnerId,
       primaryContactId: deals.primaryContactId,
+      primaryContactSnapshotName: deals.primaryContactName,
+      primaryContactEmail: deals.primaryContactEmail,
+      primaryContactPhone: deals.primaryContactPhone,
+      primaryContactTitle: deals.primaryContactTitle,
+      projectStartDate: deals.projectStartDate,
+      projectEndDate: deals.projectEndDate,
+      projectActualEndDate: deals.projectActualEndDate,
+      projectProgressPercent: deals.projectProgressPercent,
+      isDelayed: deals.isDelayed,
+      delayReason: deals.delayReason,
+      revisedEndDate: deals.revisedEndDate,
       positionInStage: deals.positionInStage,
       isVelocitySlow: deals.isVelocitySlow,
       createdAt: deals.createdAt,
@@ -401,12 +471,18 @@ export async function getDealsByStage(
       ownerAvatarUrl: users.avatarUrl,
       companyName: companies.name,
       partnerCompanyName: sql<string | null>`(SELECT c.name FROM companies c WHERE c.id = ${deals.partnerCompanyId})`,
-      primaryContactName: sql<string | null>`NULLIF(TRIM(CONCAT(${contacts.firstName}, ' ', ${contacts.lastName})), '')`,
+      referredByPartnerName: sql<string | null>`(SELECT c.name FROM companies c WHERE c.id = ${deals.referredByPartnerId})`,
+      pipelineType: pipelines.pipelineType,
+      taskCount: sql<number>`(SELECT COUNT(*)::int FROM deal_tasks dt WHERE dt.deal_id = ${deals.id})`,
+      completedTaskCount: sql<number>`(SELECT COUNT(*)::int FROM deal_tasks dt WHERE dt.deal_id = ${deals.id} AND dt.status = 'completed')`,
+      teamMemberCount: sql<number>`(SELECT COUNT(*)::int FROM deal_team_members dtm WHERE dtm.deal_id = ${deals.id})`,
+      primaryContactName: sql<string | null>`COALESCE(${deals.primaryContactName}, NULLIF(TRIM(CONCAT(${contacts.firstName}, ' ', ${contacts.lastName})), ''))`,
     })
     .from(deals)
     .leftJoin(users, eq(deals.ownerId, users.id))
     .leftJoin(companies, eq(deals.companyId, companies.id))
     .leftJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
+    .leftJoin(pipelines, eq(deals.pipelineId, pipelines.id))
     .leftJoin(contacts, eq(deals.primaryContactId, contacts.id))
     .where(and(...conditions))
     .orderBy(asc(deals.positionInStage), desc(deals.createdAt));
@@ -462,7 +538,19 @@ export async function getDealById(
       ownerId: deals.ownerId,
       companyId: deals.companyId,
       partnerCompanyId: deals.partnerCompanyId,
+      referredByPartnerId: deals.referredByPartnerId,
       primaryContactId: deals.primaryContactId,
+      primaryContactName: deals.primaryContactName,
+      primaryContactEmail: deals.primaryContactEmail,
+      primaryContactPhone: deals.primaryContactPhone,
+      primaryContactTitle: deals.primaryContactTitle,
+      projectStartDate: deals.projectStartDate,
+      projectEndDate: deals.projectEndDate,
+      projectActualEndDate: deals.projectActualEndDate,
+      projectProgressPercent: deals.projectProgressPercent,
+      isDelayed: deals.isDelayed,
+      delayReason: deals.delayReason,
+      revisedEndDate: deals.revisedEndDate,
       customFields: deals.customFields,
       positionInStage: deals.positionInStage,
       createdAt: deals.createdAt,
@@ -473,15 +561,23 @@ export async function getDealById(
       ownerLastName: ownerUsers.lastName,
       companyName: companies.name,
       partnerCompanyName: sql<string | null>`(SELECT c.name FROM companies c WHERE c.id = ${deals.partnerCompanyId})`,
+      referredByPartnerName: sql<string | null>`(SELECT c.name FROM companies c WHERE c.id = ${deals.referredByPartnerId})`,
       stageName: pipelineStages.name,
       stageColor: pipelineStages.color,
+      pipelineType: pipelines.pipelineType,
       primaryContactFirstName: primaryContacts.firstName,
       primaryContactLastName: primaryContacts.lastName,
+      primaryContactJoinedName: sql<string | null>`NULLIF(TRIM(CONCAT(${primaryContacts.firstName}, ' ', ${primaryContacts.lastName})), '')`,
+      primaryContactJoinedEmail: primaryContacts.email,
+      primaryContactJoinedPhone: primaryContacts.phone,
+      primaryContactJoinedMobile: primaryContacts.mobile,
+      primaryContactJoinedTitle: primaryContacts.jobTitle,
     })
     .from(deals)
     .leftJoin(ownerUsers, eq(deals.ownerId, ownerUsers.id))
     .leftJoin(companies, eq(deals.companyId, companies.id))
     .leftJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
+    .leftJoin(pipelines, eq(deals.pipelineId, pipelines.id))
     .leftJoin(primaryContacts, eq(deals.primaryContactId, primaryContacts.id))
     .where(and(eq(deals.id, id), isNull(deals.deletedAt)))
     .limit(1);
@@ -537,11 +633,57 @@ export async function getDealById(
     toStageName: h.toStageId ? stageNameMap[h.toStageId] ?? null : null,
   }));
 
+  const teamMembers = await db
+    .select({
+      id: dealTeamMembers.id,
+      userId: dealTeamMembers.userId,
+      role: dealTeamMembers.role,
+      assignedAt: dealTeamMembers.assignedAt,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      email: users.email,
+      avatarUrl: users.avatarUrl,
+    })
+    .from(dealTeamMembers)
+    .leftJoin(users, eq(dealTeamMembers.userId, users.id))
+    .where(eq(dealTeamMembers.dealId, id))
+    .orderBy(asc(dealTeamMembers.assignedAt));
+
+  const tasks = await db
+    .select({
+      id: dealTasks.id,
+      title: dealTasks.title,
+      description: dealTasks.description,
+      status: dealTasks.status,
+      priority: dealTasks.priority,
+      assignedTo: dealTasks.assignedTo,
+      dueDate: dealTasks.dueDate,
+      completedAt: dealTasks.completedAt,
+      position: dealTasks.position,
+      createdAt: dealTasks.createdAt,
+      assigneeFirstName: users.firstName,
+      assigneeLastName: users.lastName,
+      assigneeEmail: users.email,
+      assigneeAvatarUrl: users.avatarUrl,
+    })
+    .from(dealTasks)
+    .leftJoin(users, eq(dealTasks.assignedTo, users.id))
+    .where(eq(dealTasks.dealId, id))
+    .orderBy(asc(dealTasks.position), asc(dealTasks.dueDate), asc(dealTasks.createdAt));
+
   return {
     ...deal,
+    primaryContactName: deal.primaryContactName ?? deal.primaryContactJoinedName,
+    primaryContactEmail: deal.primaryContactEmail ?? deal.primaryContactJoinedEmail,
+    primaryContactPhone: deal.primaryContactPhone ?? deal.primaryContactJoinedPhone ?? deal.primaryContactJoinedMobile,
+    primaryContactTitle: deal.primaryContactTitle ?? deal.primaryContactJoinedTitle,
     tags: dealTagRows.map((r) => r.tag),
     contacts: dealContactRows.map((r) => ({ ...r.contact, role: r.role })),
     stageHistory,
+    teamMembers,
+    tasks,
+    taskCount: tasks.length,
+    completedTaskCount: tasks.filter((task) => task.status === 'completed').length,
   };
 }
 
@@ -555,11 +697,13 @@ export async function createDeal(
     stageId: data.stageId,
     status: (data.status as DealStatus | null | undefined) ?? 'open',
   });
+  const primaryContactSnapshot = await resolvePrimaryContactSnapshot(data.primaryContactId);
 
   const [deal] = await db
     .insert(deals)
     .values({
       ...data,
+      ...primaryContactSnapshot,
       stageId: resolvedLifecycle.stageId,
       status: resolvedLifecycle.status,
       actualCloseDate: resolveActualCloseDate(resolvedLifecycle.status),
@@ -644,6 +788,10 @@ export async function updateDeal(
     ...data,
     updatedAt: new Date(),
   };
+
+  if (data.primaryContactId !== undefined) {
+    Object.assign(updatePayload, await resolvePrimaryContactSnapshot(data.primaryContactId));
+  }
 
   if (resolvedLifecycle) {
     updatePayload.stageId = resolvedLifecycle.stageId;
@@ -937,4 +1085,72 @@ export async function moveDealToStage(
     positionInStage: positionInStage ?? 0,
     ...(lostReason ? { lostReason } : {}),
   });
+}
+
+export async function getProjectDetails(user: SessionUser, dealId: string): Promise<Record<string, unknown> | null> {
+  return getDealById(user, dealId);
+}
+
+export async function updateProjectProgress(
+  user: SessionUser,
+  dealId: string,
+  data: {
+    progressPercent: number;
+    isDelayed?: boolean;
+    delayReason?: string | null;
+    revisedEndDate?: string | null;
+  }
+): Promise<Record<string, unknown>> {
+  const updated = await updateDeal(user, dealId, {
+    projectProgressPercent: data.progressPercent,
+    ...(data.isDelayed !== undefined ? { isDelayed: data.isDelayed } : {}),
+    ...(data.delayReason !== undefined ? { delayReason: data.delayReason } : {}),
+    ...(data.revisedEndDate !== undefined ? { revisedEndDate: data.revisedEndDate } : {}),
+  });
+
+  await db.insert(activities).values({
+    activityType: 'note',
+    subject: `Project progress updated to ${data.progressPercent}%`,
+    dealId,
+    companyId: (updated.companyId as string | null | undefined) ?? null,
+    contactId: (updated.primaryContactId as string | null | undefined) ?? null,
+    performedBy: user.id,
+    isAutomated: true,
+    occurredAt: new Date(),
+    metadata: {
+      dealTitle: updated.title,
+      progressPercent: data.progressPercent,
+      isDelayed: data.isDelayed,
+    },
+  });
+
+  return updated;
+}
+
+export async function addTeamMember(
+  user: SessionUser,
+  dealId: string,
+  userId: string,
+  role = 'member'
+): Promise<Record<string, unknown>> {
+  const deal = await getDealById(user, dealId);
+  if (!deal) throw new Error('Deal not found');
+
+  const [member] = await db
+    .insert(dealTeamMembers)
+    .values({ dealId, userId, role })
+    .onConflictDoUpdate({
+      target: [dealTeamMembers.dealId, dealTeamMembers.userId],
+      set: { role },
+    })
+    .returning();
+
+  return member as Record<string, unknown>;
+}
+
+export async function removeTeamMember(user: SessionUser, dealId: string, userId: string): Promise<void> {
+  const deal = await getDealById(user, dealId);
+  if (!deal) throw new Error('Deal not found');
+
+  await db.delete(dealTeamMembers).where(and(eq(dealTeamMembers.dealId, dealId), eq(dealTeamMembers.userId, userId)));
 }

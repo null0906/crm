@@ -14,7 +14,7 @@ import { CompanyTypeBadge } from './CompanyTypeBadge';
 import { CompanyForm } from './CompanyForm';
 import { TagBadge } from '@/components/tags/TagBadge';
 import { ActivityFeed } from '@/components/activities/ActivityFeed';
-import { formatDate, formatRelative } from '@/lib/formatters';
+import { formatCurrency, formatDate, formatRelative } from '@/lib/formatters';
 import { toast } from 'sonner';
 
 interface CompanyDetailProps {
@@ -55,7 +55,13 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
   if (!open) return null;
 
   const tags = (company?.tags as Array<{ id: string; name: string; color: string }>) ?? [];
-  const metrics = company?.metrics as { contactCount: number } | undefined;
+  const metrics = company?.metrics as {
+    contactCount: number;
+    pipelineValue?: string | number;
+    openDeals?: number;
+    activeProjects?: number;
+    lastActivityAt?: string | Date | null;
+  } | undefined;
 
   const name = company?.name as string | undefined;
   const industry = company?.industry as string | undefined;
@@ -177,6 +183,15 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
                   </Button>
                 )}
               </div>
+
+              {metrics && (
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <CompanyMetricCard label="Contacts" value={String(metrics.contactCount ?? 0)} />
+                  <CompanyMetricCard label="Pipeline" value={formatCurrency(metrics.pipelineValue ?? 0)} />
+                  <CompanyMetricCard label="Open Deals" value={String(metrics.openDeals ?? 0)} />
+                  <CompanyMetricCard label="Active Projects" value={String(metrics.activeProjects ?? 0)} />
+                </div>
+              )}
             </div>
 
             {/* Tabs */}
@@ -269,6 +284,15 @@ function InfoField({ label, value, mono = false }: { label: string; value: strin
     <div>
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-0.5">{label}</p>
       <p className={`text-sm text-slate-800 ${mono ? 'font-mono' : ''}`}>{value}</p>
+    </div>
+  );
+}
+
+function CompanyMetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-slate-900">{value}</p>
     </div>
   );
 }

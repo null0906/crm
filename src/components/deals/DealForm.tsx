@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { dealCreateSchema } from '@/server/lib/validators';
 import { CustomFieldRenderer } from '@/components/custom-fields/CustomFieldRenderer';
 import { DEAL_SERVICE_OPTIONS } from '@/lib/constants';
+import { isDeliveryPipeline } from '@/lib/pipeline-utils';
 import type { z } from 'zod';
 
 type FormData = z.infer<typeof dealCreateSchema>;
@@ -46,7 +47,14 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   const stages = pipelineData?.stages ?? [];
   const defaultStageId = stageId ?? stages[0]?.id ?? '';
   const pipelineName = String(pipelineData?.name ?? '').toLowerCase();
-  const isSalesPipeline = pipelineName.includes('sales');
+  const pipelineType = String(pipelineData?.pipelineType ?? (pipelineName.includes('active') ? 'active_delivery' : pipelineName.includes('sales') ? 'sales' : ''));
+  const isSalesPipeline = pipelineType === 'sales' || pipelineName.includes('sales');
+  const showProjectFields = isDeliveryPipeline(pipelineType);
+  const visibleCustomFields = customFields.filter((field) => {
+    const section = String((field as Record<string, unknown>).section ?? '');
+    const isComplianceSpecific = section === 'SOC 2 Details' || section === 'DPDP Details';
+    return !isComplianceSpecific || pipelineType === 'compliance';
+  });
 
   const createDeal = trpc.deals.create.useMutation({
     onSuccess: (data) => {
@@ -115,6 +123,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   const selectedPrimaryContactId = form.watch('primaryContactId');
   const selectedCompanyId = form.watch('companyId');
   const selectedPartnerCompanyId = form.watch('partnerCompanyId');
+  const selectedReferredByPartnerId = form.watch('referredByPartnerId');
 
   const { data: contactsData } = trpc.contacts.list.useQuery({
     search: debouncedContactSearch || undefined,
@@ -136,6 +145,10 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
     { id: String(selectedPartnerCompanyId) },
     { enabled: Boolean(selectedPartnerCompanyId) }
   );
+  const { data: selectedReferredPartnerData } = trpc.companies.getById.useQuery(
+    { id: String(selectedReferredByPartnerId) },
+    { enabled: Boolean(selectedReferredByPartnerId) }
+  );
 
   const contactItems = React.useMemo(() => {
     const items = (contactsData?.items ?? []) as Array<Record<string, unknown>>;
@@ -151,17 +164,18 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   const companyItems = React.useMemo(() => {
     const items = (companiesData?.items ?? []) as Array<Record<string, unknown>>;
     const merged = [...items];
-    for (const selectedItem of [selectedCompanyData, selectedPartnerCompanyData]) {
+    for (const selectedItem of [selectedCompanyData, selectedPartnerCompanyData, selectedReferredPartnerData]) {
       if (!selectedItem) continue;
       const alreadyIncluded = merged.some((company) => String(company.id) === String(selectedItem.id));
       if (!alreadyIncluded) merged.unshift(selectedItem as Record<string, unknown>);
     }
     return merged;
-  }, [companiesData?.items, selectedCompanyData, selectedPartnerCompanyData]);
+  }, [companiesData?.items, selectedCompanyData, selectedPartnerCompanyData, selectedReferredPartnerData]);
   const filteredCompanyItems = companyItems;
   const selectedCompany = companyItems.find((company) => String(company.id) === String(selectedCompanyId ?? ''));
   const partnerItems = companyItems.filter((company) => String(company.companyType ?? '') === 'partner');
   const selectedPartnerCompany = partnerItems.find((company) => String(company.id) === String(selectedPartnerCompanyId ?? ''));
+  const selectedReferredPartner = partnerItems.find((company) => String(company.id) === String(selectedReferredByPartnerId ?? ''));
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -219,6 +233,51 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
           {...form.register('expectedCloseDate')}
         />
       </div>
+
+      {showProjectFields && (
+        <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Project Delivery</p>
+            <p className="mt-0.5 text-xs text-slate-500">Shown only for Active Delivery and Compliance pipelines.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="projectStartDate">Project Start</Label>
+              <Input id="projectStartDate" type="date" {...form.register('projectStartDate')} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="projectEndDate">Project End</Label>
+              <Input id="projectEndDate" type="date" {...form.register('projectEndDate')} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="projectProgressPercent">Progress (%)</Label>
+              <Input
+                id="projectProgressPercent"
+                type="number"
+                min={0}
+                max={100}
+                {...form.register('projectProgressPercent', { valueAsNumber: true })}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="revisedEndDate">Revised End</Label>
+              <Input id="revisedEndDate" type="date" {...form.register('revisedEndDate')} />
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              {...form.register('isDelayed')}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600"
+            />
+            Mark project as delayed
+          </label>
+          <div className="space-y-1.5">
+            <Label htmlFor="delayReason">Delay Reason</Label>
+            <Textarea id="delayReason" {...form.register('delayReason')} rows={2} placeholder="Why is this delayed?" />
+          </div>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label>Services</Label>
@@ -440,6 +499,55 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
       )}
 
       <div className="space-y-1.5">
+        <Label htmlFor="referredByPartnerId">Referred by Partner</Label>
+        <input type="hidden" {...form.register('referredByPartnerId')} />
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {selectedReferredPartner && (
+            <div className="flex items-center justify-between rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              <span>Referral partner: {String(selectedReferredPartner.name ?? '')}</span>
+              <button
+                type="button"
+                onClick={() => form.setValue('referredByPartnerId', '', { shouldDirty: true })}
+                className="text-emerald-600 hover:text-emerald-700"
+                title="Clear referral partner"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          <div className="max-h-40 overflow-y-auto rounded-md border border-slate-200 bg-white">
+            <button
+              type="button"
+              onClick={() => form.setValue('referredByPartnerId', '', { shouldDirty: true })}
+              className={`w-full px-3 py-2 text-left text-sm border-b border-slate-100 hover:bg-slate-50 ${!selectedReferredByPartnerId ? 'bg-slate-50 font-medium text-slate-900' : 'text-slate-600'}`}
+            >
+              No referral partner
+            </button>
+            {partnerItems.map((company) => {
+              const isSelected = String(selectedReferredByPartnerId ?? '') === String(company.id);
+              return (
+                <button
+                  key={String(company.id)}
+                  type="button"
+                  onClick={() => form.setValue('referredByPartnerId', String(company.id), { shouldDirty: true })}
+                  className={`w-full px-3 py-2 text-left text-sm border-b border-slate-100 last:border-0 hover:bg-slate-50 ${isSelected ? 'bg-emerald-50 text-emerald-900 font-medium' : 'text-slate-700'}`}
+                >
+                  <div>{String(company.name ?? '')}</div>
+                  {Boolean(company.domain) && (
+                    <div className="text-xs text-slate-400">{String(company.domain ?? '')}</div>
+                  )}
+                </button>
+              );
+            })}
+            {partnerItems.length === 0 && (
+              <div className="px-3 py-3 text-sm text-slate-400">No partner companies found.</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
         <Label htmlFor="ownerId">Owner</Label>
         <select
           id="ownerId"
@@ -463,9 +571,9 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
         />
       </div>
 
-      {customFields.length > 0 && (
+      {visibleCustomFields.length > 0 && (
         <CustomFieldRenderer
-          fields={customFields as Parameters<typeof CustomFieldRenderer>[0]['fields']}
+          fields={visibleCustomFields as Parameters<typeof CustomFieldRenderer>[0]['fields']}
           values={customFieldValues}
           onChange={(slug, val) => setCustomFieldValues((prev) => ({ ...prev, [slug]: val }))}
         />

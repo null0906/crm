@@ -6,6 +6,7 @@ import {
   contacts,
   deals,
   notifications,
+  pipelines,
   roles,
   telegramUsers,
   users,
@@ -56,6 +57,12 @@ export const automationDefinitions = [
     name: 'Weekly Summary',
     description: 'Sends weekly performance summaries to managers.',
     schedule: 'Monday 8 AM',
+  },
+  {
+    key: 'delayed_projects',
+    name: 'Delayed Project Detection',
+    description: 'Marks overdue delivery deals as delayed and notifies owners.',
+    schedule: 'Daily 8 AM',
   },
 ] as const;
 
@@ -241,6 +248,49 @@ export async function recalculateLeadScores(db: DbClient = defaultDb): Promise<{
   });
   await recordAutomationRun('lead_score', `${updated} scores updated`, db);
   return { updated };
+}
+
+export async function detectDelayedDeals(db: DbClient = defaultDb): Promise<{ updated: number }> {
+  if (!(await isAutomationEnabled('delayed_projects', db))) return { updated: 0 };
+
+  const overdueDeals = await db
+    .select({
+      id: deals.id,
+      title: deals.title,
+      ownerId: deals.ownerId,
+      companyId: deals.companyId,
+    })
+    .from(deals)
+    .innerJoin(pipelines, eq(pipelines.id, deals.pipelineId))
+    .where(and(
+      eq(deals.status, 'open'),
+      isNull(deals.deletedAt),
+      inArray(pipelines.pipelineType, ['active_delivery', 'compliance']),
+      sql`${deals.projectEndDate} < CURRENT_DATE`,
+      sql`(${deals.isDelayed} = false OR ${deals.isDelayed} IS NULL)`
+    ));
+
+  for (const deal of overdueDeals) {
+    await db
+      .update(deals)
+      .set({ isDelayed: true, updatedAt: new Date() })
+      .where(eq(deals.id, deal.id));
+
+    if (deal.ownerId) {
+      await createNotification({
+        userId: deal.ownerId,
+        title: 'Project overdue',
+        body: `"${deal.title}" has passed its planned end date.`,
+        entityType: 'deal',
+        entityId: deal.id,
+        metadata: { actionUrl: `/deals/${deal.id}`, companyId: deal.companyId },
+        type: 'warning',
+      });
+    }
+  }
+
+  await recordAutomationRun('delayed_projects', `${overdueDeals.length} projects marked delayed`, db);
+  return { updated: overdueDeals.length };
 }
 
 async function staleTaskExists(args: {

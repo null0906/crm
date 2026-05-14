@@ -9,12 +9,14 @@ import {
   createColumnHelper,
   type SortingState,
   type RowSelectionState,
+  type VisibilityState,
 } from '@tanstack/react-table';
 import { ChevronUp, ChevronDown, ChevronsUpDown, Trash2, ExternalLink } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency, formatDate, formatRelative } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { TableSkeleton } from '@/components/shared/LoadingSkeleton';
+import { ColumnVisibilityMenu } from '@/components/shared/ColumnVisibilityMenu';
 import { toast } from 'sonner';
 
 interface Deal {
@@ -80,6 +82,7 @@ function EmptyCell() {
 export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSelection, onRowSelectionChange }: DealTableProps) {
   const utils = trpc.useUtils();
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [cursor, setCursor] = useState<string | undefined>();
   const limit = 25;
 
@@ -131,6 +134,7 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
           className="h-3.5 w-3.5 rounded-[3px] border-[var(--color-border-strong)] accent-[var(--color-accent)]"
         />
       ),
+      enableHiding: false,
     }),
     columnHelper.accessor('title', {
       header: 'Deal',
@@ -245,16 +249,18 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
           <Trash2 className="w-3.5 h-3.5" />
         </button>
       ),
+      enableHiding: false,
     }),
   ];
 
   const table = useReactTable({
     data: items,
     columns,
-    state: { sorting, rowSelection: rowSelection ?? {} },
+    state: { sorting, rowSelection: rowSelection ?? {}, columnVisibility },
     getRowId: (row) => row.id,
     onSortingChange: setSorting,
     onRowSelectionChange,
+    onColumnVisibilityChange: setColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     manualSorting: true,
@@ -279,6 +285,9 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
 
   return (
     <div className="m-4 flex h-[calc(100%-32px)] flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-card)] shadow-sm">
+      <div className="flex flex-shrink-0 items-center justify-end border-b border-[var(--border-subtle)] bg-[var(--surface-card)] px-4 py-2">
+        <ColumnVisibilityMenu table={table} />
+      </div>
       <div className="flex-1 overflow-auto">
         <table className="w-full text-sm border-collapse">
           <thead className="sticky top-0 z-10">

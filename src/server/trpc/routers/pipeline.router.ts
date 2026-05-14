@@ -7,6 +7,8 @@ import { pipelines, pipelineStages, deals } from '@/server/db/schema';
 import { eq, asc, and, isNull, count } from 'drizzle-orm';
 import { writeAuditLog } from '@/server/services/audit.service';
 
+const pipelineTypeSchema = z.enum(['sales', 'active_delivery', 'partner', 'compliance']);
+
 export const pipelineRouter = router({
   list: protectedProcedure
     .query(async () => {
@@ -43,6 +45,7 @@ export const pipelineRouter = router({
     .input(z.object({
       name: z.string().min(1).max(100),
       description: z.string().optional(),
+      pipelineType: pipelineTypeSchema.optional(),
       stages: z.array(z.object({
         name: z.string().min(1),
         color: z.string().optional(),
@@ -57,6 +60,7 @@ export const pipelineRouter = router({
         .values({
           name: input.name,
           description: input.description,
+          pipelineType: input.pipelineType ?? 'sales',
           createdBy: ctx.user!.id,
         })
         .returning();
@@ -94,6 +98,7 @@ export const pipelineRouter = router({
       name: z.string().min(1).max(100).optional(),
       description: z.string().optional(),
       isActive: z.boolean().optional(),
+      pipelineType: pipelineTypeSchema.optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;

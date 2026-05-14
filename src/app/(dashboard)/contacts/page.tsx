@@ -3,7 +3,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   useReactTable, getCoreRowModel, flexRender,
-  type ColumnDef, type RowSelectionState,
+  type ColumnDef, type RowSelectionState, type VisibilityState,
 } from '@tanstack/react-table';
 import { Plus, Search, Users, Download, Upload, Trash2, Pencil, Link2, ChevronDown } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
@@ -24,6 +24,7 @@ import { PAGE_SIZES, CONTACT_SOURCES, CONTACT_STATUSES } from '@/lib/constants';
 import { SavedViewsBar } from '@/components/saved-views/SavedViewsBar';
 import { ImportWizard } from '@/components/import-export/ImportWizard';
 import { exportToCSV } from '@/lib/export-csv';
+import { ColumnVisibilityMenu } from '@/components/shared/ColumnVisibilityMenu';
 
 type Contact = Record<string, unknown>;
 
@@ -66,6 +67,7 @@ export default function ContactsPage() {
   const [dateTo, setDateTo] = useState<string>('');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [pageSize, setPageSize] = useState(50);
   const [cursor, setCursor] = useState<string | undefined>();
   const [activeViewId, setActiveViewId] = useState<string>('');
@@ -191,6 +193,7 @@ export default function ContactsPage() {
         />
       ),
       size: 40,
+      enableHiding: false,
     },
     {
       accessorKey: 'name',
@@ -283,10 +286,11 @@ export default function ContactsPage() {
         if (!first) return <EmptyCell />;
         const ownerName = `${first} ${last ?? ''}`.trim();
         return (
-          <div className="flex items-center">
-            <div title={ownerName}>
-              <TableAvatar name={ownerName} />
-            </div>
+          <div className="flex items-center gap-2">
+            <TableAvatar name={ownerName} />
+            <span className="max-w-[120px] truncate text-sm font-medium text-[var(--text-secondary)]" title={ownerName}>
+              {ownerName}
+            </span>
           </div>
         );
       },
@@ -333,24 +337,26 @@ export default function ContactsPage() {
         </div>
       ),
       size: 60,
+      enableHiding: false,
     },
   ];
 
   const table = useReactTable({
     data: contacts,
     columns,
-    state: { rowSelection },
+    state: { rowSelection, columnVisibility },
     getRowId: (row) => String(row.id),
     onRowSelectionChange: setRowSelection,
+    onColumnVisibilityChange: setColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
   });
 
   return (
     <div className="contacts-page flex h-full flex-col bg-[var(--surface-page)]">
       {/* Filter Bar */}
-      <div className="filter-bar flex flex-col gap-2 bg-[var(--surface-page)] px-6 pb-0 pt-3">
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 max-w-[280px]">
+      <div className="filter-bar flex flex-col gap-2 bg-[var(--surface-page)] px-3 pb-0 pt-3 md:px-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[220px] flex-1 max-w-[280px]">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-3)]" />
             <Input
               placeholder="Search contacts..."
@@ -360,7 +366,7 @@ export default function ContactsPage() {
             />
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex max-w-full items-center gap-1 overflow-x-auto">
             <button
               className={`status-pill h-7 rounded-md border px-3 text-[12.5px] transition-all ${!statusFilter ? 'border-[var(--accent)] bg-[var(--accent)] text-white font-semibold shadow-[0_1px_4px_rgba(45,91,227,0.30)]' : 'border-[var(--border-subtle)] bg-[var(--surface-card)] text-[var(--text-secondary)] hover:border-[var(--accent-medium)] hover:bg-[var(--accent-light)] hover:text-[var(--accent)]'}`}
               onClick={() => setStatusFilter('')}
@@ -423,7 +429,8 @@ export default function ContactsPage() {
             }}
           />
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <ColumnVisibilityMenu table={table} />
             <Button
               size="sm"
               variant="outline"
@@ -630,7 +637,7 @@ export default function ContactsPage() {
       )}
 
       {/* Table */}
-      <div className="table-container mx-6 my-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-card)] shadow-sm">
+      <div className="table-container mx-3 my-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-card)] shadow-sm md:mx-6 md:my-4">
         <div className="flex-1 overflow-auto bg-[var(--surface-card)]">
         {isLoading ? (
           <TableSkeleton rows={10} cols={8} />

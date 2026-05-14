@@ -4,6 +4,8 @@ export * from './companies';
 export * from './contacts';
 export * from './pipelines';
 export * from './deals';
+export * from './deal-project';
+export * from './demo-records';
 export * from './tags';
 export * from './custom-fields';
 export * from './activities';
