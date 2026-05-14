@@ -141,10 +141,17 @@ function PartnerRow({ partner }: { partner: Company }) {
   return (
     <>
       <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center gap-4 p-4 hover:bg-slate-50 transition-colors text-left"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setExpanded((value) => !value);
+            }
+          }}
+          className="w-full flex items-center gap-4 p-4 hover:bg-slate-50 transition-colors text-left cursor-pointer"
         >
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <Avatar className="w-9 h-9 flex-shrink-0">
@@ -199,7 +206,7 @@ function PartnerRow({ partner }: { partner: Company }) {
             ? <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
             : <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
           }
-        </button>
+        </div>
 
         {expanded && (
           <div className="border-t border-slate-100 grid grid-cols-2 divide-x divide-slate-100">
