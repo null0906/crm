@@ -180,6 +180,23 @@ function BoardView({ projects }: { projects: ProjectRecord[] }) {
     moveStage.mutate({ id: project.id, stage: targetStage });
   }
 
+  if (projects.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <div className="max-w-md rounded-2xl border border-dashed border-[var(--border-default)] bg-white p-8 text-center shadow-sm">
+          <FolderKanban className="mx-auto mb-3 h-10 w-10 text-[var(--accent)]" />
+          <h2 className="text-lg font-black tracking-[-0.03em] text-[var(--text-primary)]">No projects yet</h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--text-tertiary)]">
+            Run the one-time backfill to create Projects from existing Active Pipeline deals, or add a new project manually.
+          </p>
+          <code className="mt-4 block rounded-lg bg-[var(--surface-input)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+            npm run backfill:projects
+          </code>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <div className="flex flex-1 gap-4 overflow-x-auto p-4">
@@ -377,7 +394,7 @@ export default function ProjectsPage() {
               if (!name?.trim()) return;
               createProject.mutate({ name: name.trim(), serviceType: 'custom' });
             }}
-            className="btn-primary h-8 rounded-lg px-3 text-sm"
+            className="btn-primary inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-sm"
           >
             <Plus className="h-4 w-4" />
             Add Project

@@ -1,12 +1,13 @@
 import { loadEnvConfig } from '@next/env';
 import { and, eq, isNull } from 'drizzle-orm';
-import { db } from '@/server/db';
-import { deals, pipelines } from '@/server/db/schema';
-import { createProjectFromDeal } from '@/server/services/project-sync.service';
 
 loadEnvConfig(process.cwd());
 
 async function backfillProjects() {
+  const { db } = await import('@/server/db');
+  const { deals, pipelines } = await import('@/server/db/schema');
+  const { createProjectFromDeal } = await import('@/server/services/project-sync.service');
+
   console.log('Starting project backfill...');
 
   const deliveryDeals = await db
