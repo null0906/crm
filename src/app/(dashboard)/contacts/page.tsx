@@ -104,16 +104,22 @@ export default function ContactsPage() {
   if (filterTags.length > 0) filterConditions.push({ field: 'tags', operator: 'contains_any', value: filterTags.map((tag) => tag.id) });
   if (dateFrom) filterConditions.push({ field: 'createdAt', operator: 'gte', value: dateFrom });
   if (dateTo) filterConditions.push({ field: 'createdAt', operator: 'lte', value: dateTo });
+  const activeFilterConfig = filterConditions.length > 0
+    ? { conditions: filterConditions, logic: 'AND' as const }
+    : undefined;
+  const hasActiveExportFilters = Boolean(debouncedSearch || activeFilterConfig);
 
   const { data, isLoading } = trpc.contacts.list.useQuery({
     search: debouncedSearch || undefined,
-    filters: filterConditions.length > 0
-      ? { conditions: filterConditions, logic: 'AND' }
-      : undefined,
+    filters: activeFilterConfig,
     pagination: { cursor, limit: pageSize },
   });
   const exportContactsQuery = trpc.import.exportContacts.useQuery(
-    { limit: 5000 },
+    {
+      limit: 5000,
+      search: debouncedSearch || undefined,
+      filters: activeFilterConfig,
+    },
     { enabled: false }
   );
 
@@ -421,6 +427,7 @@ export default function ContactsPage() {
             <Button
               size="sm"
               variant="outline"
+              disabled={exportContactsQuery.isFetching}
               onClick={async () => {
                 const { data: exportData } = await exportContactsQuery.refetch();
                 const rows = (exportData?.rows ?? contacts).map((c) => ({
@@ -448,14 +455,18 @@ export default function ContactsPage() {
                   createdAt: c.createdAt ? formatDate(c.createdAt as Date | string) : '',
                   updatedAt: c.updatedAt ? formatDate(c.updatedAt as Date | string) : '',
                 }));
-                exportToCSV(rows, 'contacts.csv', { forceTextColumns: ['phone', 'mobile', 'postalCode'] });
-                if (exportData?.rows?.length === 5000) {
+                exportToCSV(rows, hasActiveExportFilters ? 'contacts-filtered.csv' : 'contacts.csv', { forceTextColumns: ['phone', 'mobile', 'postalCode'] });
+                toast.success(hasActiveExportFilters ? 'Filtered contacts exported' : 'Contacts exported', {
+                  description: `${rows.length} contact${rows.length === 1 ? '' : 's'} downloaded`,
+                });
+                if (exportData?.truncated) {
                   toast.warning('Export is limited to the first 5,000 contacts');
                 }
               }}
+              title={hasActiveExportFilters ? 'Export contacts matching the current filters and search' : 'Export all contacts'}
             >
               <Download className="h-3.5 w-3.5" />
-              Export
+              {exportContactsQuery.isFetching ? 'Exporting...' : hasActiveExportFilters ? 'Export Filtered' : 'Export'}
             </Button>
             <Button
               size="sm"

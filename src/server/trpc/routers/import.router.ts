@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../router';
+import { filterConfigSchema, sortSchema } from '@/server/lib/validators';
 import * as contactService from '@/server/services/contact.service';
 import * as companyService from '@/server/services/company.service';
 import * as dealService from '@/server/services/deal.service';
@@ -686,11 +687,31 @@ export const importRouter = router({
   exportContacts: protectedProcedure
     .input(z.object({
       limit: z.number().int().min(1).max(5000).default(1000),
+      search: z.string().optional(),
+      filters: filterConfigSchema.optional(),
+      sort: sortSchema.optional(),
     }))
     .query(async ({ ctx, input }) => {
-      const result = await contactService.listContacts(ctx.user!, {
-        pagination: { limit: input.limit },
-      });
-      return { rows: result.items };
+      const rows: Record<string, unknown>[] = [];
+      let cursor: string | undefined;
+
+      while (rows.length < input.limit) {
+        const result = await contactService.listContacts(ctx.user!, {
+          search: input.search,
+          filters: input.filters,
+          sort: input.sort,
+          pagination: {
+            cursor,
+            limit: Math.min(500, input.limit - rows.length),
+          },
+        });
+
+        rows.push(...result.items);
+
+        if (!result.hasMore || !result.nextCursor) break;
+        cursor = result.nextCursor;
+      }
+
+      return { rows, truncated: rows.length >= input.limit };
     }),
 });
