@@ -11,8 +11,17 @@ export type CRMEvent = {
   'deal.updated': { dealId: string; changes: Record<string, unknown>; updatedBy: string };
   'deal.deleted': { dealId: string; deletedBy: string };
   'deal.stage_changed': { dealId: string; fromStageId: string | null; toStageId: string; movedBy: string };
+  'deal.progress_updated': {
+    dealId: string;
+    progressPercent: number;
+    isDelayed?: boolean;
+    delayReason?: string | null;
+    revisedEndDate?: string | Date | null;
+  };
   'deal.won': { dealId: string; amount: number | null; wonBy: string };
   'deal.lost': { dealId: string; reason: string; lostBy: string };
+  'project.created': { projectId: string; dealId?: string | null; companyId?: string | null; createdBy: string };
+  'project.stage_changed': { projectId: string; fromStage: string | null; toStage: string; movedBy: string };
   'activity.created': { activityId: string; activityType: string; entityIds: string[]; performedBy: string };
   'tag.added': { entityType: string; entityId: string; tagId: string; taggedBy: string };
   'tag.removed': { entityType: string; entityId: string; tagId: string; untaggedBy: string };

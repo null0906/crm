@@ -5,6 +5,7 @@ export * from './contacts';
 export * from './pipelines';
 export * from './deals';
 export * from './deal-project';
+export * from './projects';
 export * from './demo-records';
 export * from './tags';
 export * from './custom-fields';

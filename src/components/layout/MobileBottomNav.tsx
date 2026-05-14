@@ -2,16 +2,16 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, Building2, LayoutDashboard, Sparkles, TrendingUp, Users } from 'lucide-react';
+import { Activity, Building2, FolderKanban, Sparkles, TrendingUp, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const mobileNav = [
   { href: '/contacts', label: 'Leads', icon: Users },
   { href: '/companies', label: 'Companies', icon: Building2 },
   { href: '/deals', label: 'Deals', icon: TrendingUp },
+  { href: '/projects', label: 'Projects', icon: FolderKanban },
   { href: '/ai-chat', label: 'AI', icon: Sparkles },
   { href: '/activities', label: 'Activity', icon: Activity },
-  { href: '/dashboard', label: 'Dash', icon: LayoutDashboard },
 ];
 
 export function MobileBottomNav() {

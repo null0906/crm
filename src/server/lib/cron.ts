@@ -6,6 +6,7 @@ import {
   calculatePipelineBenchmarks,
   createStaleAlerts,
   detectDelayedDeals,
+  detectDelayedProjects,
   recalculateLeadScores,
   registerAutomationEventListeners,
   sendMorningBriefings,
@@ -52,6 +53,9 @@ export function initializeCron(): void {
   cron.schedule('30 2 * * *', () => {
     detectDelayedDeals().catch((err) => {
       console.error('[Cron] detectDelayedDeals error:', err);
+    });
+    detectDelayedProjects().catch((err) => {
+      console.error('[Cron] detectDelayedProjects error:', err);
     });
   });
 

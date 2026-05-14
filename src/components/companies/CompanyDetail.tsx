@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Globe, Phone, X, Pencil, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { Globe, Phone, X, Pencil, Trash2, FolderKanban } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -202,6 +203,7 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
                   <TabsTrigger value="activity">Activity</TabsTrigger>
                   <TabsTrigger value="contacts">Contacts</TabsTrigger>
                   <TabsTrigger value="deals">Deals</TabsTrigger>
+                  <TabsTrigger value="projects">Projects</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="mt-4">
@@ -241,6 +243,10 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
                 <TabsContent value="deals" className="mt-4">
                   <CompanyDeals companyId={companyId} />
                 </TabsContent>
+
+                <TabsContent value="projects" className="mt-4">
+                  <CompanyProjects companyId={companyId} />
+                </TabsContent>
               </Tabs>
             </div>
           </div>
@@ -276,6 +282,64 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
         onConfirm={() => deleteCompany.mutate({ id: companyId })}
       />
     </>
+  );
+}
+
+function CompanyProjects({ companyId }: { companyId: string }) {
+  const { data: projects = [], isLoading } = trpc.projects.getByCompany.useQuery({ companyId });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="skeleton h-14 rounded-lg" />
+        ))}
+      </div>
+    );
+  }
+
+  if (projects.length === 0) {
+    return (
+      <div className="py-10 text-center text-slate-400">
+        <FolderKanban className="mx-auto mb-2 h-8 w-8" />
+        <p className="text-sm">No projects linked to this company yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {projects.map((project) => {
+        const p = project as Record<string, any>;
+        const progress = Number(p.progressPercent ?? 0);
+        return (
+          <Link
+            key={p.id}
+            href={`/projects/${p.id}`}
+            className="block rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 transition-colors hover:border-blue-200 hover:bg-white"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-semibold text-slate-800">{p.name}</p>
+                <p className="truncate text-[11px] text-slate-400">
+                  {p.stage} · {progress}% complete
+                  {p.isDelayed ? ' · Delayed' : ''}
+                </p>
+              </div>
+              <span className="font-mono text-[12px] font-bold text-slate-700">
+                ₹{Number(p.contractValue ?? 0).toLocaleString('en-IN')}
+              </span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+              <div
+                className="h-full rounded-full bg-blue-600"
+                style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+              />
+            </div>
+          </Link>
+        );
+      })}
+    </div>
   );
 }
 

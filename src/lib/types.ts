@@ -13,6 +13,12 @@ export type DealStatus = 'open' | 'won' | 'lost' | 'abandoned';
 export type StageType = 'active' | 'won' | 'lost';
 export type PipelineType = 'sales' | 'active_delivery' | 'partner' | 'compliance';
 export type DealTaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked';
+export type ProjectStage = 'kickoff' | 'gap_assessment' | 'internal_audit' | 'external_audit' | 'certified' | 'on_hold' | 'cancelled';
+export type ProjectStatus = 'active' | 'completed' | 'on_hold' | 'cancelled';
+export type ProjectServiceType = 'soc2_type1' | 'soc2_type2' | 'iso27001' | 'dpdp' | 'vapt' | 'cspm' | 'ai_governance' | 'cert_in' | 'custom';
+export type ProjectMemberRole = 'lead' | 'member' | 'reviewer' | 'consultant';
+export type ProjectTaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked' | 'not_applicable';
+export type ProjectTaskCategory = 'documentation' | 'evidence_collection' | 'gap_remediation' | 'audit_prep' | 'policy' | 'training' | 'review' | 'other';
 
 export type ActivityType =
   | 'call' | 'email_sent' | 'email_received' | 'meeting' | 'note'

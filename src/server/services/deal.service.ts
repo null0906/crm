@@ -7,6 +7,7 @@ import { writeAuditLog, buildChangeDiff } from './audit.service';
 import eventBus from '@/server/lib/event-bus';
 import { getPermissionLevel } from '@/server/lib/permissions';
 import { buildFilterWhere } from './filter.service';
+import { maybeCreateOrSyncProjectForDealStage, syncProgressToProject } from './project-sync.service';
 
 interface StageContext {
   id: string;
@@ -327,6 +328,7 @@ export async function listDeals(
       companyId: deals.companyId,
       partnerCompanyId: deals.partnerCompanyId,
       referredByPartnerId: deals.referredByPartnerId,
+      linkedProjectId: deals.linkedProjectId,
       primaryContactId: deals.primaryContactId,
       primaryContactSnapshotName: deals.primaryContactName,
       primaryContactEmail: deals.primaryContactEmail,
@@ -835,6 +837,16 @@ export async function updateDeal(
       movedBy: user.id,
     });
 
+    const [toStage] = await db
+      .select({ name: pipelineStages.name })
+      .from(pipelineStages)
+      .where(eq(pipelineStages.id, nextStageId))
+      .limit(1);
+
+    if (toStage) {
+      await maybeCreateOrSyncProjectForDealStage(id, toStage.name, user.id);
+    }
+
     // Auto-log stage_change activity
     await db.insert(activities).values({
       activityType: 'stage_change',
@@ -1123,6 +1135,22 @@ export async function updateProjectProgress(
       isDelayed: data.isDelayed,
     },
   });
+
+  eventBus.emit('deal.progress_updated', {
+    dealId,
+    progressPercent: data.progressPercent,
+    isDelayed: data.isDelayed,
+    delayReason: data.delayReason,
+    revisedEndDate: data.revisedEndDate,
+  });
+
+  await syncProgressToProject(
+    dealId,
+    data.progressPercent,
+    data.isDelayed ?? false,
+    data.delayReason,
+    data.revisedEndDate
+  );
 
   return updated;
 }

@@ -7,6 +7,7 @@ import {
   deals,
   notifications,
   pipelines,
+  projects,
   roles,
   telegramUsers,
   users,
@@ -291,6 +292,54 @@ export async function detectDelayedDeals(db: DbClient = defaultDb): Promise<{ up
 
   await recordAutomationRun('delayed_projects', `${overdueDeals.length} projects marked delayed`, db);
   return { updated: overdueDeals.length };
+}
+
+export async function detectDelayedProjects(db: DbClient = defaultDb): Promise<{ updated: number }> {
+  if (!(await isAutomationEnabled('delayed_projects', db))) return { updated: 0 };
+
+  const overdueProjects = await db
+    .select({
+      id: projects.id,
+      name: projects.name,
+      ownerId: projects.ownerId,
+      companyId: projects.companyId,
+      endDate: projects.endDate,
+      daysOverdue: sql<number>`EXTRACT(DAY FROM NOW() - ${projects.endDate})::int`,
+    })
+    .from(projects)
+    .where(and(
+      eq(projects.status, 'active'),
+      isNull(projects.deletedAt),
+      sql`${projects.endDate} < CURRENT_DATE`,
+      sql`(${projects.isDelayed} = false OR ${projects.isDelayed} IS NULL)`
+    ));
+
+  for (const project of overdueProjects) {
+    await db
+      .update(projects)
+      .set({ isDelayed: true, updatedAt: new Date() })
+      .where(eq(projects.id, project.id));
+
+    if (project.ownerId) {
+      await createNotification({
+        userId: project.ownerId,
+        title: 'Project overdue',
+        body: `"${project.name}" is ${project.daysOverdue} days past its planned end date.`,
+        entityType: 'project',
+        entityId: project.id,
+        metadata: { actionUrl: `/projects/${project.id}`, companyId: project.companyId },
+        type: 'warning',
+      });
+
+      await notifyUser(
+        project.ownerId,
+        `Project overdue\n\n"${project.name}" is ${project.daysOverdue} days past its end date.\n\n/projects/${project.id}`
+      ).catch(() => false);
+    }
+  }
+
+  await recordAutomationRun('delayed_projects', `${overdueProjects.length} standalone projects marked delayed`, db);
+  return { updated: overdueProjects.length };
 }
 
 async function staleTaskExists(args: {
