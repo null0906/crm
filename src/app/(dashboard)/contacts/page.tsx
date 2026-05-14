@@ -112,6 +112,10 @@ export default function ContactsPage() {
       : undefined,
     pagination: { cursor, limit: pageSize },
   });
+  const exportContactsQuery = trpc.import.exportContacts.useQuery(
+    { limit: 5000 },
+    { enabled: false }
+  );
 
   const deleteContact = trpc.contacts.delete.useMutation({
     onSuccess: () => {
@@ -417,19 +421,37 @@ export default function ContactsPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                const rows = contacts.map((c) => ({
+              onClick={async () => {
+                const { data: exportData } = await exportContactsQuery.refetch();
+                const rows = (exportData?.rows ?? contacts).map((c) => ({
                   firstName: String(c.firstName ?? ''),
                   lastName: String(c.lastName ?? ''),
                   email: String(c.email ?? ''),
+                  secondaryEmail: String(c.secondaryEmail ?? ''),
                   phone: String(c.phone ?? ''),
+                  mobile: String(c.mobile ?? ''),
                   jobTitle: String(c.jobTitle ?? ''),
+                  department: String(c.department ?? ''),
                   company: String(c.companyName ?? ''),
                   status: String(c.status ?? ''),
+                  source: String(c.source ?? ''),
+                  leadScore: String(c.leadScore ?? ''),
+                  owner: `${String(c.ownerFirstName ?? '')} ${String(c.ownerLastName ?? '')}`.trim(),
+                  location: String(c.location ?? ''),
                   city: String(c.city ?? ''),
+                  state: String(c.state ?? ''),
+                  postalCode: String(c.postalCode ?? ''),
                   country: String(c.country ?? ''),
+                  linkedIn: String(c.linkedinUrl ?? ''),
+                  notes: String(c.description ?? ''),
+                  lastContacted: c.lastContactedAt ? formatDate(c.lastContactedAt as Date | string) : '',
+                  createdAt: c.createdAt ? formatDate(c.createdAt as Date | string) : '',
+                  updatedAt: c.updatedAt ? formatDate(c.updatedAt as Date | string) : '',
                 }));
-                exportToCSV(rows, 'contacts.csv');
+                exportToCSV(rows, 'contacts.csv', { forceTextColumns: ['phone', 'mobile', 'postalCode'] });
+                if (exportData?.rows?.length === 5000) {
+                  toast.warning('Export is limited to the first 5,000 contacts');
+                }
               }}
             >
               <Download className="h-3.5 w-3.5" />
