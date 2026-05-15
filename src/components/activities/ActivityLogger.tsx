@@ -44,6 +44,7 @@ const schema = z.object({
   subject: z.string().min(1, 'Subject is required').max(255),
   body: z.preprocess(emptyToUndefined, z.string().optional()),
   occurredAt: z.preprocess(emptyToUndefined, z.string().optional()),
+  dealId: z.preprocess(emptyToUndefined, z.string().uuid().optional()),
   callDurationSeconds: z.preprocess(emptyToUndefined, z.coerce.number().int().min(0).optional()),
   callDirection: z.preprocess(emptyToUndefined, z.enum(['inbound', 'outbound']).optional()),
   callOutcome: z.preprocess(emptyToUndefined, z.enum(['connected', 'voicemail', 'no_answer', 'busy', 'wrong_number']).optional()),
@@ -61,6 +62,11 @@ interface ActivityLoggerProps {
 
 export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCancel }: ActivityLoggerProps) {
   const utils = trpc.useUtils();
+  const { data: contactDeals = [] } = trpc.deals.byContact.useQuery(
+    { contactId: contactId ?? '' },
+    { enabled: Boolean(contactId) && !dealId }
+  );
+  const availableDeals = contactDeals as Array<Record<string, unknown>>;
 
   const createActivity = trpc.activities.create.useMutation({
     onSuccess: () => {
@@ -105,7 +111,7 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
       callOutcome: data.callOutcome ?? null,
       contactId: contactId ?? null,
       companyId: companyId ?? null,
-      dealId: dealId ?? null,
+      dealId: dealId ?? data.dealId ?? null,
     });
   }
 
@@ -161,6 +167,31 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
             <p className="text-xs text-red-500">{form.formState.errors.subject.message}</p>
           )}
         </div>
+
+        {!dealId && availableDeals.length > 0 && (
+          <div className="space-y-1">
+            <Label className="text-xs">Related Deal</Label>
+            <select
+              {...form.register('dealId')}
+              className="flex h-8 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <option value="">No specific deal</option>
+              {availableDeals.map((deal) => {
+                const amount = deal.amount ? Number(deal.amount).toLocaleString('en-IN') : null;
+                return (
+                  <option key={String(deal.id)} value={String(deal.id)}>
+                    {String(deal.title ?? 'Untitled deal')}
+                    {deal.stageName ? ` · ${String(deal.stageName)}` : ''}
+                    {amount ? ` · ₹${amount}` : ''}
+                  </option>
+                );
+              })}
+            </select>
+            <p className="text-[11px] text-slate-400">
+              Pick a deal if this activity should appear in that deal timeline too.
+            </p>
+          </div>
+        )}
 
         {(isCall || showDirection) && (
           <div className="grid grid-cols-2 gap-3">
