@@ -50,6 +50,20 @@ export function getProjectStageColor(stage: string | null | undefined) {
   return getProjectStage(stage)?.color ?? '#94A3B8';
 }
 
+export function getProjectStageProgress(stage: string | null | undefined) {
+  const progressByStage: Record<ProjectStage, number> = {
+    kickoff: 10,
+    gap_assessment: 30,
+    internal_audit: 55,
+    external_audit: 80,
+    certified: 100,
+    on_hold: 50,
+    cancelled: 0,
+  };
+
+  return progressByStage[(stage as ProjectStage | null) ?? 'kickoff'] ?? 0;
+}
+
 export function getServiceTypeConfig(type: string | null | undefined) {
   return SERVICE_TYPE_CONFIG[(type as ProjectServiceType | null) ?? 'custom'] ?? SERVICE_TYPE_CONFIG.custom;
 }

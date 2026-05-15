@@ -13,7 +13,7 @@ import {
   users,
 } from '@/server/db/schema';
 import eventBus from '@/server/lib/event-bus';
-import { PROJECT_STAGES } from '@/lib/projects';
+import { PROJECT_STAGES, getProjectStageProgress } from '@/lib/projects';
 import type { ProjectMemberRole, ProjectServiceType, ProjectStage, ProjectStatus, ProjectTaskStatus, SessionUser } from '@/lib/types';
 
 export interface ProjectListFilters {
@@ -288,6 +288,7 @@ export const projectService = {
         contractValue: data.contractValue !== undefined && data.contractValue !== null ? data.contractValue.toString() : data.contractValue,
         ownerId: data.ownerId,
         stage,
+        progressPercent: getProjectStageProgress(stage),
         status: statusForStage(stage),
         createdBy,
       })
@@ -354,6 +355,7 @@ export const projectService = {
       .set({
         stage: newStage,
         stageEnteredAt: new Date(),
+        progressPercent: getProjectStageProgress(newStage),
         status: newStatus,
         actualEndDate: newStatus === 'completed' ? new Date().toISOString().slice(0, 10) : project.actualEndDate,
         updatedAt: new Date(),
@@ -375,6 +377,14 @@ export const projectService = {
       if (dealStage) {
         await db.update(deals).set({ stageId: dealStage.id, updatedAt: new Date() }).where(eq(deals.id, project.dealId));
       }
+
+      await db
+        .update(deals)
+        .set({
+          projectProgressPercent: getProjectStageProgress(newStage),
+          updatedAt: new Date(),
+        })
+        .where(eq(deals.id, project.dealId));
     }
 
     eventBus.emit('project.stage_changed', {

@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, CalendarDays, CheckSquare, Clock, Link2, Plus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
-import { PROJECT_STAGES, PROJECT_TASK_STATUSES, getProjectStageColor, getServiceTypeConfig } from '@/lib/projects';
+import { PROJECT_STAGES, PROJECT_TASK_STATUSES, getProjectStageColor, getProjectStageProgress, getServiceTypeConfig } from '@/lib/projects';
 import type { ProjectStage, ProjectTaskStatus } from '@/lib/types';
 
 type ProjectRecord = Record<string, any>;
@@ -79,13 +79,12 @@ function StagePills({ project }: { project: ProjectRecord }) {
 
 function ProgressEditor({ project }: { project: ProjectRecord }) {
   const utils = trpc.useUtils();
-  const [progress, setProgress] = React.useState(Number(project.progressPercent ?? 0));
+  const stageProgress = getProjectStageProgress(project.stage);
   const [isDelayed, setIsDelayed] = React.useState(Boolean(project.isDelayed));
   const [delayReason, setDelayReason] = React.useState(String(project.delayReason ?? ''));
   const [revisedEndDate, setRevisedEndDate] = React.useState(String(project.revisedEndDate ?? ''));
 
   React.useEffect(() => {
-    setProgress(Number(project.progressPercent ?? 0));
     setIsDelayed(Boolean(project.isDelayed));
     setDelayReason(String(project.delayReason ?? ''));
     setRevisedEndDate(String(project.revisedEndDate ?? ''));
@@ -107,12 +106,14 @@ function ProgressEditor({ project }: { project: ProjectRecord }) {
           <h2 className="text-sm font-bold text-[var(--text-primary)]">Timeline Progress</h2>
           <p className="text-xs text-[var(--text-tertiary)]">{formatDate(project.startDate)} to {formatDate(project.revisedEndDate ?? project.endDate)}</p>
         </div>
-        <span className="font-mono text-2xl font-black tracking-[-0.04em] text-[var(--text-primary)]">{progress}%</span>
+        <span className="font-mono text-2xl font-black tracking-[-0.04em] text-[var(--text-primary)]">{stageProgress}%</span>
       </div>
-      <ProgressBar percent={progress} delayed={isDelayed} />
+      <ProgressBar percent={stageProgress} delayed={isDelayed} />
+      <p className="mt-2 text-xs font-medium text-[var(--text-tertiary)]">
+        Progress is linked to stage movement. Move the project stage above to change completion.
+      </p>
       <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
         <div className="space-y-3">
-          <input type="range" min={0} max={100} value={progress} onChange={(event) => setProgress(Number(event.target.value))} className="w-full accent-[var(--accent)]" />
           <label className="flex items-center gap-2 text-sm font-semibold text-[var(--text-secondary)]">
             <input type="checkbox" checked={isDelayed} onChange={(event) => setIsDelayed(event.target.checked)} />
             Mark as delayed
@@ -129,7 +130,7 @@ function ProgressEditor({ project }: { project: ProjectRecord }) {
           disabled={updateProgress.isPending}
           onClick={() => updateProgress.mutate({
             id: project.id,
-            progressPercent: progress,
+            progressPercent: stageProgress,
             isDelayed,
             delayReason: isDelayed ? delayReason : null,
             revisedEndDate: isDelayed ? revisedEndDate || null : null,
@@ -208,25 +209,103 @@ function TasksTab({ project }: { project: ProjectRecord }) {
 }
 
 function TeamTab({ project }: { project: ProjectRecord }) {
+  const utils = trpc.useUtils();
   const members = (project.members ?? []) as ProjectRecord[];
+  const { data: users = [] } = trpc.users.list.useQuery();
+  const [userId, setUserId] = React.useState('');
+  const [role, setRole] = React.useState<'lead' | 'member' | 'reviewer' | 'consultant'>('member');
+  const addMember = trpc.projects.addMember.useMutation({
+    onSuccess: () => {
+      toast.success('Team member added');
+      setUserId('');
+      setRole('member');
+      void utils.projects.getById.invalidate({ id: project.id });
+      void utils.projects.list.invalidate();
+    },
+    onError: (err) => toast.error('Could not add member', { description: err.message }),
+  });
+  const removeMember = trpc.projects.removeMember.useMutation({
+    onSuccess: () => {
+      toast.success('Team member removed');
+      void utils.projects.getById.invalidate({ id: project.id });
+      void utils.projects.list.invalidate();
+    },
+    onError: (err) => toast.error('Could not remove member', { description: err.message }),
+  });
+
+  const memberUserIds = new Set(members.map((member) => member.user?.id).filter(Boolean));
+  const availableUsers = users.filter((user) => !memberUserIds.has(user.id));
+
   return (
-    <div className="rounded-xl border border-[var(--border-subtle)] bg-white shadow-sm">
-      {members.length === 0 ? (
-        <div className="p-6 text-center text-sm text-[var(--text-tertiary)]">No team members added yet.</div>
-      ) : members.map((member) => {
-        const user = member.user ?? {};
-        const name = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
-        const initials = name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-        return (
-          <div key={member.id} className="flex items-center gap-3 border-b border-[var(--border-subtle)] p-4 last:border-b-0">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-light)] text-sm font-bold text-[var(--accent)]">{initials || 'U'}</div>
-            <div className="flex-1">
-              <p className="text-sm font-bold text-[var(--text-primary)]">{name || 'Team member'}</p>
-              <p className="text-xs text-[var(--text-tertiary)]">{member.role ?? 'member'}</p>
-            </div>
+    <div className="space-y-4">
+      <div className="rounded-xl border border-[var(--border-subtle)] bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-[var(--text-primary)]">Add Team Member</h2>
+            <p className="text-xs text-[var(--text-tertiary)]">Any CRM user can be assigned for now; roles identify who leads delivery.</p>
           </div>
-        );
-      })}
+        </div>
+        <div className="grid gap-2 md:grid-cols-[1fr_160px_auto]">
+          <select
+            value={userId}
+            onChange={(event) => setUserId(event.target.value)}
+            className="h-9 rounded-lg border border-[var(--border-default)] bg-white px-3 text-sm"
+          >
+            <option value="">Select user</option>
+            {availableUsers.map((user) => (
+              <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>
+            ))}
+          </select>
+          <select
+            value={role}
+            onChange={(event) => setRole(event.target.value as typeof role)}
+            className="h-9 rounded-lg border border-[var(--border-default)] bg-white px-3 text-sm"
+          >
+            <option value="lead">Lead</option>
+            <option value="member">Member</option>
+            <option value="reviewer">Reviewer</option>
+            <option value="consultant">Consultant</option>
+          </select>
+          <button
+            type="button"
+            disabled={!userId || addMember.isPending}
+            onClick={() => userId && addMember.mutate({ projectId: project.id, userId, role })}
+            className="btn-primary h-9 rounded-lg px-4 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-[var(--border-subtle)] bg-white shadow-sm">
+        {members.length === 0 ? (
+          <div className="p-6 text-center text-sm text-[var(--text-tertiary)]">No team members added yet.</div>
+        ) : members.map((member) => {
+          const user = member.user ?? {};
+          const name = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
+          const initials = name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+          return (
+            <div key={member.id} className="flex items-center gap-3 border-b border-[var(--border-subtle)] p-4 last:border-b-0">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-light)] text-sm font-bold text-[var(--accent)]">{initials || 'U'}</div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-[var(--text-primary)]">{name || 'Team member'}</p>
+                <p className="text-xs text-[var(--text-tertiary)]">{member.role ?? 'member'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (user.id && window.confirm(`Remove ${name || 'this user'} from the project?`)) {
+                    removeMember.mutate({ projectId: project.id, userId: user.id });
+                  }
+                }}
+                className="rounded-md px-2 py-1 text-xs font-semibold text-[var(--text-tertiary)] hover:bg-red-50 hover:text-red-600"
+              >
+                Remove
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

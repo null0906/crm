@@ -11,6 +11,7 @@ import {
   projectStageHistory,
 } from '@/server/db/schema';
 import eventBus from '@/server/lib/event-bus';
+import { getProjectStageProgress } from '@/lib/projects';
 import type { ProjectServiceType, ProjectStage, ProjectStatus } from '@/lib/types';
 
 const STAGE_MAP: Record<string, ProjectStage> = {
@@ -109,7 +110,7 @@ export async function createProjectFromDeal(dealId: string, movedByUserId: strin
       stageEnteredAt: new Date(),
       startDate: deal.projectStartDate,
       endDate: deal.projectEndDate,
-      progressPercent: deal.projectProgressPercent ?? 0,
+      progressPercent: getProjectStageProgress(projectStage),
       isDelayed: deal.isDelayed ?? false,
       delayReason: deal.delayReason,
       revisedEndDate: deal.revisedEndDate,
@@ -123,7 +124,13 @@ export async function createProjectFromDeal(dealId: string, movedByUserId: strin
 
   if (!project) return null;
 
-  await db.update(deals).set({ linkedProjectId: project.id }).where(eq(deals.id, dealId));
+  await db
+    .update(deals)
+    .set({
+      linkedProjectId: project.id,
+      projectProgressPercent: getProjectStageProgress(projectStage),
+    })
+    .where(eq(deals.id, dealId));
 
   await db.insert(projectStageHistory).values({
     projectId: project.id,
@@ -203,11 +210,20 @@ export async function syncStageToProject(dealId: string, newStageName: string, m
     .set({
       stage: projectStage,
       stageEnteredAt: new Date(),
+      progressPercent: getProjectStageProgress(projectStage),
       status: newStatus,
       actualEndDate: newStatus === 'completed' ? new Date().toISOString().slice(0, 10) : project.actualEndDate,
       updatedAt: new Date(),
     })
     .where(eq(projects.id, project.id));
+
+  await db
+    .update(deals)
+    .set({
+      projectProgressPercent: getProjectStageProgress(projectStage),
+      updatedAt: new Date(),
+    })
+    .where(eq(deals.id, dealId));
 
   eventBus.emit('project.stage_changed', {
     projectId: project.id,

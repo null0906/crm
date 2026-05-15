@@ -1,8 +1,9 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { and, asc, eq } from 'drizzle-orm';
 import { router, protectedProcedure } from '../router';
 import { db } from '@/server/db';
-import { projectMembers, projectTasks } from '@/server/db/schema';
+import { projectMembers, projects, projectTasks } from '@/server/db/schema';
 import { projectService } from '@/server/services/project.service';
 
 const serviceTypeSchema = z.enum([
@@ -53,6 +54,36 @@ const taskCategorySchema = z.enum([
   'review',
   'other',
 ]);
+
+async function assertCanManageProjectMembers(projectId: string, user: { id: string; role?: { slug?: string } }) {
+  const privilegedRoles = new Set(['super_admin', 'admin', 'sales_manager', 'manager']);
+  if (privilegedRoles.has(user.role?.slug ?? '')) return;
+
+  const [project] = await db
+    .select({ ownerId: projects.ownerId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+
+  if (project?.ownerId === user.id) return;
+
+  const [leadMembership] = await db
+    .select({ id: projectMembers.id })
+    .from(projectMembers)
+    .where(and(
+      eq(projectMembers.projectId, projectId),
+      eq(projectMembers.userId, user.id),
+      eq(projectMembers.role, 'lead')
+    ))
+    .limit(1);
+
+  if (leadMembership) return;
+
+  throw new TRPCError({
+    code: 'FORBIDDEN',
+    message: 'Only project owners, project leads, and admins can manage team members.',
+  });
+}
 
 export const projectsRouter = router({
   list: protectedProcedure
@@ -141,7 +172,8 @@ export const projectsRouter = router({
       userId: z.string().uuid(),
       role: z.enum(['lead', 'member', 'reviewer', 'consultant']).default('member'),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertCanManageProjectMembers(input.projectId, ctx.user);
       await db.insert(projectMembers).values(input).onConflictDoUpdate({
         target: [projectMembers.projectId, projectMembers.userId],
         set: { role: input.role },
@@ -154,7 +186,8 @@ export const projectsRouter = router({
       projectId: z.string().uuid(),
       userId: z.string().uuid(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertCanManageProjectMembers(input.projectId, ctx.user);
       await db.delete(projectMembers).where(and(
         eq(projectMembers.projectId, input.projectId),
         eq(projectMembers.userId, input.userId)

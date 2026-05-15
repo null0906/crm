@@ -15,7 +15,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { CalendarDays, FolderKanban, LayoutGrid, List, Plus, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
-import { PROJECT_STAGES, getProjectStageColor, getServiceTypeConfig } from '@/lib/projects';
+import { PROJECT_STAGES, getProjectStageColor, getProjectStageProgress, getServiceTypeConfig } from '@/lib/projects';
 import type { ProjectStage } from '@/lib/types';
 
 type ProjectRecord = Record<string, any>;
@@ -86,6 +86,7 @@ function TeamAvatarStack({ members }: { members: ProjectRecord[] | undefined }) 
 
 function ProjectCard({ project }: { project: ProjectRecord }) {
   const router = useRouter();
+  const stageProgress = getProjectStageProgress(project.stage);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: project.id,
     data: { project },
@@ -125,8 +126,8 @@ function ProjectCard({ project }: { project: ProjectRecord }) {
             {project.isDelayed ? 'Late ' : ''}{formatDate(project.revisedEndDate ?? project.endDate)}
           </span>
         </div>
-        <ProgressBar percent={Number(project.progressPercent ?? 0)} delayed={Boolean(project.isDelayed)} />
-        <p className="mt-1 text-[10.5px] font-medium text-[var(--text-tertiary)]">{Number(project.progressPercent ?? 0)}% complete</p>
+        <ProgressBar percent={stageProgress} delayed={Boolean(project.isDelayed)} />
+        <p className="mt-1 text-[10.5px] font-medium text-[var(--text-tertiary)]">{stageProgress}% complete by stage</p>
       </div>
       <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-[var(--text-tertiary)]">
         <span>{Number(project.completedTaskCount ?? 0)}/{Number(project.taskCount ?? 0)} tasks</span>
@@ -150,7 +151,7 @@ function ProjectColumn({ stage, projects }: { stage: (typeof PROJECT_STAGES)[num
         isOver ? 'border-[var(--accent-medium)] bg-[rgba(45,91,227,0.06)] shadow-[0_0_0_2px_var(--accent-medium)]' : ''
       }`}
     >
-      <div className="sticky top-[52px] z-10 flex items-center gap-2 rounded-t-[14px] border-b border-[rgba(226,229,240,0.7)] bg-white/70 px-3.5 py-3 backdrop-blur-md">
+      <div className="flex items-center gap-2 rounded-t-[14px] border-b border-[rgba(226,229,240,0.7)] bg-white/70 px-3.5 py-3 backdrop-blur-md">
         <span className="h-2 w-2 rounded-full" style={{ background: stage.color, boxShadow: `0 0 0 3px ${stage.color}22` }} />
         <span className="text-[12.5px] font-bold tracking-[-0.01em] text-[var(--text-primary)]">{stage.label}</span>
         <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)]">{projects.length}</span>
@@ -240,7 +241,7 @@ function ListView({ projects }: { projects: ProjectRecord[] }) {
               <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">{project.company?.name ?? '-'}</td>
               <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">{PROJECT_STAGES.find((s) => s.key === project.stage)?.label ?? project.stage}</td>
               <td className="px-4 py-3">
-                <div className="w-32"><ProgressBar percent={Number(project.progressPercent ?? 0)} delayed={Boolean(project.isDelayed)} /></div>
+                <div className="w-32"><ProgressBar percent={getProjectStageProgress(project.stage)} delayed={Boolean(project.isDelayed)} /></div>
               </td>
               <td className="px-4 py-3 font-mono text-xs text-[var(--text-tertiary)]">{formatDate(project.revisedEndDate ?? project.endDate)}</td>
               <td className="px-4 py-3 text-right font-mono text-sm font-bold text-[var(--text-primary)]">{formatINR(project.contractValue)}</td>
@@ -289,7 +290,7 @@ function TimelineView({ projects }: { projects: ProjectRecord[] }) {
                   title={`${project.name}: ${Number(project.progressPercent ?? 0)}%`}
                   onClick={() => router.push(`/projects/${project.id}`)}
                 >
-                  <span className="truncate">{Number(project.progressPercent ?? 0)}%</span>
+                  <span className="truncate">{getProjectStageProgress(project.stage)}%</span>
                 </button>
               </div>
             </div>
