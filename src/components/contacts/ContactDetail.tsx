@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Mail, Phone, X, Link2, Pencil, Trash2, BellRing, BriefcaseBusiness } from 'lucide-react';
+import { Mail, Phone, X, Link2, Pencil, Trash2, BellRing, BriefcaseBusiness, MessageCircle } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -18,6 +18,7 @@ import { TagBadge } from '@/components/tags/TagBadge';
 import { ActivityFeed } from '@/components/activities/ActivityFeed';
 import { DealForm } from '@/components/deals/DealForm';
 import { formatDate, formatRelative, getInitials } from '@/lib/formatters';
+import { getWhatsAppHref } from '@/lib/whatsapp';
 import { toast } from 'sonner';
 
 interface ContactDetailProps {
@@ -72,6 +73,7 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
   const email = contact?.email as string | undefined;
   const phone = contact?.phone as string | undefined;
   const mobile = contact?.mobile as string | undefined;
+  const whatsappHref = getWhatsAppHref(mobile || phone);
   const linkedinUrl = contact?.linkedinUrl as string | undefined;
   const department = contact?.department as string | undefined;
   const source = contact?.source as string | undefined;
@@ -207,6 +209,14 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
                     <a href={`tel:${phone}`}>
                       <Phone className="w-3.5 h-3.5 mr-1" />
                       Call
+                    </a>
+                  </Button>
+                )}
+                {whatsappHref && (
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={whatsappHref} target="_blank" rel="noopener noreferrer">
+                      <MessageCircle className="w-3.5 h-3.5 mr-1" />
+                      WhatsApp
                     </a>
                   </Button>
                 )}

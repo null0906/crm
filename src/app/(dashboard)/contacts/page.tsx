@@ -5,7 +5,7 @@ import {
   useReactTable, getCoreRowModel, flexRender,
   type ColumnDef, type RowSelectionState, type VisibilityState,
 } from '@tanstack/react-table';
-import { Plus, Search, Users, Download, Upload, Trash2, Pencil, Link2, ChevronDown } from 'lucide-react';
+import { Plus, Search, Users, Download, Upload, Trash2, Pencil, Link2, ChevronDown, MessageCircle } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ import { SavedViewsBar } from '@/components/saved-views/SavedViewsBar';
 import { ImportWizard } from '@/components/import-export/ImportWizard';
 import { exportToCSV } from '@/lib/export-csv';
 import { ColumnVisibilityMenu } from '@/components/shared/ColumnVisibilityMenu';
+import { getWhatsAppHref } from '@/lib/whatsapp';
 
 type Contact = Record<string, unknown>;
 
@@ -230,9 +231,27 @@ export default function ContactsPage() {
       accessorKey: 'phone',
       header: 'Phone',
       cell: ({ row }) => {
-        const phone = formatPhone(row.original.phone);
+        const rawPhone = String(row.original.mobile ?? row.original.phone ?? '').trim();
+        const phone = formatPhone(rawPhone);
+        const whatsappHref = getWhatsAppHref(rawPhone);
         return phone
-          ? <span className="cell-phone font-mono text-sm tracking-[0.03em] text-[var(--color-neutral)]">{phone}</span>
+          ? (
+            <div className="flex items-center gap-2">
+              <span className="cell-phone font-mono text-sm tracking-[0.03em] text-[var(--color-neutral)]">{phone}</span>
+              {whatsappHref && (
+                <a
+                  href={whatsappHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+                  title="Open WhatsApp chat"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
+          )
           : <EmptyCell />;
       },
     },
