@@ -58,23 +58,23 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
 
   const createDeal = trpc.deals.create.useMutation({
     onSuccess: (data) => {
-      toast.success('Deal created', { description: data.title as string });
+      toast.success('Prospect created', { description: data.title as string });
       void utils.deals.list.invalidate();
       void utils.deals.byStage.invalidate({ pipelineId });
       onSuccess?.(data as Record<string, unknown>);
     },
-    onError: (err) => toast.error('Failed to create deal', { description: err.message }),
+    onError: (err) => toast.error('Failed to create prospect', { description: err.message }),
   });
 
   const updateDeal = trpc.deals.update.useMutation({
     onSuccess: (data) => {
-      toast.success('Deal updated');
+      toast.success('Prospect updated');
       void utils.deals.list.invalidate();
       void utils.deals.byStage.invalidate({ pipelineId });
       if (dealId) void utils.deals.getById.invalidate({ id: dealId });
       onSuccess?.(data as Record<string, unknown>);
     },
-    onError: (err) => toast.error('Failed to update deal', { description: err.message }),
+    onError: (err) => toast.error('Failed to update prospect', { description: err.message }),
   });
 
   const form = useForm<FormData>({
@@ -180,7 +180,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
       <div className="space-y-1.5">
-        <Label htmlFor="title">Deal Title *</Label>
+        <Label htmlFor="title">Prospect Title *</Label>
         <Input id="title" {...form.register('title')} placeholder="SecComply Enterprise License" />
         {form.formState.errors.title && (
           <p className="text-xs text-red-500">{form.formState.errors.title.message}</p>
@@ -202,7 +202,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <Label htmlFor="amount">Deal Value (₹)</Label>
+          <Label htmlFor="amount">Prospect Value (₹)</Label>
           <Input
             id="amount"
             type="number"
@@ -567,7 +567,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
           id="description"
           {...form.register('description')}
           rows={3}
-          placeholder="Notes about this deal..."
+          placeholder="Notes about this prospect..."
         />
       </div>
 
@@ -584,7 +584,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
           <Button type="button" variant="outline" onClick={onCancel} className="flex-1">Cancel</Button>
         )}
         <Button type="submit" disabled={isPending} className="flex-1">
-          {isPending ? (mode === 'edit' ? 'Saving...' : 'Creating...') : (mode === 'edit' ? 'Save Changes' : 'Create Deal')}
+          {isPending ? (mode === 'edit' ? 'Saving...' : 'Creating...') : (mode === 'edit' ? 'Save Changes' : 'Create Prospect')}
         </Button>
       </div>
     </form>

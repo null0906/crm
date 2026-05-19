@@ -43,6 +43,34 @@ function latestContactedAtSql() {
   `;
 }
 
+function initialActivityTypeSql() {
+  return sql<string | null>`
+    (
+      SELECT a.activity_type
+      FROM ${activities} a
+      WHERE a.contact_id = ${contacts.id}
+        AND a.deleted_at IS NULL
+        AND COALESCE(a.is_automated, FALSE) = FALSE
+      ORDER BY a.occurred_at ASC, a.created_at ASC
+      LIMIT 1
+    )
+  `;
+}
+
+function initialActivityAtSql() {
+  return sql<Date | null>`
+    (
+      SELECT a.occurred_at
+      FROM ${activities} a
+      WHERE a.contact_id = ${contacts.id}
+        AND a.deleted_at IS NULL
+        AND COALESCE(a.is_automated, FALSE) = FALSE
+      ORDER BY a.occurred_at ASC, a.created_at ASC
+      LIMIT 1
+    )
+  `;
+}
+
 async function resolveCompanyForContact(
   user: SessionUser,
   data: Pick<NewContact, 'companyId' | 'companyName' | 'status' | 'source'>
@@ -223,6 +251,8 @@ export async function listContacts(
       ownerId: contacts.ownerId,
       companyId: contacts.companyId,
       customFields: contacts.customFields,
+      initialActivityType: initialActivityTypeSql(),
+      initialActivityAt: initialActivityAtSql(),
       lastContactedAt: latestContactedAtSql(),
       createdAt: contacts.createdAt,
       updatedAt: contacts.updatedAt,

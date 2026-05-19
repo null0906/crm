@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Users, Building2, TrendingUp, Activity, LayoutDashboard,
-  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban,
+  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban, BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -24,7 +24,7 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { href: '/contacts',   label: 'Contacts',    icon: Users },
   { href: '/companies',  label: 'Companies',   icon: Building2 },
-  { href: '/deals',      label: 'Deals',       icon: TrendingUp },
+  { href: '/deals',      label: 'Prospects',   icon: TrendingUp },
   { href: '/projects',   label: 'Projects',    icon: FolderKanban },
   { href: '/partners',   label: 'Partners',    icon: Handshake },
   { href: '/ai-chat',    label: 'AI Assistant', icon: Sparkles },
@@ -33,6 +33,7 @@ const mainNav: NavItem[] = [
 
 const insightsNav: NavItem[] = [
   { href: '/dashboard',  label: 'Dashboard',   icon: LayoutDashboard },
+  { href: '/reports',    label: 'Reports',     icon: BarChart3 },
 ];
 
 const adminNav: NavItem[] = [

@@ -109,7 +109,7 @@ export function ChatPanel({ fullPage = false }: { fullPage?: boolean }) {
       <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4">
         <div>
           <h1 className="text-sm font-semibold text-slate-900">CRM Assistant</h1>
-          <p className="text-[11px] text-slate-400">Ask questions across contacts, companies, deals, and activity.</p>
+          <p className="text-[11px] text-slate-400">Ask questions across contacts, companies, prospects, and activity.</p>
         </div>
         <Button
           type="button"

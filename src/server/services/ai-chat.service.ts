@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { db as defaultDb } from '@/server/db';
 import {
   activities,
@@ -77,7 +77,7 @@ function formatCurrencyAmount(value: number, currency = 'INR'): string {
 
 function isPipelineValueQuestion(query: string): boolean {
   const normalized = query.toLowerCase();
-  const mentionsDeals = /\b(deal|deals|pipeline)\b/.test(normalized);
+  const mentionsDeals = /\b(deal|deals|prospect|prospects|pipeline)\b/.test(normalized);
   const asksValue = /\b(value|amount|total|worth|sum)\b/.test(normalized);
   return mentionsDeals && asksValue;
 }
@@ -111,31 +111,58 @@ async function answerPipelineValueQuestion(query: string, db: DbClient): Promise
     return formatCurrencyAmount(value, row.currency);
   });
 
-  const scope = `${onlyOpenDeals ? 'open ' : ''}${salesPipelineOnly ? 'sales pipeline' : 'pipeline'} deals`;
+  const scope = `${onlyOpenDeals ? 'open ' : ''}${salesPipelineOnly ? 'sales pipeline ' : 'pipeline '}prospects`;
 
   if (rows.length === 0 || dealCount === 0) {
     return `There are no ${scope} with a value recorded.`;
   }
 
-  return `You have **${dealCount} ${scope}** with a total value of **${totals.join(' + ')}**.\n\nI used each deal's stored currency, so INR amounts are shown as rupees rather than dollars.`;
+  return `You have **${dealCount} ${scope}** with a total value of **${totals.join(' + ')}**.\n\nI used each prospect's stored currency, so INR amounts are shown as rupees rather than dollars.`;
 }
 
-function parseUserActivityQuestion(query: string): { name: string; includeTasks: boolean; includeAutomated: boolean } | null {
+type ParsedUserActivityQuestion = {
+  name: string;
+  includeTasks: boolean;
+  includeAutomated: boolean;
+  timeframe: 'week' | 'month' | 'all_time';
+  wantsMonthlySummary: boolean;
+};
+
+function cleanPersonName(value: string): string {
+  return value
+    .replace(/'s\b/gi, '')
+    .replace(/\b(all|the|calls?|emails?|activities?|activity|done|did|has|have|had|this|week|month|monthly|till|date|from|start|structured|tabular|format|numbers?|which)\b/gi, ' ')
+    .replace(/[^a-zA-Z\s.'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseUserActivityQuestion(query: string): ParsedUserActivityQuestion | null {
   const normalized = query.toLowerCase();
-  if (!/\bactivit(y|ies)\b/.test(normalized)) return null;
-  if (!/\b(this week|week)\b/.test(normalized)) return null;
+  const mentionsActivity = /\b(activit(?:y|ies)|calls?|emails?|whatsapp|meetings?|logged|done)\b/.test(normalized);
+  if (!mentionsActivity) return null;
 
   const nameMatch =
-    query.match(/\bshow\s+me\s+([a-z][a-z\s.'-]{1,60}?)(?:'s|\s+activity|\s+activities)/i) ??
-    query.match(/\b([a-z][a-z\s.'-]{1,60}?)(?:'s)\s+activit(?:y|ies)\b/i);
+    query.match(/\bthat\s+([a-z][a-z\s.'-]{1,60}?)\s+(?:has|have|had|did|done)\b/i) ??
+    query.match(/\b([a-z][a-z\s.'-]{1,60}?)(?:'s)\s+(?:activit(?:y|ies)|calls?|emails?|whatsapp|meetings?)\b/i) ??
+    query.match(/\bshow\s+me\s+([a-z][a-z\s.'-]{1,60}?)(?:'s|\s+activity|\s+activities|\s+calls|\s+emails)/i) ??
+    query.match(/\b(?:by|for)\s+([a-z][a-z\s.'-]{1,60}?)(?:\s+from|\s+till|\s+this|\s+in|\s*$)/i);
 
-  const name = nameMatch?.[1]?.trim().replace(/\s+/g, ' ');
+  const name = nameMatch?.[1] ? cleanPersonName(nameMatch[1]) : '';
   if (!name) return null;
+
+  const timeframe = /\b(this week|week)\b/.test(normalized)
+    ? 'week'
+    : /\b(this month)\b/.test(normalized)
+      ? 'month'
+      : 'all_time';
 
   return {
     name,
-    includeTasks: /\b(task|tasks|reminder|reminders|todo|to-do)\b/i.test(query),
+    includeTasks: /\b(all activities|task|tasks|reminder|reminders|todo|to-do)\b/i.test(query),
     includeAutomated: /\b(automated|automation|system)\b/i.test(query),
+    timeframe,
+    wantsMonthlySummary: /\b(month|monthly|which month|tabular|table|numbers?)\b/i.test(query),
   };
 }
 
@@ -177,10 +204,36 @@ function formatActivityTimestamp(value: Date): string {
   });
 }
 
-async function answerUserActivityQuestion(query: string, db: DbClient): Promise<string | null> {
-  const parsed = parseUserActivityQuestion(query);
-  if (!parsed) return null;
+function getActivityRange(parsed: ParsedUserActivityQuestion): { start?: Date; end?: Date; label: string } {
+  if (parsed.timeframe === 'week') {
+    const { start, end } = getCurrentIstWeekRange();
+    return { start, end, label: 'this week' };
+  }
 
+  if (parsed.timeframe === 'month') {
+    const istOffsetMs = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(Date.now() + istOffsetMs);
+    const monthStartIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1, 0, 0, 0, 0);
+    const nextMonthStartIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth() + 1, 1, 0, 0, 0, 0);
+    return {
+      start: new Date(monthStartIst - istOffsetMs),
+      end: new Date(nextMonthStartIst - istOffsetMs),
+      label: 'this month',
+    };
+  }
+
+  return { label: 'from the start till date' };
+}
+
+async function resolveActivityUser(
+  parsed: ParsedUserActivityQuestion,
+  db: DbClient,
+  currentUserId?: string
+): Promise<
+  | { user: { id: string; firstName: string | null; lastName: string | null; email: string | null }; clarification?: never }
+  | { user?: never; clarification: string }
+> {
+  const normalizedName = parsed.name.toLowerCase();
   const matchingUsers = await db
     .select({
       id: users.id,
@@ -191,28 +244,150 @@ async function answerUserActivityQuestion(query: string, db: DbClient): Promise<
     .from(users)
     .where(and(
       sql`${users.status} != 'inactive'`,
-      sql`concat_ws(' ', ${users.firstName}, ${users.lastName}) ILIKE ${`%${parsed.name}%`}`
+      or(
+        sql`concat_ws(' ', ${users.firstName}, ${users.lastName}) ILIKE ${`%${parsed.name}%`}`,
+        ilike(users.firstName, parsed.name),
+        ilike(users.lastName, parsed.name)
+      )
     ))
-    .limit(5);
+    .limit(10);
 
   if (matchingUsers.length === 0) {
-    return `I could not find a CRM user matching **${parsed.name}**. Try using their full name.`;
+    return { clarification: `I could not find a CRM user matching **${parsed.name}**. Try using their full name.` };
   }
 
-  if (matchingUsers.length > 1) {
-    return `I found multiple users matching **${parsed.name}**:\n\n${matchingUsers
-      .map((user, index) => `${index + 1}. ${[user.firstName, user.lastName].filter(Boolean).join(' ')} (${user.email})`)
-      .join('\n')}\n\nPlease ask again with the full name.`;
+  if (matchingUsers.length === 1) {
+    return { user: matchingUsers[0]! };
   }
 
-  const [matchedUser] = matchingUsers;
-  const { start, end } = getCurrentIstWeekRange();
+  const currentUserMatch = matchingUsers.find((user) => {
+    if (user.id !== currentUserId) return false;
+    const firstName = user.firstName?.toLowerCase() ?? '';
+    const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').toLowerCase();
+    return firstName === normalizedName || fullName.includes(normalizedName);
+  });
+
+  if (currentUserMatch) {
+    return { user: currentUserMatch };
+  }
+
+  const { start, end } = getActivityRange(parsed);
   const typeFilter = parsed.includeTasks
     ? undefined
     : sql`${activities.activityType} != 'task'`;
   const automationFilter = parsed.includeAutomated
     ? undefined
     : sql`COALESCE(${activities.isAutomated}, false) = false`;
+
+  const activityCounts = await db
+    .select({
+      userId: activities.performedBy,
+      count: sql<number>`COUNT(*)::int`,
+    })
+    .from(activities)
+    .where(and(
+      inArray(activities.performedBy, matchingUsers.map((user) => user.id)),
+      sql`${activities.deletedAt} IS NULL`,
+      start ? sql`${activities.occurredAt} >= ${start}` : undefined,
+      end ? sql`${activities.occurredAt} < ${end}` : undefined,
+      typeFilter,
+      automationFilter
+    ))
+    .groupBy(activities.performedBy);
+
+  const usersWithActivity = activityCounts
+    .filter((row) => Number(row.count ?? 0) > 0)
+    .map((row) => matchingUsers.find((user) => user.id === row.userId))
+    .filter(Boolean);
+
+  if (usersWithActivity.length === 1) {
+    return { user: usersWithActivity[0]! };
+  }
+
+  return {
+    clarification: `I found multiple users matching **${parsed.name}**:\n\n${matchingUsers
+      .map((user, index) => `${index + 1}. ${[user.firstName, user.lastName].filter(Boolean).join(' ')} (${user.email})`)
+      .join('\n')}\n\nPlease ask again with the full name.`,
+  };
+}
+
+async function answerUserActivityQuestion(query: string, db: DbClient, currentUserId?: string): Promise<string | null> {
+  const parsed = parseUserActivityQuestion(query);
+  if (!parsed) return null;
+
+  const resolvedUser = await resolveActivityUser(parsed, db, currentUserId);
+  if (resolvedUser.clarification) return resolvedUser.clarification;
+  if (!resolvedUser.user) {
+    return `I could not find a CRM user matching **${parsed.name}**. Try using their full name.`;
+  }
+
+  const matchedUser = resolvedUser.user;
+  const { start, end, label } = getActivityRange(parsed);
+  const typeFilter = parsed.includeTasks
+    ? undefined
+    : sql`${activities.activityType} != 'task'`;
+  const automationFilter = parsed.includeAutomated
+    ? undefined
+    : sql`COALESCE(${activities.isAutomated}, false) = false`;
+  const displayName = [matchedUser.firstName, matchedUser.lastName].filter(Boolean).join(' ') || parsed.name;
+
+  if (parsed.wantsMonthlySummary || parsed.timeframe === 'all_time') {
+    const rows = await db
+      .select({
+        monthStart: sql<string>`to_char(date_trunc('month', ${activities.occurredAt} AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM')`,
+        monthLabel: sql<string>`to_char(date_trunc('month', ${activities.occurredAt} AT TIME ZONE 'Asia/Kolkata'), 'Mon YYYY')`,
+        total: sql<number>`COUNT(*)::int`,
+        calls: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} = 'call')::int`,
+        emails: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} IN ('email_sent', 'email_received'))::int`,
+        whatsapp: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} = 'whatsapp')::int`,
+        meetings: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} IN ('meeting', 'demo'))::int`,
+        notes: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} = 'note')::int`,
+        tasks: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} = 'task')::int`,
+        other: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} NOT IN ('call', 'email_sent', 'email_received', 'whatsapp', 'meeting', 'demo', 'note', 'task'))::int`,
+      })
+      .from(activities)
+      .where(and(
+        eq(activities.performedBy, matchedUser.id),
+        sql`${activities.deletedAt} IS NULL`,
+        start ? sql`${activities.occurredAt} >= ${start}` : undefined,
+        end ? sql`${activities.occurredAt} < ${end}` : undefined,
+        typeFilter,
+        automationFilter
+      ))
+      .groupBy(sql`date_trunc('month', ${activities.occurredAt} AT TIME ZONE 'Asia/Kolkata')`)
+      .orderBy(sql`date_trunc('month', ${activities.occurredAt} AT TIME ZONE 'Asia/Kolkata')`);
+
+    if (rows.length === 0) {
+      const filteredNote = parsed.includeTasks || parsed.includeAutomated
+        ? ''
+      : ' I excluded automated CRM tasks and stale-prospect reminders from this activity summary.';
+      return `I did not find any human activity logged by **${displayName}** ${label}.${filteredNote}`;
+    }
+
+    const totals = rows.reduce(
+      (acc, row) => ({
+        total: acc.total + Number(row.total ?? 0),
+        calls: acc.calls + Number(row.calls ?? 0),
+        emails: acc.emails + Number(row.emails ?? 0),
+        whatsapp: acc.whatsapp + Number(row.whatsapp ?? 0),
+        meetings: acc.meetings + Number(row.meetings ?? 0),
+        notes: acc.notes + Number(row.notes ?? 0),
+        tasks: acc.tasks + Number(row.tasks ?? 0),
+        other: acc.other + Number(row.other ?? 0),
+      }),
+      { total: 0, calls: 0, emails: 0, whatsapp: 0, meetings: 0, notes: 0, tasks: 0, other: 0 }
+    );
+
+    const tableRows = rows.map((row) => (
+      `| ${row.monthLabel} | ${row.total} | ${row.calls} | ${row.emails} | ${row.whatsapp} | ${row.meetings} | ${row.notes} | ${row.tasks} | ${row.other} |`
+    ));
+
+    const exclusions = parsed.includeTasks || parsed.includeAutomated
+      ? ''
+      : '\n\nI excluded automated system tasks and stale-prospect reminders so this reflects actual logged activity.';
+
+    return `Here is **${displayName}'s activity summary ${label}**, grouped by month.\n\n| Month | Total | Calls | Emails | WhatsApp | Meetings/Demos | Notes | Tasks | Other |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n${tableRows.join('\n')}\n| **Total** | **${totals.total}** | **${totals.calls}** | **${totals.emails}** | **${totals.whatsapp}** | **${totals.meetings}** | **${totals.notes}** | **${totals.tasks}** | **${totals.other}** |\n\n[View full report →](/reports/${matchedUser.id}?preset=this_month)${exclusions}`;
+  }
 
   const rows = await db
     .select({
@@ -229,30 +404,28 @@ async function answerUserActivityQuestion(query: string, db: DbClient): Promise<
     .leftJoin(companies, eq(activities.companyId, companies.id))
     .leftJoin(deals, eq(activities.dealId, deals.id))
     .where(and(
-      eq(activities.performedBy, matchedUser!.id),
+      eq(activities.performedBy, matchedUser.id),
       sql`${activities.deletedAt} IS NULL`,
-      sql`${activities.occurredAt} >= ${start}`,
-      sql`${activities.occurredAt} < ${end}`,
+      start ? sql`${activities.occurredAt} >= ${start}` : undefined,
+      end ? sql`${activities.occurredAt} < ${end}` : undefined,
       typeFilter,
       automationFilter
     ))
     .orderBy(desc(activities.occurredAt))
     .limit(25);
 
-  const displayName = [matchedUser!.firstName, matchedUser!.lastName].filter(Boolean).join(' ') || parsed.name;
-
   if (rows.length === 0) {
     const filteredNote = parsed.includeTasks || parsed.includeAutomated
       ? ''
-      : ' I excluded automated CRM tasks and stale-deal reminders from this activity view.';
-    return `I did not find any human activity logged by **${displayName}** this week.${filteredNote}`;
+      : ' I excluded automated CRM tasks and stale-prospect reminders from this activity view.';
+    return `I did not find any human activity logged by **${displayName}** ${label}.${filteredNote}`;
   }
 
   const lines = rows.map((row) => {
     const related = [
       [row.contactFirstName, row.contactLastName].filter(Boolean).join(' '),
       row.companyName,
-      row.dealTitle ? `Deal: ${row.dealTitle}` : '',
+      row.dealTitle ? `Prospect: ${row.dealTitle}` : '',
     ].filter(Boolean);
     const relatedText = related.length ? ` — ${related.join(' · ')}` : '';
     return `- **${formatActivityType(row.activityType)}:** ${row.subject || 'No subject'}${relatedText} _(${formatActivityTimestamp(row.occurredAt)})_`;
@@ -260,10 +433,10 @@ async function answerUserActivityQuestion(query: string, db: DbClient): Promise<
 
   const exclusions = parsed.includeTasks || parsed.includeAutomated
     ? ''
-    : '\n\nI excluded automated system tasks and stale-deal reminders so this reflects actual logged activity.';
+    : '\n\nI excluded automated system tasks and stale-prospect reminders so this reflects actual logged activity.';
   const capped = rows.length === 25 ? '\n\nShowing the latest 25 activities for this week.' : '';
 
-  return `**${displayName} has ${rows.length} human activit${rows.length === 1 ? 'y' : 'ies'} logged this week:**\n\n${lines.join('\n')}${capped}${exclusions}`;
+  return `**${displayName} has ${rows.length} human activit${rows.length === 1 ? 'y' : 'ies'} logged ${label}:**\n\n${lines.join('\n')}${capped}\n\n[View full report →](/reports/${matchedUser.id}?preset=this_month)${exclusions}`;
 }
 
 export function buildSystemPrompt(userContext: UserContext): string {
@@ -271,7 +444,7 @@ export function buildSystemPrompt(userContext: UserContext): string {
 You are the SecComply CRM Intelligence Assistant. You help the sales team and management query their CRM data using natural language.
 
 ## Your Capabilities
-- Answer questions about contacts, companies, deals, activities, pipelines, tags, and team performance
+- Answer questions about contacts, companies, prospects, activities, pipelines, tags, and team performance
 - Generate SQL queries against the SecComply CRM PostgreSQL database
 - Ask smart clarifying questions when a query is ambiguous
 - Format results in a clean, readable way with relevant context
@@ -289,11 +462,15 @@ custom_fields (jsonb), deleted_at (null = active)
 id (uuid), name, domain, website, industry, sub_industry, company_size, company_type (prospect/customer/partner/vendor/competitor/other),
 phone, email, city, state, country, location, owner_id (-> users.id), status, created_at, deleted_at
 
-### deals
+### deals (called "Prospects" in the UI)
 id (uuid), title, pipeline_id (-> pipelines.id), stage_id (-> pipeline_stages.id), amount (decimal), currency,
 probability (0-100), services (jsonb text array), service_other, status (open/won/lost/abandoned),
 expected_close_date, actual_close_date, primary_contact_id (-> contacts.id), company_id (-> companies.id),
 partner_company_id (-> companies.id), owner_id (-> users.id), stage_entered_at, is_velocity_slow, created_at, deleted_at
+
+NOTE: Users will refer to these as "prospects" in natural language queries.
+When a user asks about "prospects", query the deals table.
+When responding, always use the word "prospect/prospects" not "deal/deals".
 
 ### deal_contacts
 deal_id (-> deals.id), contact_id (-> contacts.id), role
@@ -338,10 +515,10 @@ Permissions JSON: ${JSON.stringify(userContext.permissions)}
 
 ## RBAC Rules for SQL Generation
 - Always add WHERE deleted_at IS NULL to contacts, companies, activities, and deals queries when those tables are used
-- Never guess currency. Deal values are stored in deals.amount and deals.currency. When aggregating deal amount, include deals.currency in SELECT and GROUP BY unless the user explicitly asks for a single-currency conversion.
-- Format INR as INR/₹, USD as USD/$, and never use $ for deal values unless deals.currency = 'USD'.
+- Never guess currency. Prospect values are stored in deals.amount and deals.currency. When aggregating prospect amount, include deals.currency in SELECT and GROUP BY unless the user explicitly asks for a single-currency conversion.
+- Format INR as INR/₹, USD as USD/$, and never use $ for prospect values unless deals.currency = 'USD'.
 - When a user asks for someone's "activity", default to human logged activity: activities.performed_by = that user's id, activities.is_automated = false, and exclude activity_type = 'task' unless they explicitly ask for tasks/reminders/automations.
-- Do not treat stale-deal reminders such as "Deal stuck..." as sales activity unless the user explicitly asks for automated tasks.
+- Do not treat stale-prospect reminders such as "Prospect stuck..." as sales activity unless the user explicitly asks for automated tasks.
 - If user role is 'sales_rep' or permissions are own-scoped, add owner filters:
   - contacts.owner_id = '${userContext.userId}' for contacts
   - deals.owner_id = '${userContext.userId}' for deals
@@ -351,9 +528,16 @@ Permissions JSON: ${JSON.stringify(userContext.permissions)}
 - Never expose password_hash, sensitive auth fields, system tables, or internal auth data
 - Only SELECT queries are permitted. Never generate INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, CREATE, GRANT, or REVOKE
 
+IMPORTANT TERMINOLOGY:
+- The database table is called "deals" but users call them "Prospects"
+- Always use "Prospect/Prospects" in your responses, never "Deal/Deals"
+- Example: "You have 8 open prospects worth ₹24,00,000" NOT "8 open deals"
+- Pipeline stages, pipeline names, and all other terms remain unchanged
+
 ## How to Handle Ambiguous Queries
 - If they mention "Delhi event" or any event name, list matching event-like tags and ask which ones
-- If they mention a person by first name only and there are multiple users or contacts, list them and ask
+- For activity/performance questions, treat a mentioned first name as a CRM user first, not a contact. If the first name matches the current user, use the current user without asking. Only ask for clarification when multiple active CRM users are equally likely after applying that preference.
+- If they mention a person by first name only for non-activity questions and there are multiple users or contacts, list them and ask
 - If they mention "this quarter/month/year", use the current date context and include the exact date range in the query explanation
 - If they ask "how many" without specifying a breakdown, ask if they want a total or breakdown only when the answer would otherwise be unclear
 
@@ -644,7 +828,7 @@ export async function handleMessage(
     const userContext = await getUserContext(userId, db);
     const systemPrompt = buildSystemPrompt(userContext);
     const pipelineValueAnswer = await answerPipelineValueQuestion(userMessage, db);
-    const userActivityAnswer = await answerUserActivityQuestion(userMessage, db);
+    const userActivityAnswer = await answerUserActivityQuestion(userMessage, db, userContext.userId);
 
     if (pipelineValueAnswer) {
       const message = await storeAssistantMessage({ db, sessionId, content: pipelineValueAnswer });

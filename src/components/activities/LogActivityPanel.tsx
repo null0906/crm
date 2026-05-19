@@ -169,7 +169,7 @@ export function LogActivityPanel({
       {/* Entity linker (only shown when no pre-linked entity) */}
       {!preContactId && !preCompanyId && !preDealId && (
         <div className="space-y-1.5">
-          <Label>Link to Contact / Company / Deal <span className="text-slate-400 font-normal">(optional)</span></Label>
+          <Label>Link to Contact / Company / Prospect <span className="text-slate-400 font-normal">(optional)</span></Label>
           {linkedEntity ? (
             <div className="flex items-center gap-2 h-9 px-3 rounded-lg border border-slate-200 bg-slate-50 text-[13px]">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 bg-slate-200 rounded px-1.5 py-0.5">{linkedEntity.type}</span>
@@ -183,7 +183,7 @@ export function LogActivityPanel({
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <Input
-                  placeholder="Search contacts, companies, deals..."
+                  placeholder="Search contacts, companies, prospects..."
                   value={entitySearch}
                   onChange={(e) => { setEntitySearch(e.target.value); setEntitySearchOpen(true); }}
                   onFocus={() => setEntitySearchOpen(true)}

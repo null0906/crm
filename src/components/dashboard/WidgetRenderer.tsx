@@ -232,11 +232,11 @@ function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilt
     const total = open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0);
     const wt = open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0) * ((d.probability as number || 0) / 100), 0);
     value = formatCurrency(total);
-    subLine = `${formatCurrency(wt)} weighted · ${open.length} deals`;
+    subLine = `${formatCurrency(wt)} weighted · ${open.length} prospects`;
   } else if (metric === 'won_value') {
     const won = filteredDeals.filter((d) => d.status === 'won');
     value = formatCurrency(won.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0));
-    subLine = `${won.length} deal${won.length !== 1 ? 's' : ''} closed won`;
+    subLine = `${won.length} prospect${won.length !== 1 ? 's' : ''} closed won`;
   } else if (metric === 'open_deals') {
     const open = filteredDeals.filter((d) => d.status === 'open');
     value = open.length;
@@ -252,7 +252,7 @@ function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilt
     const won = filteredDeals.filter((d) => d.status === 'won');
     const total = won.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0);
     value = won.length > 0 ? formatCurrency(total / won.length) : '—';
-    subLine = `across ${won.length} won deals`;
+    subLine = `across ${won.length} won prospects`;
   }
 
   return (
@@ -372,7 +372,7 @@ function PipelineSummary({ widget, filter }: { widget: Widget; filter?: Dashboar
             <XAxis type="number" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
             <YAxis type="category" dataKey="name" width={72} tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
             <Tooltip content={<DarkTooltip />} />
-            <Bar dataKey="deals" name="Deals" radius={[0, 5, 5, 0]} maxBarSize={32}>
+            <Bar dataKey="deals" name="Prospects" radius={[0, 5, 5, 0]} maxBarSize={32}>
               {stageData.map((s) => <Cell key={s.gradId} fill={`url(#${s.gradId})`} />)}
               {showLabels && <LabelList dataKey="deals" position="right" style={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }} />}
             </Bar>
@@ -393,7 +393,7 @@ function PipelineSummary({ widget, filter }: { widget: Widget; filter?: Dashboar
             <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
             <Tooltip content={<DarkTooltip />} />
-            <Bar dataKey="deals" name="Deals" radius={[5, 5, 0, 0]} maxBarSize={44}>
+            <Bar dataKey="deals" name="Prospects" radius={[5, 5, 0, 0]} maxBarSize={44}>
               {stageData.map((s) => <Cell key={s.gradId} fill={`url(#${s.gradId})`} />)}
               {showLabels && <LabelList dataKey="deals" position="top" style={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }} />}
             </Bar>
@@ -459,7 +459,7 @@ function DealStatusChart({ widget, filter }: { widget: Widget; filter?: Dashboar
             <XAxis type="number" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
             <YAxis type="category" dataKey="name" width={40} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
             <Tooltip content={<DarkTooltip />} />
-            <Bar dataKey="count" name="Deals" radius={[0, 6, 6, 0]} maxBarSize={40}>
+            <Bar dataKey="count" name="Prospects" radius={[0, 6, 6, 0]} maxBarSize={40}>
               {byStatus.map((s) => <Cell key={s.gid} fill={`url(#${s.gid})`} />)}
               {showLabels && <LabelList dataKey="count" position="right" style={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />}
             </Bar>
@@ -481,7 +481,7 @@ function DealStatusChart({ widget, filter }: { widget: Widget; filter?: Dashboar
             <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
             <Tooltip content={<DarkTooltip />} />
-            <Bar dataKey="count" name="Deals" radius={[6, 6, 0, 0]} maxBarSize={64}>
+            <Bar dataKey="count" name="Prospects" radius={[6, 6, 0, 0]} maxBarSize={64}>
               {byStatus.map((s) => <Cell key={s.gid} fill={`url(#${s.gid})`} />)}
               {showLabels && <LabelList dataKey="count" position="top" style={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />}
             </Bar>
@@ -605,7 +605,7 @@ function RevenueAreaChart({ widget, filter }: { widget: Widget; filter?: Dashboa
       </div>
       {!hasData ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-xs text-slate-400">No deal data for this period</p>
+          <p className="text-xs text-slate-400">No prospect data for this period</p>
         </div>
       ) : isLine ? (
         <ResponsiveContainer width="100%" height="85%">
@@ -720,7 +720,7 @@ function DealFunnelChart({ widget }: { widget: Widget }) {
                     style={{ width: `${pct}%`, backgroundColor: stage.color, opacity: 0.88 }}
                   >
                     <span className="text-white text-[10px] font-semibold whitespace-nowrap drop-shadow-sm">
-                      {stage.deals} deal{stage.deals !== 1 ? 's' : ''}
+                      {stage.deals} prospect{stage.deals !== 1 ? 's' : ''}
                     </span>
                   </div>
                   {formatCurrency(stage.value) !== '₹0' && (

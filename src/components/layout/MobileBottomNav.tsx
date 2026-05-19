@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 const mobileNav = [
   { href: '/contacts', label: 'Leads', icon: Users },
   { href: '/companies', label: 'Companies', icon: Building2 },
-  { href: '/deals', label: 'Deals', icon: TrendingUp },
+  { href: '/deals', label: 'Prospects', icon: TrendingUp },
   { href: '/projects', label: 'Projects', icon: FolderKanban },
   { href: '/ai-chat', label: 'AI', icon: Sparkles },
   { href: '/activities', label: 'Activity', icon: Activity },
@@ -18,7 +18,7 @@ export function MobileBottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border-subtle)] bg-[rgba(255,255,255,0.94)] px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 shadow-[0_-8px_24px_rgba(15,20,40,0.08)] backdrop-blur md:hidden">
+    <nav className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border-subtle)] bg-[rgba(255,255,255,0.94)] px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 shadow-[0_-8px_24px_rgba(15,20,40,0.08)] backdrop-blur md:hidden">
       <div className="flex items-center justify-between gap-1 overflow-x-auto">
         {mobileNav.map((item) => {
           const Icon = item.icon;

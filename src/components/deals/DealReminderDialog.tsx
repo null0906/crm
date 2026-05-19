@@ -48,7 +48,7 @@ export function DealReminderDialog({
   const [priority, setPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium');
 
   const placeholder = useMemo(
-    () => (dealTitle ? `Ping ${dealTitle} in 2 days` : 'Follow up with this deal'),
+    () => (dealTitle ? `Ping ${dealTitle} in 2 days` : 'Follow up with this prospect'),
     [dealTitle]
   );
 
@@ -89,9 +89,9 @@ export function DealReminderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Set Deal Reminder</DialogTitle>
+          <DialogTitle>Set Prospect Reminder</DialogTitle>
           <DialogDescription>
-            Create a follow-up reminder for this deal. The reminder will go only to the task owner when it becomes due.
+            Create a follow-up reminder for this prospect. The reminder will go only to the task owner when it becomes due.
           </DialogDescription>
         </DialogHeader>
 

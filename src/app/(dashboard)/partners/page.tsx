@@ -49,24 +49,24 @@ function AttachDealPanel({
 
   const attachDeal = trpc.partners.attachDeal.useMutation({
     onSuccess: () => {
-      toast.success('Deal attached to partner');
+      toast.success('Prospect attached to partner');
       onAttached();
       onClose();
     },
-    onError: (err) => toast.error('Failed to attach deal', { description: err.message }),
+    onError: (err) => toast.error('Failed to attach prospect', { description: err.message }),
   });
 
   return (
-    <SlideOverPanel open={open} onClose={onClose} title="Attach Existing Deal" width="md">
+    <SlideOverPanel open={open} onClose={onClose} title="Attach Existing Prospect" width="md">
       <div className="p-6 space-y-4">
         <div className="space-y-1.5">
-          <Label>Search sales deals</Label>
+          <Label>Search sales prospects</Label>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by deal title..."
+              placeholder="Search by prospect title..."
               className="pl-8"
             />
           </div>
@@ -74,7 +74,7 @@ function AttachDealPanel({
 
         <div className="rounded-xl border border-slate-200 bg-white max-h-[420px] overflow-y-auto">
           {(deals as Deal[]).length === 0 ? (
-            <div className="px-4 py-6 text-sm text-slate-400">No eligible sales deals found.</div>
+            <div className="px-4 py-6 text-sm text-slate-400">No eligible sales prospects found.</div>
           ) : (
             (deals as Deal[]).map((deal) => (
               <div key={String(deal.id)} className="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-100 last:border-0">
@@ -175,7 +175,7 @@ function PartnerRow({ partner }: { partner: Company }) {
           <div className="flex items-center gap-6 flex-shrink-0">
             <div className="text-center">
               <p className="text-sm font-bold text-slate-800">{deals.length}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Sales Deals</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Sales Prospects</p>
             </div>
             <div className="text-center">
               <p className="text-sm font-bold text-emerald-700">{wonDeals.length}</p>
@@ -214,21 +214,21 @@ function PartnerRow({ partner }: { partner: Company }) {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-1.5">
                   <TrendingUp className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="text-xs font-semibold text-slate-600">Sales deals under this partner</span>
+                  <span className="text-xs font-semibold text-slate-600">Sales prospects under this partner</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Button size="sm" variant="outline" onClick={() => setAttachOpen(true)}>
                     <Link2 className="w-3.5 h-3.5 mr-1" />
-                    Attach Deal
+                    Attach Prospect
                   </Button>
                   <Button size="sm" onClick={() => setCreateDealOpen(true)}>
                     <BriefcaseBusiness className="w-3.5 h-3.5 mr-1" />
-                    New Deal
+                    New Prospect
                   </Button>
                 </div>
               </div>
               {deals.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">No sales deals linked to this partner yet.</p>
+                <p className="text-xs text-slate-400 italic">No sales prospects linked to this partner yet.</p>
               ) : (
                 <div className="space-y-2">
                   {deals.map((deal) => (
@@ -302,7 +302,7 @@ function PartnerRow({ partner }: { partner: Company }) {
         onAttached={handleRefresh}
       />
 
-      <SlideOverPanel open={createDealOpen} onClose={() => setCreateDealOpen(false)} title="Create Partner-Sourced Deal" width="md">
+      <SlideOverPanel open={createDealOpen} onClose={() => setCreateDealOpen(false)} title="Create Partner-Sourced Prospect" width="md">
         <div className="p-6 space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor={`partner-pipeline-${partnerId}`}>Sales pipeline</Label>
@@ -364,7 +364,7 @@ export default function PartnersPage() {
         <div>
           <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Partners</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Companies marked as partners, along with the sales deals explicitly linked to them
+            Companies marked as partners, along with the sales prospects explicitly linked to them
           </p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -386,7 +386,7 @@ export default function PartnersPage() {
         <div className="flex items-center gap-2 text-xs text-slate-500 ml-auto">
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-violet-400 inline-block" />
-            Only partner-tagged sales deals appear here
+            Only partner-tagged sales prospects appear here
           </span>
         </div>
       </div>
@@ -417,7 +417,7 @@ export default function PartnersPage() {
             <p className="text-sm text-slate-400 mb-4 max-w-xs">
               {search
                 ? `No partners matching "${search}"`
-                : 'Add a company with type "Partner" to track partner relationships and their sourced sales deals here.'}
+                : 'Add a company with type "Partner" to track partner relationships and their sourced sales prospects here.'}
             </p>
             {!search && (
               <Button onClick={() => setCreateOpen(true)}>

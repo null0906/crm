@@ -234,7 +234,7 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
                 </Button>
                 <Button size="sm" onClick={() => setCreateDealOpen(true)}>
                   <BriefcaseBusiness className="w-3.5 h-3.5 mr-1" />
-                  Create Deal
+                  Create Prospect
                 </Button>
               </div>
             </div>
@@ -245,7 +245,7 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
                 <TabsList>
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="activity">Activity</TabsTrigger>
-                  <TabsTrigger value="deals">Deals</TabsTrigger>
+                  <TabsTrigger value="deals">Prospects</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="mt-4">
@@ -329,7 +329,7 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
         }}
       />
 
-      <SlideOverPanel open={createDealOpen} onClose={() => setCreateDealOpen(false)} title="Create Deal" width="md">
+      <SlideOverPanel open={createDealOpen} onClose={() => setCreateDealOpen(false)} title="Create Prospect" width="md">
         <div className="p-6 space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="contact-create-deal-pipeline">Pipeline</Label>
@@ -396,7 +396,7 @@ function ContactDeals({ contactId }: { contactId: string }) {
   if (deals.length === 0) {
     return (
       <div className="text-center py-10 text-slate-400">
-        <p className="text-sm">No deals linked to this contact yet.</p>
+        <p className="text-sm">No prospects linked to this contact yet.</p>
       </div>
     );
   }

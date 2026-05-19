@@ -58,7 +58,7 @@ export const dealRouter = router({
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const deal = await dealService.getDealById(ctx.user!, input.id);
-      if (!deal) throw new TRPCError({ code: 'NOT_FOUND', message: 'Deal not found' });
+      if (!deal) throw new TRPCError({ code: 'NOT_FOUND', message: 'Prospect not found' });
       return deal;
     }),
 
@@ -67,7 +67,7 @@ export const dealRouter = router({
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const deal = await dealService.getProjectDetails(ctx.user!, input.id);
-      if (!deal) throw new TRPCError({ code: 'NOT_FOUND', message: 'Deal not found' });
+      if (!deal) throw new TRPCError({ code: 'NOT_FOUND', message: 'Prospect not found' });
       return deal;
     }),
 

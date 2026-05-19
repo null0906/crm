@@ -5,7 +5,7 @@ import {
   useReactTable, getCoreRowModel, flexRender,
   type ColumnDef, type RowSelectionState, type VisibilityState,
 } from '@tanstack/react-table';
-import { Plus, Search, Users, Download, Upload, Trash2, Pencil, Link2, ChevronDown, MessageCircle } from 'lucide-react';
+import { Plus, Search, Users, Download, Upload, Trash2, Pencil, Link2, ChevronDown, MessageCircle, PhoneCall, Mail, CalendarDays, StickyNote } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,74 @@ function formatPhone(value: unknown) {
   if (!raw) return null;
   if (/\s|-|\(|\)/.test(raw)) return raw;
   return raw.replace(/(\d{5})(?=\d)/g, '$1 ');
+}
+
+const INITIAL_TOUCH_CONFIG: Record<string, { label: string; icon: React.ElementType; className: string }> = {
+  call: {
+    label: 'Call',
+    icon: PhoneCall,
+    className: 'border-blue-200 bg-blue-50 text-blue-700',
+  },
+  email_sent: {
+    label: 'Email',
+    icon: Mail,
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  },
+  email_received: {
+    label: 'Email',
+    icon: Mail,
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  },
+  meeting: {
+    label: 'Meeting',
+    icon: CalendarDays,
+    className: 'border-amber-200 bg-amber-50 text-amber-700',
+  },
+  demo: {
+    label: 'Demo',
+    icon: CalendarDays,
+    className: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+  },
+  whatsapp: {
+    label: 'WhatsApp',
+    icon: MessageCircle,
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  },
+  linkedin: {
+    label: 'LinkedIn',
+    icon: Link2,
+    className: 'border-sky-200 bg-sky-50 text-sky-700',
+  },
+  note: {
+    label: 'Note',
+    icon: StickyNote,
+    className: 'border-slate-200 bg-slate-50 text-slate-600',
+  },
+};
+
+function InitialTouchBadge({ type, at }: { type: unknown; at: unknown }) {
+  const key = String(type ?? '').trim();
+  if (!key) return <EmptyCell />;
+  const cfg = INITIAL_TOUCH_CONFIG[key] ?? {
+    label: key.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+    icon: StickyNote,
+    className: 'border-slate-200 bg-slate-50 text-slate-600',
+  };
+  const Icon = cfg.icon;
+  const date = at ? new Date(String(at)) : null;
+  const title = date && !Number.isNaN(date.getTime())
+    ? `First touch: ${cfg.label} on ${formatDate(date)}`
+    : `First touch: ${cfg.label}`;
+
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${cfg.className}`}
+    >
+      <Icon className="h-3 w-3" strokeWidth={1.8} />
+      {cfg.label}
+    </span>
+  );
 }
 
 function TableAvatar({ name }: { name: string }) {
@@ -256,6 +324,16 @@ export default function ContactsPage() {
       },
     },
     {
+      accessorKey: 'initialActivityType',
+      header: 'Initial Touch',
+      cell: ({ row }) => (
+        <InitialTouchBadge
+          type={row.original.initialActivityType}
+          at={row.original.initialActivityAt}
+        />
+      ),
+    },
+    {
       accessorKey: 'company',
       header: 'Company',
       cell: ({ row }) => {
@@ -470,6 +548,8 @@ export default function ContactsPage() {
                   source: String(c.source ?? ''),
                   leadScore: String(c.leadScore ?? ''),
                   owner: `${String(c.ownerFirstName ?? '')} ${String(c.ownerLastName ?? '')}`.trim(),
+                  initialTouch: String(c.initialActivityType ?? ''),
+                  initialTouchAt: c.initialActivityAt ? formatDate(c.initialActivityAt as Date | string) : '',
                   location: String(c.location ?? ''),
                   city: String(c.city ?? ''),
                   state: String(c.state ?? ''),
@@ -798,7 +878,7 @@ export default function ContactsPage() {
                   </p>
                   <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-[var(--color-text-2)]">
                     <li>Company name text already stored on the contact</li>
-                    <li>Company linked to deals where this contact appears</li>
+                    <li>Company linked to prospects where this contact appears</li>
                   </ul>
                   <p className="mt-2 text-sm text-[var(--color-text-2)]">
                     Missing companies will be created automatically. No contacts will be deleted or duplicated.
@@ -831,7 +911,7 @@ export default function ContactsPage() {
                     </div>
                     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-purple-bg)] p-3 text-center">
                       <p className="text-2xl font-bold text-[var(--color-purple)]">{relinkResult.contactsLinkedByDeal}</p>
-                      <p className="mt-0.5 text-xs leading-tight text-[var(--color-purple)]">Linked via deal</p>
+                      <p className="mt-0.5 text-xs leading-tight text-[var(--color-purple)]">Linked via prospect</p>
                     </div>
                     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-success-bg)] p-3 text-center">
                       <p className="text-2xl font-bold text-[var(--color-success)]">{relinkResult.companiesCreated}</p>

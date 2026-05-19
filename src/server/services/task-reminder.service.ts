@@ -35,7 +35,7 @@ function buildTaskReminderEmail(args: {
   const ownerName = args.ownerFirstName?.trim() || 'there';
   const subject = `Reminder due today: ${args.subject}`;
   const contextLines = [
-    args.dealTitle ? `<li>Deal: ${escapeHtml(args.dealTitle)}</li>` : '',
+    args.dealTitle ? `<li>Prospect: ${escapeHtml(args.dealTitle)}</li>` : '',
     args.companyName ? `<li>Company: ${escapeHtml(args.companyName)}</li>` : '',
     args.contactName ? `<li>Contact: ${escapeHtml(args.contactName)}</li>` : '',
     `<li>Due date: ${escapeHtml(args.dueDate)}</li>`,
@@ -44,7 +44,7 @@ function buildTaskReminderEmail(args: {
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a;">
       <p>Hi ${ownerName},</p>
-      <p>Your deal reminder is due:</p>
+      <p>Your prospect reminder is due:</p>
       <p><strong>${escapeHtml(args.subject)}</strong></p>
       <ul>${contextLines}</ul>
       ${args.notes ? `<p><strong>Notes:</strong><br/>${escapeHtml(args.notes).replaceAll('\n', '<br/>')}</p>` : ''}
@@ -123,7 +123,7 @@ export async function sendTaskDueReminders(now = new Date()): Promise<{ checked:
         userId: task.performedById,
         type: 'task_due',
         title: `Reminder due: ${task.subject ?? 'Untitled reminder'}`,
-        body: task.dealTitle ? `Deal: ${task.dealTitle}` : 'A follow-up reminder is due.',
+        body: task.dealTitle ? `Prospect: ${task.dealTitle}` : 'A follow-up reminder is due.',
         entityType: 'activity',
         entityId: task.id,
         metadata: {

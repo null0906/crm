@@ -341,7 +341,7 @@ export default function ProjectDetailPage() {
     { key: 'tasks', label: 'Tasks' },
     { key: 'team', label: 'Team' },
     { key: 'timeline', label: 'Timeline' },
-    { key: 'linked', label: 'Linked Deal' },
+    { key: 'linked', label: 'Linked Prospect' },
   ] as const;
 
   return (
@@ -406,7 +406,7 @@ export default function ProjectDetailPage() {
               <h2 className="mb-3 text-sm font-bold text-[var(--text-primary)]">Quick Links</h2>
               <div className="space-y-2 text-sm">
                 {record.companyId && <Link href={`/companies/${record.companyId}`} className="flex items-center gap-2 font-semibold text-[var(--accent)]"><Users className="h-4 w-4" /> View company</Link>}
-                {record.dealId && <Link href={`/deals/${record.dealId}`} className="flex items-center gap-2 font-semibold text-[var(--accent)]"><Link2 className="h-4 w-4" /> View linked deal</Link>}
+                {record.dealId && <Link href={`/deals/${record.dealId}`} className="flex items-center gap-2 font-semibold text-[var(--accent)]"><Link2 className="h-4 w-4" /> View linked prospect</Link>}
               </div>
             </div>
           </div>
@@ -431,7 +431,7 @@ export default function ProjectDetailPage() {
           <div className="rounded-xl border border-[var(--border-subtle)] bg-white p-4 shadow-sm">
             {record.deal?.id ? (
               <div>
-                <h2 className="text-sm font-bold text-[var(--text-primary)]">Linked Deal</h2>
+                <h2 className="text-sm font-bold text-[var(--text-primary)]">Linked Prospect</h2>
                 <p className="mt-2 text-lg font-bold text-[var(--text-primary)]">{record.deal.title}</p>
                 <p className="mt-1 font-mono text-xl font-black text-[var(--text-primary)]">{formatINR(record.deal.amount)}</p>
                 <Link href={`/deals/${record.deal.id}`} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent)]">
@@ -440,7 +440,7 @@ export default function ProjectDetailPage() {
                 </Link>
               </div>
             ) : (
-              <p className="text-sm text-[var(--text-tertiary)]">This project is not linked to a deal.</p>
+              <p className="text-sm text-[var(--text-tertiary)]">This project is not linked to a prospect.</p>
             )}
           </div>
         )}

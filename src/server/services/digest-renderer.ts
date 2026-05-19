@@ -26,7 +26,7 @@ async function fetchMetricData(config: Record<string, unknown>): Promise<{ value
       .select({ count: count(), total: sql<string>`COALESCE(SUM(CAST(amount AS NUMERIC)),0)` })
       .from(deals)
       .where(and(eq(deals.status, 'open'), isNull(deals.deletedAt)));
-    if (metric === 'open_deals_count') return { value: row?.count ?? 0, label: 'Open Deals' };
+    if (metric === 'open_deals_count') return { value: row?.count ?? 0, label: 'Open Prospects' };
     const v = parseFloat(row?.total ?? '0');
     return { value: formatCurrency(v), label: 'Pipeline Value' };
   }

@@ -229,7 +229,7 @@ async function seed() {
     { name: 'Engagement Status', color: '#10B981', description: 'Current engagement temperature' },
     { name: 'Lead Source', color: '#8B5CF6', description: 'How this lead was acquired' },
     { name: 'Industry Vertical', color: '#F59E0B', description: 'Industry sector' },
-    { name: 'Deal Priority', color: '#EF4444', description: 'Deal urgency and priority' },
+    { name: 'Prospect Priority', color: '#EF4444', description: 'Prospect urgency and priority' },
   ];
 
   const insertedCategories = await db.insert(schema.tagCategories).values(tagCategoryData).returning();
@@ -251,8 +251,8 @@ async function seed() {
     { name: 'IT Services', slug: 'it-services', color: '#0EA5E9', categoryId: catMap['Industry Vertical'], createdBy: adminUserId },
     { name: 'BFSI', slug: 'bfsi', color: '#14B8A6', categoryId: catMap['Industry Vertical'], createdBy: adminUserId },
     { name: 'Healthcare', slug: 'healthcare', color: '#F43F5E', categoryId: catMap['Industry Vertical'], createdBy: adminUserId },
-    { name: 'High Priority', slug: 'high-priority', color: '#EF4444', categoryId: catMap['Deal Priority'], createdBy: adminUserId },
-    { name: 'Strategic', slug: 'strategic', color: '#7C3AED', categoryId: catMap['Deal Priority'], createdBy: adminUserId },
+    { name: 'High Priority', slug: 'high-priority', color: '#EF4444', categoryId: catMap['Prospect Priority'], createdBy: adminUserId },
+    { name: 'Strategic', slug: 'strategic', color: '#7C3AED', categoryId: catMap['Prospect Priority'], createdBy: adminUserId },
   ]);
 
   // 5. Create custom field definitions
@@ -351,7 +351,7 @@ async function seed() {
       fieldType: 'number',
       config: { min: 1, max: 60 },
       position: 0,
-      section: 'Deal Details',
+      section: 'Prospect Details',
       isFilterable: true,
       createdBy: adminUserId,
     },
@@ -368,7 +368,7 @@ async function seed() {
         { value: 'none', label: 'None / Unknown' },
       ]},
       position: 1,
-      section: 'Deal Details',
+      section: 'Prospect Details',
       isFilterable: true,
       createdBy: adminUserId,
     },
@@ -379,7 +379,7 @@ async function seed() {
       fieldType: 'checkbox',
       config: {},
       position: 2,
-      section: 'Deal Details',
+      section: 'Prospect Details',
       isFilterable: true,
       createdBy: adminUserId,
     },

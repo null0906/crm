@@ -1,8 +1,6 @@
 'use client';
 
 import React from 'react';
-import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { Calendar, CheckSquare, Clock, User, Building2, Briefcase, Users } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { isDeliveryPipeline } from '@/lib/pipeline-utils';
@@ -69,6 +67,15 @@ function formatCardDate(value: unknown): string | null {
   return formatDate(date);
 }
 
+function getDaysInStage(value: unknown): number | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  const diffMs = Date.now() - date.getTime();
+  if (diffMs < 0) return 0;
+  return Math.floor(diffMs / (24 * 60 * 60 * 1000));
+}
+
 function MetaRow({
   icon: Icon,
   text,
@@ -87,17 +94,7 @@ function MetaRow({
 }
 
 export function DealCard({ deal, onClick, stageColor }: DealCardProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: deal.id as string,
-  });
-
-  const dndTransform = CSS.Transform.toString(transform);
   const style = {
-    transform: isDragging
-      ? [dndTransform, 'rotate(1.5deg)', 'scale(1.02)'].filter(Boolean).join(' ')
-      : dndTransform,
-    transition: transition ?? 'box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease',
-    opacity: isDragging ? 0.95 : 1,
     '--stage-color': getStageColor(deal, stageColor),
     borderLeftColor: getStageColor(deal, stageColor),
   } as React.CSSProperties & Record<'--stage-color', string>;
@@ -123,15 +120,14 @@ export function DealCard({ deal, onClick, stageColor }: DealCardProps) {
   const taskCount = Number(deal.taskCount ?? 0);
   const completedTaskCount = Number(deal.completedTaskCount ?? 0);
   const teamMemberCount = Number(deal.teamMemberCount ?? 0);
+  const daysInStage = getDaysInStage(deal.stageEnteredAt);
+  const showStuckBadge = daysInStage !== null && daysInStage > 5 && String(deal.status ?? 'open') === 'open';
 
   return (
     <div
-      ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
       onClick={onClick}
-      className={`deal-card group m-[6px_8px_0] cursor-grab overflow-hidden rounded-[10px] border border-l-[3px] border-[var(--border-subtle)] bg-[var(--surface-card)] px-[13px] py-3 shadow-[var(--shadow-card)] transition-[box-shadow,transform,border-color] duration-150 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:border-[var(--border-default)] hover:shadow-[var(--shadow-card-hover)] active:cursor-grabbing ${isDragging ? 'dragging' : ''}`}
+      className="deal-card group m-[6px_8px_0] cursor-pointer overflow-hidden rounded-[10px] border border-l-[3px] border-[var(--border-subtle)] bg-[var(--surface-card)] px-[13px] py-3 shadow-[var(--shadow-card)] transition-[box-shadow,transform,border-color] duration-150 ease-[var(--ease-spring)] hover:-translate-y-0.5 hover:border-[var(--border-default)] hover:shadow-[var(--shadow-card-hover)]"
     >
       <p
         className="mb-[9px] break-words text-[13.5px] font-semibold leading-[1.35] tracking-[-0.015em] text-[var(--text-primary)] transition-colors group-hover:text-[var(--accent)]"
@@ -140,10 +136,20 @@ export function DealCard({ deal, onClick, stageColor }: DealCardProps) {
         {deal.title as string}
       </p>
 
-      {isVelocitySlow && (
-        <div className="mb-2 inline-flex items-center gap-1 rounded-md border border-[var(--status-nurturing-border)] bg-[var(--status-nurturing-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--status-nurturing-text)]">
-          <Clock className="h-3 w-3" strokeWidth={1.75} />
-          Slow
+      {(isVelocitySlow || showStuckBadge) && (
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          {isVelocitySlow && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-[var(--status-nurturing-border)] bg-[var(--status-nurturing-bg)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--status-nurturing-text)]">
+              <Clock className="h-3 w-3" strokeWidth={1.75} />
+              Slow
+            </span>
+          )}
+          {showStuckBadge && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-orange-200 bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">
+              <Clock className="h-3 w-3" strokeWidth={1.75} />
+              Stuck {daysInStage}d
+            </span>
+          )}
         </div>
       )}
 

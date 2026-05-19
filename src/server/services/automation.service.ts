@@ -31,8 +31,8 @@ export const automationDefinitions = [
   },
   {
     key: 'stale_alerts',
-    name: 'Stale Deal Alerts',
-    description: 'Creates follow-up tasks for quiet deals and contacts.',
+    name: 'Stale Prospect Alerts',
+    description: 'Creates follow-up tasks for quiet prospects and contacts.',
     schedule: 'Daily 8:30 AM',
   },
   {
@@ -50,7 +50,7 @@ export const automationDefinitions = [
   {
     key: 'pipeline_benchmarks',
     name: 'Pipeline Benchmarks',
-    description: 'Calculates stage velocity and marks slow deals.',
+    description: 'Calculates stage velocity and marks slow prospects.',
     schedule: 'Daily 2 AM',
   },
   {
@@ -62,7 +62,7 @@ export const automationDefinitions = [
   {
     key: 'delayed_projects',
     name: 'Delayed Project Detection',
-    description: 'Marks overdue delivery deals as delayed and notifies owners.',
+    description: 'Marks overdue delivery prospects as delayed and notifies owners.',
     schedule: 'Daily 8 AM',
   },
 ] as const;
@@ -400,7 +400,7 @@ export async function createStaleAlerts(db: DbClient = defaultDb): Promise<{ tas
     await createAutomatedActivity({
       activityType: 'task',
       subject: `Stale follow-up required - no activity in ${deal.days_since_activity} days`,
-      body: 'Automatically created because this open deal has not had recent activity.',
+      body: 'Automatically created because this open prospect has not had recent activity.',
       dealId: deal.id,
       performedBy: deal.owner_id,
       taskDueDate,
@@ -408,7 +408,7 @@ export async function createStaleAlerts(db: DbClient = defaultDb): Promise<{ tas
       metadata: { automationKey: 'stale_alerts', staleType: 'deal_no_activity' },
     }, db);
     tasksCreated += 1;
-    if (await notifyUser(deal.owner_id, `Stale deal alert\n\n"${deal.title}" has had no activity for ${deal.days_since_activity} days.`)) {
+    if (await notifyUser(deal.owner_id, `Stale prospect alert\n\n"${deal.title}" has had no activity for ${deal.days_since_activity} days.`)) {
       notificationsSent += 1;
     }
   }
@@ -466,8 +466,8 @@ export async function createStaleAlerts(db: DbClient = defaultDb): Promise<{ tas
 
     await createAutomatedActivity({
       activityType: 'task',
-      subject: `Deal stuck in ${deal.stage_name} for ${deal.days_in_stage} days`,
-      body: 'Automatically created because this deal has stayed in the same stage longer than expected.',
+      subject: `Prospect stuck in ${deal.stage_name} for ${deal.days_in_stage} days`,
+      body: 'Automatically created because this prospect has stayed in the same stage longer than expected.',
       dealId: deal.id,
       performedBy: deal.owner_id,
       taskDueDate,
@@ -631,16 +631,16 @@ export async function sendMorningBriefings(db: DbClient = defaultDb): Promise<{ 
       `Priority tasks (${taskRows.length})`,
       ...(taskRows.length ? taskRows.map((task, index) => `${index + 1}. ${task.subject ?? 'Untitled task'}${task.taskPriority ? ` - ${task.taskPriority}` : ''}`) : ['No overdue or due-today tasks.']),
       '',
-      'Deals needing attention',
-      ...(staleDeals.length ? staleDeals.map((deal) => `- ${deal.title} - ${deal.amount ?? 'No value'} - ${deal.days_stale} days no activity`) : ['No stale deals older than 7 days.']),
+      'Prospects needing attention',
+      ...(staleDeals.length ? staleDeals.map((deal) => `- ${deal.title} - ${deal.amount ?? 'No value'} - ${deal.days_stale} days no activity`) : ['No stale prospects older than 7 days.']),
       '',
       'New leads to contact',
       `- ${newLeadCount?.value ?? 0} leads assigned to you are still new after 48 hours`,
       '',
-      'Deal to focus on today',
+      'Prospect to focus on today',
       focusDeal
         ? `${focusDeal.title} - ${focusDeal.amount ?? 'No value'} - ${focusDeal.stage_name} - ${focusDeal.probability ?? 0}% probability`
-        : 'No open focus deal found.',
+        : 'No open focus prospect found.',
     ].join('\n');
 
     if (await notifyUser(user.userId, message)) {
@@ -709,7 +709,7 @@ export async function calculatePipelineBenchmarks(db: DbClient = defaultDb): Pro
 
   const benchmarksUpdated = Number(asRows<{ updated_count: number }>(benchmarkResult)[0]?.updated_count ?? 0);
   const slowDeals = Number(asRows<{ slow_count: number }>(slowUpdateResult)[0]?.slow_count ?? 0);
-  await recordAutomationRun('pipeline_benchmarks', `${benchmarksUpdated} benchmarks updated; ${slowDeals} slow deals marked`, db);
+  await recordAutomationRun('pipeline_benchmarks', `${benchmarksUpdated} benchmarks updated; ${slowDeals} slow prospects marked`, db);
   return { benchmarksUpdated, slowDeals };
 }
 
@@ -753,17 +753,85 @@ export async function sendWeeklySummary(db: DbClient = defaultDb): Promise<{ sen
   `);
 
   const leaderboard = asRows<{ first_name: string; last_name: string; activity_count: number }>(leaderboardResult);
+  const repPerformanceResult = await db.execute(sql`
+    WITH activity_stats AS (
+      SELECT
+        performed_by AS user_id,
+        COUNT(*) FILTER (WHERE activity_type = 'call')::int AS calls,
+        COUNT(*) FILTER (WHERE activity_type = 'call' AND call_outcome = 'connected')::int AS connected_calls,
+        COUNT(*) FILTER (WHERE activity_type = 'email_sent')::int AS emails,
+        COUNT(*) FILTER (WHERE activity_type IN ('meeting', 'demo'))::int AS meetings
+      FROM activities
+      WHERE occurred_at >= ${since}
+        AND occurred_at < ${until}
+        AND COALESCE(is_automated, false) = false
+        AND deleted_at IS NULL
+      GROUP BY performed_by
+    ),
+    deal_stats AS (
+      SELECT
+        owner_id AS user_id,
+        COALESCE(SUM(amount::numeric) FILTER (WHERE updated_at >= ${since} AND updated_at < ${until}), 0)::text AS pipeline_moved,
+        COUNT(*) FILTER (
+          WHERE status = 'won'
+            AND actual_close_date >= ${todayDateString(since)}
+            AND actual_close_date < ${todayDateString(until)}
+        )::int AS deals_won
+      FROM deals
+      WHERE deleted_at IS NULL
+      GROUP BY owner_id
+    )
+    SELECT
+      u.id,
+      u.first_name,
+      u.last_name,
+      COALESCE(a.calls, 0)::int AS calls,
+      COALESCE(a.connected_calls, 0)::int AS connected_calls,
+      COALESCE(a.emails, 0)::int AS emails,
+      COALESCE(a.meetings, 0)::int AS meetings,
+      COALESCE(d.pipeline_moved, '0') AS pipeline_moved,
+      COALESCE(d.deals_won, 0)::int AS deals_won
+    FROM users u
+    INNER JOIN roles r ON r.id = u.role_id
+    LEFT JOIN activity_stats a ON a.user_id = u.id
+    LEFT JOIN deal_stats d ON d.user_id = u.id
+    WHERE u.status = 'active'
+      AND r.slug IN ('sales_rep', 'sales_manager')
+    ORDER BY (COALESCE(a.calls, 0) + COALESCE(a.emails, 0) + COALESCE(a.meetings, 0) + COALESCE(d.deals_won, 0)) DESC
+    LIMIT 10
+  `);
+  const repPerformance = asRows<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    calls: number;
+    connected_calls: number;
+    emails: number;
+    meetings: number;
+    pipeline_moved: string;
+    deals_won: number;
+  }>(repPerformanceResult);
   const message = [
     `Weekly CRM summary (${todayDateString(since)} to ${todayDateString(until)})`,
     '',
-    `Deals won: ${stats?.won_count ?? 0}`,
+    `Prospects won: ${stats?.won_count ?? 0}`,
     `Won value: ${stats?.won_value ?? '0'}`,
-    `Deals lost: ${stats?.lost_count ?? 0}`,
+    `Prospects lost: ${stats?.lost_count ?? 0}`,
     `New leads: ${stats?.new_leads ?? 0}`,
     `Activities logged: ${stats?.activities_logged ?? 0}`,
     '',
     'Activity leaderboard',
     ...(leaderboard.length ? leaderboard.map((row, index) => `${index + 1}. ${row.first_name} ${row.last_name} - ${row.activity_count}`) : ['No activity logged last week.']),
+    '',
+    'Weekly performance by rep',
+    ...(repPerformance.length
+      ? repPerformance.map((row) => [
+          `${row.first_name} ${row.last_name}`,
+          `  Calls: ${row.calls} (${row.connected_calls} connected)  Emails: ${row.emails}  Meetings/Demos: ${row.meetings}`,
+          `  Pipeline touched: INR ${Number(row.pipeline_moved ?? 0).toLocaleString('en-IN')}  Prospects won: ${row.deals_won}`,
+          `  View report: /reports/${row.id}?preset=last_week`,
+        ].join('\n'))
+      : ['No rep performance data last week.']),
   ].join('\n');
 
   const recipients = await db

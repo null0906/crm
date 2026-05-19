@@ -253,7 +253,7 @@ function ActivityDetailPanel({
     rows.push({ label: 'Type', value: formatEnumLabel(String(activity.activityType ?? 'activity')) });
     rows.push({ label: 'Occurred', value: formatDateTime(activity.occurredAt as Date | string) });
 
-    if (dealTitle) rows.push({ label: 'Deal', value: dealTitle });
+    if (dealTitle) rows.push({ label: 'Prospect', value: dealTitle });
     if (contactFullName) rows.push({ label: 'Contact', value: contactFullName });
     if (companyName) rows.push({ label: 'Company', value: companyName });
     if (direction) rows.push({ label: 'Direction', value: direction });
@@ -341,7 +341,7 @@ function ActivityDetailPanel({
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Metadata</p>
           <div className="mt-2 space-y-2">
             {Boolean(activity.dealTitle) && (
-              <MetaLine icon={BriefcaseBusiness} label="Deal" value={String(activity.dealTitle)} />
+              <MetaLine icon={BriefcaseBusiness} label="Prospect" value={String(activity.dealTitle)} />
             )}
             {Boolean(activity.contactFullName) && (
               <MetaLine icon={User2} label="Contact" value={String(activity.contactFullName)} />
@@ -434,14 +434,14 @@ function buildActivitySummary(activity: ActivityItem): string {
   if (String(activity.activityType) === 'stage_change') {
     const fromStageName = typeof metadata.fromStageName === 'string' ? metadata.fromStageName : null;
     const toStageName = typeof metadata.toStageName === 'string' ? metadata.toStageName : null;
-    if (dealTitle) pieces.push(`Deal: ${dealTitle}`);
+    if (dealTitle) pieces.push(`Prospect: ${dealTitle}`);
     if (fromStageName || toStageName) {
       pieces.push(fromStageName ? `${fromStageName} -> ${toStageName ?? 'Unknown'}` : `Entered ${toStageName ?? 'Unknown'}`);
     }
     return pieces.join(' • ');
   }
 
-  if (dealTitle) pieces.push(`Deal: ${dealTitle}`);
+  if (dealTitle) pieces.push(`Prospect: ${dealTitle}`);
   if (contactName) pieces.push(`Contact: ${contactName}`);
   if (companyName) pieces.push(`Company: ${companyName}`);
   if (taskDueDate) pieces.push(`Due: ${formatDateTime(new Date(taskDueDate))}`);

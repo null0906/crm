@@ -85,7 +85,7 @@ export default function CustomFieldsSettingsPage() {
           </Link>
           <div>
             <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Custom Fields</h1>
-            <p className="text-xs text-slate-400 mt-0.5">Add fields to contacts, companies, and deals.</p>
+            <p className="text-xs text-slate-400 mt-0.5">Add fields to contacts, companies, and prospects.</p>
           </div>
         </div>
         <Button size="sm" onClick={() => { form.setValue('entityType', entityType); setCreateOpen(true); }}>
@@ -102,7 +102,7 @@ export default function CustomFieldsSettingsPage() {
             className={`text-sm px-3 py-1.5 rounded-md transition-colors capitalize ${entityType === et ? 'bg-blue-500 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
             onClick={() => setEntityType(et)}
           >
-            {et}
+            {et === 'deal' ? 'prospect' : et}
           </button>
         ))}
       </div>
@@ -150,7 +150,7 @@ export default function CustomFieldsSettingsPage() {
                 className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 {ENTITY_TYPES.map((et) => (
-                  <option key={et} value={et} className="capitalize">{et}</option>
+                  <option key={et} value={et} className="capitalize">{et === 'deal' ? 'prospect' : et}</option>
                 ))}
               </select>
             </div>

@@ -103,11 +103,11 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
 
   const deleteDeal = trpc.deals.delete.useMutation({
     onSuccess: () => {
-      toast.success('Deal deleted');
+      toast.success('Prospect deleted');
       void utils.deals.list.invalidate();
       void utils.deals.byStage.invalidate({ pipelineId });
     },
-    onError: (err) => toast.error('Failed to delete deal', { description: err.message }),
+    onError: (err) => toast.error('Failed to delete prospect', { description: err.message }),
   });
 
   const items: Deal[] = ((data as { items?: unknown[] })?.items ?? []) as Deal[];
@@ -137,7 +137,7 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
       enableHiding: false,
     }),
     columnHelper.accessor('title', {
-      header: 'Deal',
+      header: 'Prospect',
       cell: (info) => (
         <button
           onClick={() => onDealClick(info.row.original.id)}
@@ -239,7 +239,7 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (confirm('Delete this deal?')) {
+            if (confirm('Delete this prospect?')) {
               deleteDeal.mutate({ id: info.row.original.id });
             }
           }}
@@ -278,7 +278,7 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
   if (items.length === 0) {
     return (
       <div className="m-4 flex h-48 items-center justify-center rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-card)] shadow-sm">
-        <div className="text-sm text-[var(--text-tertiary)]">No deals in this pipeline yet.</div>
+        <div className="text-sm text-[var(--text-tertiary)]">No prospects in this pipeline yet.</div>
       </div>
     );
   }
@@ -339,7 +339,7 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
       {(cursor || hasMore) && (
         <div className="flex flex-shrink-0 items-center justify-between border-t border-[var(--border-subtle)] bg-[var(--surface-card)] px-4 py-3">
           <p className="text-sm text-[var(--text-tertiary)]">
-            {items.length} deal{items.length !== 1 ? 's' : ''} shown
+            {items.length} prospect{items.length !== 1 ? 's' : ''} shown
           </p>
           <div className="flex items-center gap-2">
             {cursor && (

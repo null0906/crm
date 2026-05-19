@@ -556,3 +556,24 @@ tbody tr:nth-child(n+9) { animation-delay: 160ms; }
 .slide-over[data-state="open"] {
   animation: slideInRight 250ms var(--ease-spring);
 }
+
+@media print {
+  aside,
+  nav,
+  .topbar,
+  .mobile-bottom-nav,
+  [data-report-controls='true'] {
+    display: none !important;
+  }
+
+  body,
+  main {
+    background: #ffffff !important;
+  }
+
+  * {
+    box-shadow: none !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}

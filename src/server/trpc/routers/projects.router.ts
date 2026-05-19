@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { router, protectedProcedure } from '../router';
 import { db } from '@/server/db';
-import { projectMembers, projects, projectTasks } from '@/server/db/schema';
+import { projectMembers, projects, projectTasks, users } from '@/server/db/schema';
 import { projectService } from '@/server/services/project.service';
 
 const serviceTypeSchema = z.enum([
@@ -199,6 +199,43 @@ export const projectsRouter = router({
     .input(z.object({ companyId: z.string().uuid() }))
     .query(async ({ input }) => {
       return projectService.list({ companyId: input.companyId });
+    }),
+
+  tasksByCompany: protectedProcedure
+    .input(z.object({ companyId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      return db
+        .select({
+          id: projectTasks.id,
+          projectId: projectTasks.projectId,
+          projectName: projects.name,
+          title: projectTasks.title,
+          status: projectTasks.status,
+          priority: projectTasks.priority,
+          dueDate: projectTasks.dueDate,
+          assignedTo: projectTasks.assignedTo,
+          assigneeFirstName: users.firstName,
+          assigneeLastName: users.lastName,
+          createdAt: projectTasks.createdAt,
+        })
+        .from(projectTasks)
+        .innerJoin(projects, eq(projectTasks.projectId, projects.id))
+        .leftJoin(users, eq(projectTasks.assignedTo, users.id))
+        .where(and(
+          eq(projects.companyId, input.companyId),
+          isNull(projects.deletedAt),
+          sql`${projectTasks.status} <> 'completed'`
+        ))
+        .orderBy(
+          sql`CASE
+            WHEN ${projectTasks.dueDate} IS NULL THEN 3
+            WHEN ${projectTasks.dueDate} < CURRENT_DATE THEN 0
+            WHEN ${projectTasks.dueDate} = CURRENT_DATE THEN 1
+            ELSE 2
+          END`,
+          asc(projectTasks.dueDate),
+          asc(projectTasks.createdAt)
+        );
     }),
 
   listTasks: protectedProcedure

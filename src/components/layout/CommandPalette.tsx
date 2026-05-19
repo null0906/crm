@@ -106,7 +106,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           <input
             ref={inputRef}
             className="flex-1 py-4 text-[15px] outline-none placeholder:text-slate-400 bg-transparent text-slate-900 tracking-tight"
-            placeholder="Search contacts, companies, deals..."
+            placeholder="Search contacts, companies, prospects..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -128,7 +128,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           {!debouncedQuery && (
             <div className="flex flex-col items-center justify-center py-10 text-center">
               <Search className="w-8 h-8 text-slate-200 mb-3" />
-              <p className="text-[13px] text-slate-400">Search across contacts, companies, and deals</p>
+              <p className="text-[13px] text-slate-400">Search across contacts, companies, and prospects</p>
               <p className="text-[11px] text-slate-300 mt-1">Type at least 1 character to start</p>
             </div>
           )}
@@ -164,7 +164,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
           {deals.length > 0 && (
             <ResultGroup
-              title="Deals"
+              title="Prospects"
               icon={<TrendingUp className="w-3 h-3" strokeWidth={2} />}
               items={deals}
               onSelect={handleSelect}

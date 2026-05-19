@@ -10,7 +10,7 @@ const settingsSections = [
     items: [
       { label: 'Tags', description: 'Manage tags and categories', href: '/settings/tags', icon: Tag },
       { label: 'Pipelines', description: 'Configure sales pipelines and stages', href: '/settings/pipelines', icon: LayoutGrid },
-      { label: 'Custom Fields', description: 'Add custom fields to contacts, companies, and deals', href: '/settings/custom-fields', icon: FileText },
+      { label: 'Custom Fields', description: 'Add custom fields to contacts, companies, and prospects', href: '/settings/custom-fields', icon: FileText },
     ],
   },
   {

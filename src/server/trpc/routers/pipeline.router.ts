@@ -4,7 +4,7 @@ import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
 import { pipelines, pipelineStages, deals } from '@/server/db/schema';
-import { eq, asc, and, isNull, count } from 'drizzle-orm';
+import { eq, asc, and, isNull, count, sql } from 'drizzle-orm';
 import { writeAuditLog } from '@/server/services/audit.service';
 
 const pipelineTypeSchema = z.enum(['sales', 'active_delivery', 'partner', 'compliance']);
@@ -16,7 +16,15 @@ export const pipelineRouter = router({
         .select()
         .from(pipelines)
         .where(eq(pipelines.isActive, true))
-        .orderBy(asc(pipelines.position));
+        .orderBy(
+          sql`CASE
+            WHEN lower(${pipelines.name}) = 'sales pipeline' THEN 0
+            WHEN lower(${pipelines.name}) = 'active pipeline' THEN 1
+            ELSE 2
+          END`,
+          asc(pipelines.position),
+          asc(pipelines.name)
+        );
       return rows;
     }),
 
@@ -225,7 +233,7 @@ export const pipelineRouter = router({
       if (Number(linkedDeals?.count ?? 0) > 0) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Cannot delete this stage because deals are still assigned to it. Move those deals first.',
+          message: 'Cannot delete this stage because prospects are still assigned to it. Move those prospects first.',
         });
       }
 

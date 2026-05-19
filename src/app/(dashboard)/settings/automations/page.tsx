@@ -89,7 +89,7 @@ export default function AutomationSettingsPage() {
   const runLeadInactivity = trpc.automation.runLeadInactivityNow.useMutation({
     onSuccess: (result) => {
       toast.success('Reminder check completed', {
-        description: `Checked ${result.checked} eligible deals and sent ${result.sent} owner reminders.`,
+        description: `Checked ${result.checked} eligible prospects and sent ${result.sent} owner reminders.`,
       });
       void utils.notifications.unreadCount.invalidate();
       void utils.notifications.list.invalidate({ limit: 20, unreadOnly: false });
@@ -212,7 +212,7 @@ export default function AutomationSettingsPage() {
             <div>
               <p className="text-sm font-medium text-slate-800">Owner reminder emails</p>
               <p className="text-xs text-slate-400 mt-0.5">
-                Open deals in selected pipelines notify only the assigned deal owner when no activity has been logged.
+                Open prospects in selected pipelines notify only the assigned prospect owner when no activity has been logged.
               </p>
             </div>
           </div>

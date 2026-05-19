@@ -127,7 +127,7 @@ async function resolveStageAndStatus(params: {
     };
   }
 
-  throw new Error('Unable to resolve a valid stage for this deal');
+  throw new Error('Unable to resolve a valid stage for this prospect');
 }
 
 async function promoteCompanyToPartnerIfEligible(
@@ -184,7 +184,7 @@ async function validatePartnerAssignment(pipelineId: string, partnerCompanyId?: 
   }
 
   if (!pipeline.name.toLowerCase().includes('sales')) {
-    throw new Error('Partners can only be linked to deals in a sales pipeline');
+    throw new Error('Partners can only be linked to prospects in a sales pipeline');
   }
 
   const [partnerCompany] = await db
@@ -198,7 +198,7 @@ async function validatePartnerAssignment(pipelineId: string, partnerCompanyId?: 
   }
 
   if (partnerCompany.companyType !== 'partner') {
-    throw new Error('Only companies marked as partners can be linked as deal partners');
+    throw new Error('Only companies marked as partners can be linked as prospect partners');
   }
 }
 
@@ -725,7 +725,7 @@ export async function createDeal(
   // Auto-log deal_created activity so it surfaces in contact/company activity feeds
   await db.insert(activities).values({
     activityType: 'note',
-    subject: `Deal created: ${deal!.title}`,
+    subject: `Prospect created: ${deal!.title}`,
       dealId: deal!.id,
       companyId: data.companyId ?? null,
       contactId: data.primaryContactId ?? null,
@@ -758,7 +758,7 @@ export async function updateDeal(
   data: Partial<Omit<NewDeal, 'id' | 'createdAt' | 'createdBy'>>
 ): Promise<Record<string, unknown>> {
   const existing = await getDealById(user, id);
-  if (!existing) throw new Error('Deal not found');
+  if (!existing) throw new Error('Prospect not found');
 
   const updateLevel = getPermissionLevel(user.role.permissions, 'deals', 'update');
   if (updateLevel === 'own' && existing.ownerId !== user.id) throw new Error('Insufficient permissions');
@@ -897,7 +897,7 @@ export async function updateDeal(
 
 export async function deleteDeal(user: SessionUser, id: string): Promise<void> {
   const deal = await getDealById(user, id);
-  if (!deal) throw new Error('Deal not found');
+  if (!deal) throw new Error('Prospect not found');
 
   await db.update(deals).set({ deletedAt: new Date() }).where(and(eq(deals.id, id), isNull(deals.deletedAt)));
   eventBus.emit('deal.deleted', { dealId: id, deletedBy: user.id });
@@ -1162,7 +1162,7 @@ export async function addTeamMember(
   role = 'member'
 ): Promise<Record<string, unknown>> {
   const deal = await getDealById(user, dealId);
-  if (!deal) throw new Error('Deal not found');
+  if (!deal) throw new Error('Prospect not found');
 
   const [member] = await db
     .insert(dealTeamMembers)
@@ -1178,7 +1178,7 @@ export async function addTeamMember(
 
 export async function removeTeamMember(user: SessionUser, dealId: string, userId: string): Promise<void> {
   const deal = await getDealById(user, dealId);
-  if (!deal) throw new Error('Deal not found');
+  if (!deal) throw new Error('Prospect not found');
 
   await db.delete(dealTeamMembers).where(and(eq(dealTeamMembers.dealId, dealId), eq(dealTeamMembers.userId, userId)));
 }

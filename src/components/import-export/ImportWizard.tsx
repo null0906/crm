@@ -40,7 +40,7 @@ const CONTACT_FIELDS = [
 ];
 
 const DEAL_FIELDS = [
-  { value: 'title', label: 'Deal Title *', mandatory: true },
+  { value: 'title', label: 'Prospect Title *', mandatory: true },
   { value: 'stageName', label: 'Stage Name', mandatory: false },
   { value: 'contactName', label: 'Contact Name', mandatory: false },
   { value: 'companyName', label: 'Company Name', mandatory: false },
@@ -329,12 +329,12 @@ export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: 
           <div>
             <h3 className="text-base font-semibold text-slate-900 mb-1">Upload CSV File</h3>
             <p className="text-sm text-slate-500 mb-4">
-              Import {entityType === 'contact' ? 'contacts' : entityType === 'company' ? 'companies' : 'deals'} from a CSV file. Max 1,000 rows per import.
+              Import {entityType === 'contact' ? 'contacts' : entityType === 'company' ? 'companies' : 'prospects'} from a CSV file. Max 1,000 rows per import.
             </p>
 
             {entityType === 'deal' && pipelineName && (
               <div className="mb-4 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg text-xs text-indigo-700 space-y-1">
-                <p>Deals will be imported into pipeline: <span className="font-semibold">{pipelineName}</span>.</p>
+                <p>Prospects will be imported into pipeline: <span className="font-semibold">{pipelineName}</span>.</p>
                 {stageNames.length > 0 && (
                   <p>
                     <span className="font-semibold">Allowed stages:</span>{' '}
@@ -394,7 +394,7 @@ export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: 
           <div>
             <h3 className="text-base font-semibold text-slate-900 mb-1">Map Columns</h3>
             <p className="text-sm text-slate-500 mb-4">
-              Match your CSV columns to {entityType === 'deal' ? 'deal' : entityType} fields. {rows.length} rows detected.
+              Match your CSV columns to {entityType === 'deal' ? 'prospect' : entityType} fields. {rows.length} rows detected.
             </p>
 
             {/* Stage reference card — shown for deals as soon as stages are loaded */}
@@ -521,7 +521,7 @@ export function ImportWizard({ entityType, onClose, pipelineId, pipelineName }: 
           <div>
             <h3 className="text-base font-semibold text-slate-900 mb-1">Preview Import</h3>
             <p className="text-sm text-slate-500 mb-4">
-              Importing {Math.min(rows.length, 1000)} {entityType === 'deal' ? 'deals' : `${entityType}s`} with {Object.keys(columnMap).length} mapped columns.
+              Importing {Math.min(rows.length, 1000)} {entityType === 'deal' ? 'prospects' : `${entityType}s`} with {Object.keys(columnMap).length} mapped columns.
             </p>
 
             {/* Stage summary for deals */}

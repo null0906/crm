@@ -123,7 +123,7 @@ export const partnerRouter = router({
       }
 
       if (partnerCompany.companyType !== 'partner') {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only partner companies can own partner-linked deals' });
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only partner companies can own partner-linked prospects' });
       }
 
       const [dealRow] = await db
@@ -139,15 +139,15 @@ export const partnerRouter = router({
         .limit(1);
 
       if (!dealRow || dealRow.deletedAt) {
-        throw new TRPCError({ code: 'NOT_FOUND', message: 'Deal not found' });
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Prospect not found' });
       }
 
       if (!dealRow.pipelineName.toLowerCase().includes('sales')) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only sales pipeline deals can be attached to a partner' });
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only sales pipeline prospects can be attached to a partner' });
       }
 
       if (dealRow.partnerCompanyId && dealRow.partnerCompanyId !== input.partnerCompanyId) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'This deal is already attached to another partner' });
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'This prospect is already attached to another partner' });
       }
 
       const [updated] = await db

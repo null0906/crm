@@ -170,17 +170,17 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
 
         {!dealId && availableDeals.length > 0 && (
           <div className="space-y-1">
-            <Label className="text-xs">Related Deal</Label>
+            <Label className="text-xs">Related Prospect</Label>
             <select
               {...form.register('dealId')}
               className="flex h-8 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
-              <option value="">No specific deal</option>
+              <option value="">No specific prospect</option>
               {availableDeals.map((deal) => {
                 const amount = deal.amount ? Number(deal.amount).toLocaleString('en-IN') : null;
                 return (
                   <option key={String(deal.id)} value={String(deal.id)}>
-                    {String(deal.title ?? 'Untitled deal')}
+                    {String(deal.title ?? 'Untitled prospect')}
                     {deal.stageName ? ` · ${String(deal.stageName)}` : ''}
                     {amount ? ` · ₹${amount}` : ''}
                   </option>
@@ -188,7 +188,7 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
               })}
             </select>
             <p className="text-[11px] text-slate-400">
-              Pick a deal if this activity should appear in that deal timeline too.
+              Pick a prospect if this activity should appear in that prospect timeline too.
             </p>
           </div>
         )}

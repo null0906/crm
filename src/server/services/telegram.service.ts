@@ -453,7 +453,7 @@ async function handleFind(
       `📊 Status: ${c.status}`,
       tagRows.length ? `🏷 ${tagRows.map((t) => t.name).join(', ')}` : '',
       c.lastContactedAt ? `🕐 Last contacted: ${c.lastContactedAt.toLocaleDateString()}` : '',
-      `💼 Open deals: ${openDeals[0]?.count ?? 0}`,
+      `💼 Open prospects: ${openDeals[0]?.count ?? 0}`,
     ].filter(Boolean);
 
     return { text: lines.join('\n') };
@@ -518,7 +518,7 @@ async function handleToday(): Promise<{ text: string }> {
     .from(activities)
     .where(and(isNull(activities.deletedAt), gte(activities.occurredAt, todayStart)));
 
-  // Stale deals (no activity in 7 days)
+  // Stale prospects (no activity in 7 days)
   const staleDealsResult = await db
     .select({ dealId: deals.id })
     .from(deals)
@@ -542,13 +542,13 @@ async function handleToday(): Promise<{ text: string }> {
     `📅 ${now.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}`,
     ``,
     `💰 *Pipeline*`,
-    `  Open deals: ${openPipeline?.dealCount ?? 0} (${fmt(openPipeline?.totalValue ?? 0)})`,
+    `  Open prospects: ${openPipeline?.dealCount ?? 0} (${fmt(openPipeline?.totalValue ?? 0)})`,
     `  Won this month: ${wonMonth?.count ?? 0} (${fmt(wonMonth?.total ?? 0)})`,
     `  Lost this month: ${lostMonth?.count ?? 0}`,
     ``,
     `⚡ *Today*`,
     `  Activities logged: ${todayActivities?.count ?? 0}`,
-    `  Stale deals (>7d): ${staleDealsResult.length}`,
+    `  Stale prospects (>7d): ${staleDealsResult.length}`,
     `  Unassigned leads: ${unassigned?.count ?? 0}`,
   ];
 

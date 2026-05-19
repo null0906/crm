@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, ChevronLeft, Users, Pencil, Shield, ChevronDown, ChevronUp, Check, X, KeyRound, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { Plus, ChevronLeft, Users, Pencil, Shield, ChevronDown, ChevronUp, Check, X, KeyRound, Eye, EyeOff, Trash2, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
@@ -54,7 +54,7 @@ const PERMISSION_SECTIONS = [
   },
   {
     key: 'deals',
-    label: 'Deals',
+    label: 'Prospects',
     perms: [
       { key: 'create', label: 'Create', type: 'bool' },
       { key: 'read', label: 'Read', type: 'level' },
@@ -241,6 +241,13 @@ export default function UsersSettingsPage() {
               <Badge variant="secondary" className="text-xs">{user.role.name}</Badge>
               <span className="text-xs text-slate-400">{formatDate(user.createdAt)}</span>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                <Link
+                  href={`/reports/${user.id}?preset=this_month`}
+                  className="p-1 rounded hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 transition-colors"
+                  title="View report"
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                </Link>
                 <button
                   onClick={() => { setResetUser(user as Record<string, unknown>); setNewPassword(''); setShowNewPassword(false); }}
                   className="p-1 rounded hover:bg-amber-50 text-slate-400 hover:text-amber-600 transition-colors"

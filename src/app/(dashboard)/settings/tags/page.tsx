@@ -51,7 +51,7 @@ export default function TagsSettingsPage() {
         </Link>
         <div>
           <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Tags</h1>
-          <p className="text-xs text-slate-400 mt-0.5">Organize contacts, companies, and deals with tags.</p>
+          <p className="text-xs text-slate-400 mt-0.5">Organize contacts, companies, and prospects with tags.</p>
         </div>
       </div>
 
@@ -128,7 +128,7 @@ export default function TagsSettingsPage() {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title="Delete tag?"
-        description="This will remove the tag from all contacts, companies, and deals."
+        description="This will remove the tag from all contacts, companies, and prospects."
         confirmLabel="Delete"
         destructive
         loading={deleteTag.isPending}

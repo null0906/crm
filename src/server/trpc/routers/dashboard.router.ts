@@ -3,9 +3,10 @@ import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
-import { dashboards, dashboardWidgets, companies } from '@/server/db/schema';
+import { dashboards, dashboardWidgets, companies, digestSchedules } from '@/server/db/schema';
 import { eq, and, or, isNull } from 'drizzle-orm';
 import { writeAuditLog } from '@/server/services/audit.service';
+import { hasPermission } from '@/server/lib/permissions';
 import { randomUUID } from 'crypto';
 
 export const dashboardRouter = router({
@@ -116,9 +117,47 @@ export const dashboardRouter = router({
   delete: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      await db
-        .delete(dashboards)
-        .where(and(eq(dashboards.id, input.id), eq(dashboards.createdBy, ctx.user!.id)));
+      const [dashboard] = await db
+        .select({
+          id: dashboards.id,
+          name: dashboards.name,
+          createdBy: dashboards.createdBy,
+        })
+        .from(dashboards)
+        .where(eq(dashboards.id, input.id))
+        .limit(1);
+
+      if (!dashboard) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Dashboard not found' });
+      }
+
+      const canDeleteAnyDashboard = hasPermission(ctx.user!.role.permissions, 'dashboards', 'delete');
+      const isOwner = dashboard.createdBy === ctx.user!.id;
+
+      if (!isOwner && !canDeleteAnyDashboard) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'You can only delete dashboards you created.',
+        });
+      }
+
+      await db.transaction(async (tx) => {
+        await tx
+          .update(digestSchedules)
+          .set({ dashboardId: null, updatedAt: new Date() })
+          .where(eq(digestSchedules.dashboardId, input.id));
+
+        await tx.delete(dashboardWidgets).where(eq(dashboardWidgets.dashboardId, input.id));
+
+        const [deleted] = await tx
+          .delete(dashboards)
+          .where(eq(dashboards.id, input.id))
+          .returning({ id: dashboards.id });
+
+        if (!deleted) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Dashboard could not be deleted' });
+        }
+      });
 
       await writeAuditLog({
         userId: ctx.user!.id,
@@ -126,6 +165,7 @@ export const dashboardRouter = router({
         action: 'delete',
         entityType: 'dashboard',
         entityId: input.id,
+        entityName: dashboard.name,
       });
 
       return { success: true };

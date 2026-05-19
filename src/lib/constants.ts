@@ -79,7 +79,7 @@ export const COMPANY_SIZES = [
 export const PAGE_SIZES = [25, 50, 100, 200] as const;
 
 export const DASHBOARD_DATA_SOURCES = [
-  { value: 'client', label: 'Client' },
-  { value: 'partner', label: 'Partner' },
+  { value: 'client', label: 'Sales' },
   { value: 'enterprise', label: 'Enterprise' },
+  { value: 'partner', label: 'Partner' },
 ] as const;

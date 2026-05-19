@@ -123,7 +123,7 @@ function getPageTitle(pathname: string): string {
   const titles: Record<string, string> = {
     contacts: 'Contacts',
     companies: 'Companies',
-    deals: 'Deals',
+    deals: 'Prospects',
     projects: 'Projects',
     partners: 'Partners',
     'ai-chat': 'AI Assistant',
@@ -139,7 +139,7 @@ function getPageSubtext(pathname: string): string {
   const subtexts: Record<string, string> = {
     contacts: 'Manage leads and relationships',
     companies: 'Accounts, partners, and customers',
-    deals: 'Pipeline and revenue movement',
+    deals: 'Prospects and revenue movement',
     projects: 'Delivery workspace and timelines',
     partners: 'Partner-sourced opportunities',
     'ai-chat': 'Ask questions across CRM data',

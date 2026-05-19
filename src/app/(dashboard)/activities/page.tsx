@@ -89,14 +89,14 @@ function buildActivitySummary(activity: ActivityItem): string {
   if (String(activity.activityType) === 'stage_change') {
     const fromStageName = typeof metadata.fromStageName === 'string' ? metadata.fromStageName : null;
     const toStageName = typeof metadata.toStageName === 'string' ? metadata.toStageName : null;
-    if (dealTitle) pieces.push(`Deal: ${dealTitle}`);
+    if (dealTitle) pieces.push(`Prospect: ${dealTitle}`);
     if (fromStageName || toStageName) {
       pieces.push(fromStageName ? `${fromStageName} → ${toStageName ?? 'Unknown'}` : `Entered ${toStageName ?? 'Unknown'}`);
     }
     return pieces.join(' • ');
   }
 
-  if (dealTitle) pieces.push(`Deal: ${dealTitle}`);
+  if (dealTitle) pieces.push(`Prospect: ${dealTitle}`);
   if (contactName) pieces.push(`Contact: ${contactName}`);
   if (companyName) pieces.push(`Company: ${companyName}`);
   if (typeof activity.callDurationSeconds === 'number' && activity.callDurationSeconds > 0) {
@@ -149,7 +149,7 @@ function ActivityDetailPanel({
 
     rows.push({ label: 'Type', value: formatEnumLabel(String(activity.activityType ?? 'activity')) });
     rows.push({ label: 'Occurred', value: formatDateTime(activity.occurredAt as Date | string) });
-    if (dealTitle) rows.push({ label: 'Deal', value: dealTitle });
+    if (dealTitle) rows.push({ label: 'Prospect', value: dealTitle });
     if (contactFullName) rows.push({ label: 'Contact', value: contactFullName });
     if (companyName) rows.push({ label: 'Company', value: companyName });
     if (direction) rows.push({ label: 'Direction', value: direction });
@@ -201,7 +201,7 @@ function ActivityDetailPanel({
             {Boolean(activity.dealTitle) && (
               <div className="flex items-center gap-2 text-sm text-slate-600">
                 <BriefcaseBusiness className="w-4 h-4 text-slate-400" />
-                <span className="text-slate-400">Deal:</span>
+                <span className="text-slate-400">Prospect:</span>
                 <span className="text-slate-700">{String(activity.dealTitle)}</span>
               </div>
             )}

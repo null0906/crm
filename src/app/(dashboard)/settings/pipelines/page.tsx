@@ -312,7 +312,7 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
                 ))}
               </select>
               <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-                This controls which features are available for deals in this pipeline. Active Delivery and Compliance pipelines show project fields, timeline, and team members.
+                This controls which features are available for prospects in this pipeline. Active Delivery and Compliance pipelines show project fields, timeline, and team members.
               </p>
             </div>
 
@@ -433,7 +433,7 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
         open={!!deleteStageId}
         onOpenChange={(open) => { if (!open) setDeleteStageId(null); }}
         title="Delete stage?"
-        description="This will remove the stage only if no deals are still using it. Deals in that stage are not deleted automatically."
+        description="This will remove the stage only if no prospects are still using it. Prospects in that stage are not deleted automatically."
         confirmLabel="Delete"
         destructive
         loading={deleteStage.isPending}

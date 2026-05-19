@@ -1,6 +1,6 @@
 import { db } from '@/server/db';
 import { activities, dealContacts, deals, notifications, pipelineStages, pipelines, users } from '@/server/db/schema';
-import { and, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { sendEmail } from '@/server/lib/mailer';
 import { getAutomationSettings } from './automation-settings.service';
 
@@ -13,27 +13,48 @@ function isTargetPipeline(name: string | null | undefined, configuredPipelines: 
 
 function buildReminderEmail(args: {
   ownerFirstName?: string | null;
-  dealTitle: string;
-  pipelineName?: string | null;
-  stageName?: string | null;
-  lastTouchedAt: Date;
+  deals: Array<{
+    title: string;
+    pipelineName?: string | null;
+    stageName?: string | null;
+    lastTouchedAt: Date;
+    daysInactive: number;
+    daysInStage: number;
+  }>;
 }) {
   const ownerName = args.ownerFirstName?.trim() || 'there';
-  const pipelineLine = args.pipelineName ? `Pipeline: ${args.pipelineName}` : null;
-  const stageLine = args.stageName ? `Current stage: ${args.stageName}` : null;
-  const subject = `Follow-up reminder: ${args.dealTitle} has been inactive for 3 days`;
+  const subject = `Follow-up reminders: ${args.deals.length} inactive ${args.deals.length === 1 ? 'prospect' : 'prospects'}`;
+  const rows = args.deals.map((deal) => `
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;">${escapeHtml(deal.title)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(deal.pipelineName ?? 'Pipeline')}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(deal.stageName ?? 'Stage')}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">${deal.daysInStage}d</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">${deal.daysInactive}d</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(deal.lastTouchedAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }))}</td>
+    </tr>
+  `).join('');
+
   const html = `
     <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a;">
       <p>Hi ${ownerName},</p>
       <p>
-        The lead <strong>${escapeHtml(args.dealTitle)}</strong> has not had any logged activity in the last 3 days.
+        These open prospects have not had any logged activity within the configured follow-up window.
       </p>
-      <ul>
-        ${pipelineLine ? `<li>${escapeHtml(pipelineLine)}</li>` : ''}
-        ${stageLine ? `<li>${escapeHtml(stageLine)}</li>` : ''}
-        <li>Last touchpoint: ${escapeHtml(args.lastTouchedAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }))}</li>
-      </ul>
-      <p>Please log a follow-up activity if this lead is still active.</p>
+      <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;font-size:13px;">
+        <thead>
+          <tr style="background:#f8fafc;color:#475569;text-align:left;">
+            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Prospect</th>
+            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Pipeline</th>
+            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Stage</th>
+            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">Stuck</th>
+            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">Inactive</th>
+            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Last touchpoint</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p>Please log follow-up activities for any prospects that are still active.</p>
       <p style="color:#64748b;font-size:12px;">This is an automated reminder from SecComply CRM.</p>
     </div>
   `;
@@ -86,6 +107,10 @@ async function getLatestActivityAt(args: {
   return row?.occurredAt ?? null;
 }
 
+function getWholeDaysBetween(from: Date, to: Date): number {
+  return Math.max(0, Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
 async function hasRecentReminder(args: {
   userId: string;
   dealId: string;
@@ -123,6 +148,7 @@ export async function sendDealInactivityReminders(now = new Date()): Promise<{ c
       stageEnteredAt: deals.stageEnteredAt,
       pipelineName: pipelines.name,
       stageName: pipelineStages.name,
+      stageType: pipelineStages.stageType,
       status: deals.status,
       ownerId: deals.ownerId,
       ownerEmail: users.email,
@@ -137,6 +163,7 @@ export async function sendDealInactivityReminders(now = new Date()): Promise<{ c
     .where(and(
       isNull(deals.deletedAt),
       eq(deals.status, 'open'),
+      eq(pipelineStages.stageType, 'active'),
     ));
 
   const candidates = openDeals.filter((deal) =>
@@ -145,7 +172,20 @@ export async function sendDealInactivityReminders(now = new Date()): Promise<{ c
     Boolean(deal.ownerEmail)
   );
 
-  let sent = 0;
+  const remindersByOwner = new Map<string, {
+    ownerId: string;
+    ownerEmail: string;
+    ownerFirstName?: string | null;
+    deals: Array<{
+      id: string;
+      title: string;
+      pipelineName?: string | null;
+      stageName?: string | null;
+      lastTouchedAt: Date;
+      daysInactive: number;
+      daysInStage: number;
+    }>;
+  }>();
 
   for (const deal of candidates) {
     const linkedContacts = await db
@@ -180,33 +220,57 @@ export async function sendDealInactivityReminders(now = new Date()): Promise<{ c
       continue;
     }
 
-    const { subject, html } = buildReminderEmail({
+    const ownerKey = deal.ownerId!;
+    const existingOwner = remindersByOwner.get(ownerKey);
+    const group = existingOwner ?? {
+      ownerId: deal.ownerId!,
+      ownerEmail: deal.ownerEmail!,
       ownerFirstName: deal.ownerFirstName,
-      dealTitle: deal.title,
+      deals: [],
+    };
+
+    group.deals.push({
+      id: deal.id,
+      title: deal.title,
       pipelineName: deal.pipelineName,
       stageName: deal.stageName,
       lastTouchedAt,
+      daysInactive: getWholeDaysBetween(lastTouchedAt, now),
+      daysInStage: getWholeDaysBetween(deal.stageEnteredAt ?? deal.createdAt, now),
+    });
+    remindersByOwner.set(ownerKey, group);
+  }
+
+  let sent = 0;
+
+  for (const group of remindersByOwner.values()) {
+    const { subject, html } = buildReminderEmail({
+      ownerFirstName: group.ownerFirstName,
+      deals: group.deals,
     });
 
     try {
-      await sendEmail(deal.ownerEmail!, subject, html);
+      await sendEmail(group.ownerEmail, subject, html);
       sent += 1;
 
-      await db.insert(notifications).values({
-        userId: deal.ownerId!,
+      await db.insert(notifications).values(group.deals.map((deal) => ({
+        userId: group.ownerId,
         type: REMINDER_TYPE,
         title: `Follow up on ${deal.title}`,
-        body: `No activity has been logged on this lead for 3 days.`,
+        body: `No activity has been logged on this prospect for ${deal.daysInactive} days.`,
         entityType: 'deal',
         entityId: deal.id,
         metadata: {
           pipelineName: deal.pipelineName,
           stageName: deal.stageName,
-          lastTouchedAt: lastTouchedAt.toISOString(),
+          lastTouchedAt: deal.lastTouchedAt.toISOString(),
+          daysInactive: deal.daysInactive,
+          daysInStage: deal.daysInStage,
+          batched: true,
         },
-      });
+      })));
     } catch (error) {
-      console.error(`[DealInactivity] Failed to send reminder for deal ${deal.id}:`, error);
+      console.error(`[DealInactivity] Failed to send reminder digest for user ${group.ownerId}:`, error);
     }
   }
 

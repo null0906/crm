@@ -1,5 +1,5 @@
 import { db } from '@/server/db';
-import { activities, contacts, demoRecords } from '@/server/db/schema';
+import { activities, companies, contacts, deals, demoRecords, users } from '@/server/db/schema';
 import { and, desc, eq, or, sql } from 'drizzle-orm';
 import type { SessionUser } from '@/lib/types';
 import type { DemoCallType, DemoOutcome } from '@/server/db/schema/demo-records';
@@ -40,11 +40,20 @@ export async function listDemoRecords(filters: {
       nextActionDate: demoRecords.nextActionDate,
       demoNotes: demoRecords.demoNotes,
       conductedBy: demoRecords.conductedBy,
+      contactFirstName: contacts.firstName,
+      contactLastName: contacts.lastName,
+      companyName: companies.name,
+      dealTitle: deals.title,
+      conductedByFirstName: users.firstName,
+      conductedByLastName: users.lastName,
       createdAt: demoRecords.createdAt,
       updatedAt: demoRecords.updatedAt,
     })
     .from(demoRecords)
     .leftJoin(contacts, eq(demoRecords.contactId, contacts.id))
+    .leftJoin(companies, eq(demoRecords.companyId, companies.id))
+    .leftJoin(deals, eq(demoRecords.dealId, deals.id))
+    .leftJoin(users, eq(demoRecords.conductedBy, users.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(demoRecords.scheduledAt), desc(demoRecords.createdAt));
 }

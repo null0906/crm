@@ -47,7 +47,8 @@ export type AuditAction =
   | 'stage_change'
   | 'permission_change' | 'role_change'
   | 'dashboard_publish' | 'dashboard_unpublish'
-  | 'api_access';
+  | 'api_access'
+  | 'report_generated';
 
 export type DashboardVisibility = 'private' | 'team' | 'everyone';
 export type SavedViewVisibility = 'private' | 'team' | 'everyone';

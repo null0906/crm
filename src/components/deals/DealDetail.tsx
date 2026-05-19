@@ -39,15 +39,23 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
   const [delayDraft, setDelayDraft] = useState(false);
   const [delayReasonDraft, setDelayReasonDraft] = useState('');
   const [revisedEndDateDraft, setRevisedEndDateDraft] = useState('');
+  const [selectedStageId, setSelectedStageId] = useState('');
 
   const { data: deal, isLoading } = trpc.deals.getById.useQuery(
     { id: dealId },
     { enabled: !!dealId && open }
   );
+  const detailPipelineId = deal?.pipelineId as string | undefined;
+  const detailStageId = deal?.stageId as string | undefined;
+
+  const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery(
+    { id: detailPipelineId ?? '' },
+    { enabled: Boolean(detailPipelineId) && open }
+  );
 
   const deleteDeal = trpc.deals.delete.useMutation({
     onSuccess: () => {
-      toast.success('Deal deleted');
+      toast.success('Prospect deleted');
       void utils.deals.list.invalidate();
       void utils.deals.byStage.invalidate();
       setDeleteOpen(false);
@@ -67,6 +75,17 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
     onError: (err) => toast.error('Failed to update project progress', { description: err.message }),
   });
 
+  const moveStage = trpc.deals.moveToStage.useMutation({
+    onSuccess: () => {
+      toast.success('Stage updated');
+      void utils.deals.getById.invalidate({ id: dealId });
+      void utils.deals.byStage.invalidate();
+      void utils.deals.list.invalidate();
+      void utils.activities.list.invalidate();
+    },
+    onError: (err) => toast.error('Failed to update stage', { description: err.message }),
+  });
+
   React.useEffect(() => {
     if (!deal) return;
     setProgressDraft(Number(deal.projectProgressPercent ?? 0));
@@ -74,6 +93,10 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
     setDelayReasonDraft(String(deal.delayReason ?? ''));
     setRevisedEndDateDraft(String(deal.revisedEndDate ?? ''));
   }, [deal]);
+
+  React.useEffect(() => {
+    setSelectedStageId(detailStageId ?? '');
+  }, [detailStageId, dealId]);
 
   if (!open) return null;
 
@@ -115,6 +138,8 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
   const revisedEndDate = deal?.revisedEndDate as string | null | undefined;
   const tasks = (deal?.tasks as Array<Record<string, unknown>> | undefined) ?? [];
   const teamMembers = (deal?.teamMembers as Array<Record<string, unknown>> | undefined) ?? [];
+  const stageOptions = ([...((pipelineData?.stages as Array<{ id: string; name: string; position: number }> | undefined) ?? [])])
+    .sort((a, b) => a.position - b.position);
 
   const editDefaults = deal ? {
     title: title ?? '',
@@ -148,7 +173,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
         {isLoading ? (
           <DetailSkeleton />
         ) : !deal ? (
-          <div className="p-6 text-center text-slate-500">Deal not found</div>
+          <div className="p-6 text-center text-slate-500">Prospect not found</div>
         ) : (
           <div>
             {/* Header */}
@@ -173,7 +198,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                     variant="ghost"
                     onClick={() => setEditOpen(true)}
                     className="text-slate-400 hover:text-blue-600"
-                    title="Edit deal"
+                    title="Edit prospect"
                   >
                     <Pencil className="w-4 h-4" />
                   </Button>
@@ -182,7 +207,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                     variant="ghost"
                     onClick={() => setDeleteOpen(true)}
                     className="text-slate-400 hover:text-red-600"
-                    title="Delete deal"
+                    title="Delete prospect"
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
@@ -213,11 +238,35 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                 )}
               </div>
 
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                 <Button size="sm" variant="outline" onClick={() => setReminderOpen(true)}>
                   <BellRing className="w-3.5 h-3.5 mr-1.5" />
                   Set Reminder
                 </Button>
+
+                {stageOptions.length > 0 && (
+                  <div className="ml-auto flex items-center gap-2">
+                    <select
+                      value={selectedStageId}
+                      onChange={(e) => setSelectedStageId(e.target.value)}
+                      disabled={moveStage.isPending}
+                      className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-blue-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label="Prospect stage"
+                    >
+                      {stageOptions.map((stage) => (
+                        <option key={stage.id} value={stage.id}>{stage.name}</option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!selectedStageId || selectedStageId === stageId || moveStage.isPending}
+                      onClick={() => moveStage.mutate({ dealId, toStageId: selectedStageId })}
+                    >
+                      {moveStage.isPending ? 'Updating...' : 'Change Stage'}
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -453,7 +502,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
 
       {/* Edit panel */}
       {pipelineId && (
-        <SlideOverPanel open={editOpen} onClose={() => setEditOpen(false)} title="Edit Deal" width="md">
+        <SlideOverPanel open={editOpen} onClose={() => setEditOpen(false)} title="Edit Prospect" width="md">
           <div className="p-6">
             <DealForm
               mode="edit"
@@ -475,8 +524,8 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title="Delete deal?"
-        description={`"${title}" will be permanently deleted. This cannot be undone.`}
+        title="Delete prospect?"
+        description={`"${title}" prospect will be permanently deleted. This cannot be undone.`}
         confirmLabel="Delete"
         destructive
         loading={deleteDeal.isPending}

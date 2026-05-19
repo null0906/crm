@@ -68,7 +68,7 @@ export default function DealsPage() {
 
   const bulkUpdateDeals = trpc.deals.bulkUpdate.useMutation({
     onSuccess: ({ updated }) => {
-      toast.success(`${updated} deals updated`);
+      toast.success(`${updated} prospects updated`);
       setBulkOwnerId('');
       setBulkStatus('');
       setBulkTagsToAdd([]);
@@ -76,7 +76,7 @@ export default function DealsPage() {
       void utils.deals.list.invalidate();
       if (selectedPipelineId) void utils.deals.byStage.invalidate({ pipelineId: selectedPipelineId });
     },
-    onError: (err) => toast.error('Failed to update deals', { description: err.message }),
+    onError: (err) => toast.error('Failed to update prospects', { description: err.message }),
   });
 
   type FilterOp = 'eq' | 'gte' | 'lte' | 'contains' | 'contains_any';
@@ -201,7 +201,7 @@ export default function DealsPage() {
           </Button>
           <Button size="sm" onClick={() => { setCreateStageId(stages[0]?.id ?? ''); setCreateOpen(true); }}>
             <Plus className="w-4 h-4" />
-            Add Deal
+            Add Prospect
           </Button>
         </div>
       </div>
@@ -212,7 +212,7 @@ export default function DealsPage() {
           <div className="relative min-w-[240px] flex-1 max-w-[320px]">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-3)]" />
             <Input
-              placeholder="Search deals, contacts, companies..."
+              placeholder="Search prospects, contacts, companies..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="h-8 bg-[var(--color-surface)] pl-8 text-base"
@@ -434,8 +434,8 @@ export default function DealsPage() {
         )}
       </div>
 
-      {/* Create Deal */}
-      <SlideOverPanel open={createOpen} onClose={() => setCreateOpen(false)} title="Add Deal" width="md">
+      {/* Create Prospect */}
+      <SlideOverPanel open={createOpen} onClose={() => setCreateOpen(false)} title="Add Prospect" width="md">
         <div className="p-6">
           {selectedPipelineId && (
             <DealForm
@@ -449,7 +449,7 @@ export default function DealsPage() {
       </SlideOverPanel>
 
       {/* Import Wizard */}
-      <SlideOverPanel open={importOpen} onClose={() => setImportOpen(false)} title="Import Deals" width="lg">
+      <SlideOverPanel open={importOpen} onClose={() => setImportOpen(false)} title="Import Prospects" width="lg">
         {importOpen && (
           <ImportWizard
             entityType="deal"
@@ -471,7 +471,7 @@ export default function DealsPage() {
         )}
       </SlideOverPanel>
 
-      {/* Deal Detail */}
+      {/* Prospect Detail */}
       {selectedDealId && (
         <DealDetail
           dealId={selectedDealId}

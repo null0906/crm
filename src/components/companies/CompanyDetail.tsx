@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Globe, Phone, X, Pencil, Trash2, FolderKanban } from 'lucide-react';
+import { Globe, Phone, X, Pencil, Trash2, FolderKanban, CalendarDays, CheckSquare } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -189,7 +189,7 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <CompanyMetricCard label="Contacts" value={String(metrics.contactCount ?? 0)} />
                   <CompanyMetricCard label="Pipeline" value={formatCurrency(metrics.pipelineValue ?? 0)} />
-                  <CompanyMetricCard label="Open Deals" value={String(metrics.openDeals ?? 0)} />
+                  <CompanyMetricCard label="Open Prospects" value={String(metrics.openDeals ?? 0)} />
                   <CompanyMetricCard label="Active Projects" value={String(metrics.activeProjects ?? 0)} />
                 </div>
               )}
@@ -202,8 +202,10 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="activity">Activity</TabsTrigger>
                   <TabsTrigger value="contacts">Contacts</TabsTrigger>
-                  <TabsTrigger value="deals">Deals</TabsTrigger>
+                  <TabsTrigger value="deals">Prospects</TabsTrigger>
                   <TabsTrigger value="projects">Projects</TabsTrigger>
+                  <TabsTrigger value="demos">Demo Records</TabsTrigger>
+                  <TabsTrigger value="tasks">Tasks</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="mt-4">
@@ -247,6 +249,14 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
                 <TabsContent value="projects" className="mt-4">
                   <CompanyProjects companyId={companyId} />
                 </TabsContent>
+
+                <TabsContent value="demos" className="mt-4">
+                  <CompanyDemoRecords companyId={companyId} />
+                </TabsContent>
+
+                <TabsContent value="tasks" className="mt-4">
+                  <CompanyTasks companyId={companyId} />
+                </TabsContent>
               </Tabs>
             </div>
           </div>
@@ -282,6 +292,133 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
         onConfirm={() => deleteCompany.mutate({ id: companyId })}
       />
     </>
+  );
+}
+
+function CompanyDemoRecords({ companyId }: { companyId: string }) {
+  const { data: demos = [], isLoading } = trpc.demoRecords.list.useQuery({ companyId });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[1, 2, 3].map((i) => <div key={i} className="skeleton h-16 rounded-lg" />)}
+      </div>
+    );
+  }
+
+  if (demos.length === 0) {
+    return (
+      <div className="py-10 text-center text-slate-400">
+        <CalendarDays className="mx-auto mb-2 h-8 w-8" />
+        <p className="text-sm">No demo or discovery records logged yet.</p>
+      </div>
+    );
+  }
+
+  const outcomeClass: Record<string, string> = {
+    interested: 'border-indigo-200 bg-indigo-50 text-indigo-700',
+    completed: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    needs_follow_up: 'border-orange-200 bg-orange-50 text-orange-700',
+    no_show: 'border-red-200 bg-red-50 text-red-700',
+    not_interested: 'border-red-200 bg-red-50 text-red-700',
+    rescheduled: 'border-amber-200 bg-amber-50 text-amber-700',
+    cancelled: 'border-slate-200 bg-slate-50 text-slate-600',
+  };
+
+  return (
+    <div className="space-y-2">
+      {demos.map((demo) => {
+        const d = demo as Record<string, unknown>;
+        const contactName = [d.contactFirstName, d.contactLastName].filter(Boolean).join(' ').trim();
+        const callType = String(d.callType ?? 'demo').replace(/_/g, ' ');
+        const outcome = String(d.outcome ?? '');
+        return (
+          <div key={String(d.id)} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold capitalize text-blue-700">
+                    {callType}
+                  </span>
+                  {outcome && (
+                    <span className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold capitalize ${outcomeClass[outcome] ?? 'border-slate-200 bg-white text-slate-600'}`}>
+                      {outcome.replace(/_/g, ' ')}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 truncate text-sm font-semibold text-slate-800">
+                  {contactName || String(d.companyName ?? 'Company demo')}
+                  {d.dealTitle ? <span className="font-normal text-slate-400"> · {String(d.dealTitle)}</span> : null}
+                </p>
+                {Boolean(d.nextAction) && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Next: {String(d.nextAction)}
+                    {d.nextActionDate ? ` · Due ${formatDate(new Date(String(d.nextActionDate)))}` : ''}
+                  </p>
+                )}
+              </div>
+              <span className="shrink-0 font-mono text-xs text-slate-400">
+                {d.scheduledAt ? formatDate(new Date(String(d.scheduledAt))) : 'No date'}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CompanyTasks({ companyId }: { companyId: string }) {
+  const { data: tasks = [], isLoading } = trpc.projects.tasksByCompany.useQuery({ companyId });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[1, 2, 3].map((i) => <div key={i} className="skeleton h-14 rounded-lg" />)}
+      </div>
+    );
+  }
+
+  if (tasks.length === 0) {
+    return (
+      <div className="py-10 text-center text-slate-400">
+        <CheckSquare className="mx-auto mb-2 h-8 w-8" />
+        <p className="text-sm">No open project tasks for this company.</p>
+      </div>
+    );
+  }
+
+  const priorityClass: Record<string, string> = {
+    urgent: 'bg-red-500',
+    high: 'bg-orange-500',
+    medium: 'bg-amber-500',
+    low: 'bg-slate-400',
+  };
+
+  return (
+    <div className="space-y-2">
+      {tasks.map((task) => {
+        const t = task as Record<string, unknown>;
+        const dueDate = t.dueDate ? new Date(String(t.dueDate)) : null;
+        const isOverdue = dueDate ? dueDate < new Date(new Date().toDateString()) : false;
+        const assignee = [t.assigneeFirstName, t.assigneeLastName].filter(Boolean).join(' ').trim();
+        return (
+          <div key={String(t.id)} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${priorityClass[String(t.priority ?? 'medium')] ?? priorityClass.medium}`} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-800">{String(t.title ?? '')}</p>
+              <p className="truncate text-xs text-slate-400">
+                {String(t.projectName ?? 'Project')} · {String(t.status ?? 'pending').replace(/_/g, ' ')}
+                {assignee ? ` · ${assignee}` : ''}
+              </p>
+            </div>
+            <span className={`shrink-0 font-mono text-xs ${isOverdue ? 'font-semibold text-red-600' : 'text-slate-400'}`}>
+              {dueDate ? formatDate(dueDate) : 'No due date'}
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -396,7 +533,7 @@ function CompanyDeals({ companyId }: { companyId: string }) {
     return (
       <div className="text-center py-10 text-slate-400">
         <p className="text-sm">
-          {isPartnerCompany ? 'No sales deals are linked to this partner yet.' : 'No deals linked to this company yet.'}
+          {isPartnerCompany ? 'No sales prospects are linked to this partner yet.' : 'No prospects linked to this company yet.'}
         </p>
       </div>
     );

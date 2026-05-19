@@ -188,7 +188,7 @@ function BoardView({ projects }: { projects: ProjectRecord[] }) {
           <FolderKanban className="mx-auto mb-3 h-10 w-10 text-[var(--accent)]" />
           <h2 className="text-lg font-black tracking-[-0.03em] text-[var(--text-primary)]">No projects yet</h2>
           <p className="mt-2 text-sm leading-6 text-[var(--text-tertiary)]">
-            Run the one-time backfill to create Projects from existing Active Pipeline deals, or add a new project manually.
+            Run the one-time backfill to create Projects from existing Active Pipeline prospects, or add a new project manually.
           </p>
           <code className="mt-4 block rounded-lg bg-[var(--surface-input)] px-3 py-2 text-xs text-[var(--text-secondary)]">
             npm run backfill:projects
@@ -337,7 +337,7 @@ export default function ProjectsPage() {
             <FolderKanban className="h-5 w-5 text-[var(--accent)]" />
             Projects
           </h1>
-          <p className="text-sm text-[var(--text-tertiary)]">Delivery workspace linked to Active Pipeline deals.</p>
+          <p className="text-sm text-[var(--text-tertiary)]">Delivery workspace linked to Active Pipeline prospects.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">

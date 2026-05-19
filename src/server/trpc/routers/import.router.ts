@@ -490,7 +490,7 @@ export const importRouter = router({
 
         const title = mapped.title?.trim();
         if (!title) {
-          errors.push({ row: i + 2, message: 'Title is required to match existing deal' });
+          errors.push({ row: i + 2, message: 'Title is required to match existing prospect' });
           skipped++;
           continue;
         }

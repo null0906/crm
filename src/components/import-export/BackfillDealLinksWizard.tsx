@@ -14,7 +14,7 @@ interface BackfillDealLinksWizardProps {
 
 // The same field set as the deals import so the user can upload the exact same CSV
 const DEAL_FIELDS = [
-  { value: 'title', label: 'Deal Title *', mandatory: true },
+  { value: 'title', label: 'Prospect Title *', mandatory: true },
   { value: 'contactName', label: 'Contact Name', mandatory: false },
   { value: 'companyName', label: 'Company Name', mandatory: false },
   { value: 'stageName', label: 'Stage Name', mandatory: false },
@@ -47,7 +47,7 @@ export function BackfillDealLinksWizard({ pipelineId, pipelineName, onClose }: B
     onSuccess: (data) => {
       setResult(data);
       setStep('done');
-      toast.success(`Re-link complete: ${data.linked} deals updated`);
+      toast.success(`Re-link complete: ${data.linked} prospects updated`);
     },
     onError: (err) => toast.error('Re-link failed', { description: err.message }),
   });
@@ -121,14 +121,14 @@ export function BackfillDealLinksWizard({ pipelineId, pipelineName, onClose }: B
             <div>
               <h3 className="text-sm font-semibold text-slate-800 mb-1">Re-link contacts & companies from CSV</h3>
               <p className="text-xs text-slate-500 leading-relaxed">
-                Upload the same CSV you used to import your deals. For each row, we'll find the deal by title,
-                create any missing companies or contacts, and link them — without creating duplicate deals.
+                Upload the same CSV you used to import your prospects. For each row, we'll find the prospect by title,
+                create any missing companies or contacts, and link them — without creating duplicate prospects.
               </p>
             </div>
 
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-              <strong>Note:</strong> Your CSV must have a <strong>Deal Title</strong> column so we can match
-              existing deals. Rows where no matching deal is found will be skipped.
+              <strong>Note:</strong> Your CSV must have a <strong>Prospect Title</strong> column so we can match
+              existing prospects. Rows where no matching prospect is found will be skipped.
             </div>
 
             <div
@@ -154,7 +154,7 @@ export function BackfillDealLinksWizard({ pipelineId, pipelineName, onClose }: B
           <div className="space-y-4">
             <div>
               <h3 className="text-sm font-semibold text-slate-800 mb-1">Map your CSV columns</h3>
-              <p className="text-xs text-slate-500">{rows.length} rows detected. Match each CSV column to a deal field.</p>
+              <p className="text-xs text-slate-500">{rows.length} rows detected. Match each CSV column to a prospect field.</p>
             </div>
 
             {!hasContactOrCompany && (
@@ -207,10 +207,10 @@ export function BackfillDealLinksWizard({ pipelineId, pipelineName, onClose }: B
                 We'll process <strong>{rows.length}</strong> rows. For each one:
               </p>
               <ul className="text-xs text-slate-500 mt-2 space-y-1 list-disc list-inside">
-                <li>Find the existing deal by title in <strong>{pipelineName}</strong></li>
+                <li>Find the existing prospect by title in <strong>{pipelineName}</strong></li>
                 <li>Find or create the company (if Company Name is mapped)</li>
                 <li>Find or create the contact (if Contact Name is mapped)</li>
-                <li>Update the deal's links — no duplicates</li>
+                <li>Update the prospect's links — no duplicates</li>
               </ul>
             </div>
 
@@ -275,7 +275,7 @@ export function BackfillDealLinksWizard({ pipelineId, pipelineName, onClose }: B
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-center">
                 <p className="text-2xl font-bold text-blue-700">{result.linked}</p>
-                <p className="text-xs text-blue-600 mt-0.5">Deals updated</p>
+                <p className="text-xs text-blue-600 mt-0.5">Prospects updated</p>
               </div>
               <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg text-center">
                 <p className="text-2xl font-bold text-emerald-700">{result.companiesCreated}</p>
