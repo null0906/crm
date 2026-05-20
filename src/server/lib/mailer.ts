@@ -2,6 +2,11 @@ import nodemailer from 'nodemailer';
 
 let transporter: nodemailer.Transporter | null = null;
 
+type SendEmailOptions = {
+  cc?: string | string[];
+  retries?: number;
+};
+
 function getTransporter(): nodemailer.Transporter {
   if (transporter) return transporter;
 
@@ -21,7 +26,8 @@ function getTransporter(): nodemailer.Transporter {
 async function sendViaResend(
   to: string | string[],
   subject: string,
-  html: string
+  html: string,
+  options: SendEmailOptions = {}
 ): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -30,6 +36,7 @@ async function sendViaResend(
 
   const from = process.env.RESEND_FROM ?? process.env.SMTP_FROM ?? 'SecComply <noreply@seccomply.net>';
   const recipients = Array.isArray(to) ? to : [to];
+  const cc = options.cc ? (Array.isArray(options.cc) ? options.cc : [options.cc]) : undefined;
   const replyTo = process.env.RESEND_REPLY_TO;
 
   const response = await fetch('https://api.resend.com/emails', {
@@ -41,6 +48,7 @@ async function sendViaResend(
     body: JSON.stringify({
       from,
       to: recipients,
+      ...(cc?.length ? { cc } : {}),
       subject,
       html,
       ...(replyTo ? { reply_to: replyTo } : {}),
@@ -56,31 +64,38 @@ async function sendViaResend(
 async function sendViaSmtp(
   to: string | string[],
   subject: string,
-  html: string
+  html: string,
+  options: SendEmailOptions = {}
 ): Promise<void> {
   const from = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? 'noreply@seccomply.net';
   const recipients = Array.isArray(to) ? to.join(', ') : to;
-  await getTransporter().sendMail({ from, to: recipients, subject, html });
+  const cc = options.cc ? (Array.isArray(options.cc) ? options.cc.join(', ') : options.cc) : undefined;
+  await getTransporter().sendMail({ from, to: recipients, ...(cc ? { cc } : {}), subject, html });
 }
 
 export async function sendEmail(
   to: string | string[],
   subject: string,
   html: string,
-  retries = 1
+  optionsOrRetries: SendEmailOptions | number = 1
 ): Promise<void> {
+  const options = typeof optionsOrRetries === 'number'
+    ? { retries: optionsOrRetries }
+    : optionsOrRetries;
+  const retries = options.retries ?? 1;
+
   try {
     if (process.env.RESEND_API_KEY) {
-      await sendViaResend(to, subject, html);
+      await sendViaResend(to, subject, html, options);
       return;
     }
 
-    await sendViaSmtp(to, subject, html);
+    await sendViaSmtp(to, subject, html, options);
   } catch (err) {
     if (retries > 0) {
       console.warn('[Mailer] Send failed, retrying once…', err);
       await new Promise((r) => setTimeout(r, 2000));
-      await sendEmail(to, subject, html, retries - 1);
+      await sendEmail(to, subject, html, { ...options, retries: retries - 1 });
     } else {
       throw err;
     }

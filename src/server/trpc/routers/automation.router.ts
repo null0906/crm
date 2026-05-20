@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
 import { getAutomationSettings, updateAutomationSettings, ALLOWED_LEAD_INACTIVITY_PIPELINES } from '@/server/services/automation-settings.service';
-import { sendDealInactivityReminders } from '@/server/services/deal-inactivity.service';
+import { sendConsolidatedReminderDigest } from '@/server/services/reminder-digest.service';
 import {
   automationDefinitions,
   listAutomationConfigs,
@@ -60,6 +60,6 @@ export const automationRouter = router({
   runLeadInactivityNow: protectedProcedure
     .use(requirePermission('digests', 'manage'))
     .mutation(async () => {
-      return sendDealInactivityReminders();
+      return sendConsolidatedReminderDigest();
     }),
 });

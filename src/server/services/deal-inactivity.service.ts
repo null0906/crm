@@ -5,6 +5,22 @@ import { sendEmail } from '@/server/lib/mailer';
 import { getAutomationSettings } from './automation-settings.service';
 
 const REMINDER_TYPE = 'deal_inactivity_email';
+export const REMINDER_CC_RECIPIENTS = ['runal@seccomply.net', 'shivani@seccomply.net'];
+
+export type DealInactivityReminderGroup = {
+  ownerId: string;
+  ownerEmail: string;
+  ownerFirstName?: string | null;
+  deals: Array<{
+    id: string;
+    title: string;
+    pipelineName?: string | null;
+    stageName?: string | null;
+    lastTouchedAt: Date;
+    daysInactive: number;
+    daysInStage: number;
+  }>;
+};
 
 function isTargetPipeline(name: string | null | undefined, configuredPipelines: string[]): boolean {
   const normalized = String(name ?? '').toLowerCase();
@@ -13,14 +29,7 @@ function isTargetPipeline(name: string | null | undefined, configuredPipelines: 
 
 function buildReminderEmail(args: {
   ownerFirstName?: string | null;
-  deals: Array<{
-    title: string;
-    pipelineName?: string | null;
-    stageName?: string | null;
-    lastTouchedAt: Date;
-    daysInactive: number;
-    daysInStage: number;
-  }>;
+  deals: DealInactivityReminderGroup['deals'];
 }) {
   const ownerName = args.ownerFirstName?.trim() || 'there';
   const subject = `Follow-up reminders: ${args.deals.length} inactive ${args.deals.length === 1 ? 'prospect' : 'prospects'}`;
@@ -131,10 +140,10 @@ async function hasRecentReminder(args: {
   return Boolean(row?.createdAt && row.createdAt >= args.since);
 }
 
-export async function sendDealInactivityReminders(now = new Date()): Promise<{ checked: number; sent: number }> {
+export async function collectDealInactivityReminderGroups(now = new Date()): Promise<{ checked: number; groups: DealInactivityReminderGroup[] }> {
   const settings = await getAutomationSettings();
   if (!settings.leadInactivityEnabled) {
-    return { checked: 0, sent: 0 };
+    return { checked: 0, groups: [] };
   }
 
   const inactivityWindowMs = settings.leadInactivityDays * 24 * 60 * 60 * 1000;
@@ -172,20 +181,7 @@ export async function sendDealInactivityReminders(now = new Date()): Promise<{ c
     Boolean(deal.ownerEmail)
   );
 
-  const remindersByOwner = new Map<string, {
-    ownerId: string;
-    ownerEmail: string;
-    ownerFirstName?: string | null;
-    deals: Array<{
-      id: string;
-      title: string;
-      pipelineName?: string | null;
-      stageName?: string | null;
-      lastTouchedAt: Date;
-      daysInactive: number;
-      daysInStage: number;
-    }>;
-  }>();
+  const remindersByOwner = new Map<string, DealInactivityReminderGroup>();
 
   for (const deal of candidates) {
     const linkedContacts = await db
@@ -241,38 +237,46 @@ export async function sendDealInactivityReminders(now = new Date()): Promise<{ c
     remindersByOwner.set(ownerKey, group);
   }
 
+  return { checked: candidates.length, groups: Array.from(remindersByOwner.values()).filter((group) => group.deals.length > 0) };
+}
+
+export async function recordDealInactivityReminderNotifications(group: DealInactivityReminderGroup): Promise<void> {
+  await db.insert(notifications).values(group.deals.map((deal) => ({
+    userId: group.ownerId,
+    type: REMINDER_TYPE,
+    title: `Follow up on ${deal.title}`,
+    body: `No activity has been logged on this prospect for ${deal.daysInactive} days.`,
+    entityType: 'deal',
+    entityId: deal.id,
+    metadata: {
+      pipelineName: deal.pipelineName,
+      stageName: deal.stageName,
+      lastTouchedAt: deal.lastTouchedAt.toISOString(),
+      daysInactive: deal.daysInactive,
+      daysInStage: deal.daysInStage,
+      batched: true,
+    },
+  })));
+}
+
+export async function sendDealInactivityReminders(now = new Date()): Promise<{ checked: number; sent: number }> {
+  const { checked, groups } = await collectDealInactivityReminderGroups(now);
   let sent = 0;
 
-  for (const group of remindersByOwner.values()) {
+  for (const group of groups) {
     const { subject, html } = buildReminderEmail({
       ownerFirstName: group.ownerFirstName,
       deals: group.deals,
     });
 
     try {
-      await sendEmail(group.ownerEmail, subject, html);
+      await sendEmail(group.ownerEmail, subject, html, { cc: REMINDER_CC_RECIPIENTS });
       sent += 1;
-
-      await db.insert(notifications).values(group.deals.map((deal) => ({
-        userId: group.ownerId,
-        type: REMINDER_TYPE,
-        title: `Follow up on ${deal.title}`,
-        body: `No activity has been logged on this prospect for ${deal.daysInactive} days.`,
-        entityType: 'deal',
-        entityId: deal.id,
-        metadata: {
-          pipelineName: deal.pipelineName,
-          stageName: deal.stageName,
-          lastTouchedAt: deal.lastTouchedAt.toISOString(),
-          daysInactive: deal.daysInactive,
-          daysInStage: deal.daysInStage,
-          batched: true,
-        },
-      })));
+      await recordDealInactivityReminderNotifications(group);
     } catch (error) {
       console.error(`[DealInactivity] Failed to send reminder digest for user ${group.ownerId}:`, error);
     }
   }
 
-  return { checked: candidates.length, sent };
+  return { checked, sent };
 }

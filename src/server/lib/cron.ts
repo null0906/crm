@@ -1,7 +1,6 @@
 import cron from 'node-cron';
 import { checkAndRunSchedules } from '@/server/services/digest.service';
-import { sendDealInactivityReminders } from '@/server/services/deal-inactivity.service';
-import { sendTaskDueReminders } from '@/server/services/task-reminder.service';
+import { sendConsolidatedReminderDigest } from '@/server/services/reminder-digest.service';
 import {
   calculatePipelineBenchmarks,
   createStaleAlerts,
@@ -27,12 +26,8 @@ export function initializeCron(): void {
       console.error('[Cron] checkAndRunSchedules error:', err);
     });
 
-    sendDealInactivityReminders().catch((err) => {
-      console.error('[Cron] sendDealInactivityReminders error:', err);
-    });
-
-    sendTaskDueReminders().catch((err) => {
-      console.error('[Cron] sendTaskDueReminders error:', err);
+    sendConsolidatedReminderDigest().catch((err) => {
+      console.error('[Cron] sendConsolidatedReminderDigest error:', err);
     });
   });
 
