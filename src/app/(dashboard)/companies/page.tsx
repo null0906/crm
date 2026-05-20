@@ -26,6 +26,11 @@ import { ColumnVisibilityMenu } from '@/components/shared/ColumnVisibilityMenu';
 
 type Company = Record<string, unknown>;
 
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export default function CompaniesPage() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
@@ -110,6 +115,18 @@ export default function CompaniesPage() {
 
   const companies: Company[] = (data?.items ?? []) as Company[];
   const selectedIds = Object.keys(rowSelection).filter((k) => rowSelection[k]);
+  const selectedCompanyId = isUuid(selectedCompany?.id) ? selectedCompany.id : null;
+
+  const openCompanyDetail = (company: Company) => {
+    if (!isUuid(company.id)) {
+      toast.error('Could not open company details', {
+        description: 'This row is missing a valid company ID. Please refresh and try again.',
+      });
+      return;
+    }
+
+    setSelectedCompany(company);
+  };
 
   const columns: ColumnDef<Company>[] = [
     {
@@ -149,7 +166,7 @@ export default function CompaniesPage() {
             </Avatar>
             <button
               className="text-sm font-medium text-blue-600 hover:underline text-left"
-              onClick={(e) => { e.stopPropagation(); setSelectedCompany(c); }}
+              onClick={(e) => { e.stopPropagation(); openCompanyDetail(c); }}
             >
               {name}
             </button>
@@ -496,7 +513,7 @@ export default function CompaniesPage() {
                 <tr
                   key={row.id}
                   className="border-b border-slate-100 hover:bg-blue-50/40 cursor-pointer transition-colors duration-100 group"
-                  onClick={() => setSelectedCompany(row.original)}
+                  onClick={() => openCompanyDetail(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-3 py-2">
@@ -536,9 +553,9 @@ export default function CompaniesPage() {
       </SlideOverPanel>
 
       {/* Detail */}
-      {selectedCompany && (
+      {selectedCompanyId && (
         <CompanyDetail
-          companyId={String(selectedCompany.id)}
+          companyId={selectedCompanyId}
           open={!!selectedCompany}
           onClose={() => setSelectedCompany(null)}
           onDeleted={() => setSelectedCompany(null)}

@@ -30,7 +30,7 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const { data: company, isLoading } = trpc.companies.getById.useQuery(
+  const { data: company, isLoading, error } = trpc.companies.getById.useQuery(
     { id: companyId },
     { enabled: !!companyId && open }
   );
@@ -104,6 +104,12 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
       <SlideOverPanel open={open} onClose={onClose} width="lg">
         {isLoading ? (
           <DetailSkeleton />
+        ) : error ? (
+          <div className="p-6 text-center">
+            <p className="text-sm font-semibold text-red-700">Could not load company</p>
+            <p className="mt-2 text-sm text-slate-500">{error.message}</p>
+            <Button variant="outline" className="mt-4" onClick={onClose}>Close</Button>
+          </div>
         ) : !company ? (
           <div className="p-6 text-center text-slate-500">Company not found</div>
         ) : (

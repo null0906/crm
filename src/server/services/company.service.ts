@@ -180,26 +180,47 @@ export async function getCompanyById(
     .innerJoin(tags, eq(companyTags.tagId, tags.id))
     .where(eq(companyTags.companyId, id));
 
-  // Roll-up metrics
+  // Roll-up metrics are calculated with scalar subqueries to avoid invalid
+  // aggregate/correlation SQL and duplicate sums from multi-table joins.
   const [metrics] = await db
     .select({
-      contactCount: count(sql`DISTINCT ${contacts.id}`),
-      pipelineValue: sql<string>`COALESCE(SUM(CASE WHEN ${deals.status} = 'open' THEN ${deals.amount} ELSE 0 END), 0)`,
-      openDeals: sql<number>`COUNT(DISTINCT CASE WHEN ${deals.status} = 'open' THEN ${deals.id} END)::int`,
+      contactCount: sql<number>`(
+        SELECT COUNT(*)::int
+        FROM ${contacts}
+        WHERE ${contacts.companyId} = ${id}
+          AND ${contacts.deletedAt} IS NULL
+      )`,
+      pipelineValue: sql<string>`(
+        SELECT COALESCE(SUM(${deals.amount}), 0)
+        FROM ${deals}
+        WHERE ${deals.companyId} = ${id}
+          AND ${deals.status} = 'open'
+          AND ${deals.deletedAt} IS NULL
+      )`,
+      openDeals: sql<number>`(
+        SELECT COUNT(*)::int
+        FROM ${deals}
+        WHERE ${deals.companyId} = ${id}
+          AND ${deals.status} = 'open'
+          AND ${deals.deletedAt} IS NULL
+      )`,
       activeProjects: sql<number>`(
         SELECT COUNT(*)::int
-        FROM ${projects} p
-        WHERE p.company_id = ${companies.id}
-          AND p.status = 'active'
-          AND p.deleted_at IS NULL
+        FROM ${projects}
+        WHERE ${projects.companyId} = ${id}
+          AND ${projects.status} = 'active'
+          AND ${projects.deletedAt} IS NULL
       )`,
-      lastActivityAt: sql<Date | null>`MAX(${activities.occurredAt})`,
+      lastActivityAt: sql<Date | null>`(
+        SELECT MAX(${activities.occurredAt})
+        FROM ${activities}
+        WHERE ${activities.companyId} = ${id}
+          AND ${activities.deletedAt} IS NULL
+      )`,
     })
     .from(companies)
-    .leftJoin(contacts, and(eq(contacts.companyId, companies.id), isNull(contacts.deletedAt)))
-    .leftJoin(deals, and(eq(deals.companyId, companies.id), isNull(deals.deletedAt)))
-    .leftJoin(activities, eq(activities.companyId, companies.id))
-    .where(eq(companies.id, id));
+    .where(eq(companies.id, id))
+    .limit(1);
 
   return {
     ...company,
