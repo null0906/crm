@@ -1,7 +1,6 @@
 import { db } from '@/server/db';
 import { activities, companies, contacts, deals, notifications, users } from '@/server/db/schema';
 import { and, desc, eq, isNull, lte } from 'drizzle-orm';
-import { sendEmail } from '@/server/lib/mailer';
 
 export type TaskReminderGroup = {
   ownerId: string;
@@ -38,56 +37,6 @@ async function hasRecentTaskDueNotification(userId: string, activityId: string, 
     .limit(1);
 
   return Boolean(row?.createdAt && row.createdAt >= since);
-}
-
-function buildTaskReminderEmail(args: {
-  ownerFirstName?: string | null;
-  tasks: TaskReminderGroup['tasks'];
-}) {
-  const ownerName = args.ownerFirstName?.trim() || 'there';
-  const subject = `Reminder digest: ${args.tasks.length} due ${args.tasks.length === 1 ? 'reminder' : 'reminders'}`;
-  const rows = args.tasks.map((task) => `
-    <tr>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;">${escapeHtml(task.subject)}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(task.dealTitle ?? '-')}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(task.companyName ?? '-')}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(task.contactName ?? '-')}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(task.dueDate)}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(task.priority ?? '-')}</td>
-    </tr>
-  `).join('');
-
-  const html = `
-    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a;">
-      <p>Hi ${ownerName},</p>
-      <p>You have ${args.tasks.length} due or overdue CRM ${args.tasks.length === 1 ? 'reminder' : 'reminders'}.</p>
-      <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;font-size:13px;">
-        <thead>
-          <tr style="background:#f8fafc;color:#475569;text-align:left;">
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Reminder</th>
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Prospect</th>
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Company</th>
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Contact</th>
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Due</th>
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Priority</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <p style="color:#64748b;font-size:12px;">This is an automated reminder from SecComply CRM.</p>
-    </div>
-  `;
-
-  return { subject, html };
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
 }
 
 export async function collectTaskDueReminderGroups(now = new Date()): Promise<{ checked: number; groups: TaskReminderGroup[] }> {
@@ -172,26 +121,4 @@ export async function recordTaskDueReminderNotifications(group: TaskReminderGrou
       batched: true,
     },
   })));
-}
-
-export async function sendTaskDueReminders(now = new Date()): Promise<{ checked: number; sent: number }> {
-  const { checked, groups } = await collectTaskDueReminderGroups(now);
-  let sent = 0;
-
-  for (const group of groups) {
-    const email = buildTaskReminderEmail({
-      ownerFirstName: group.ownerFirstName,
-      tasks: group.tasks,
-    });
-
-    try {
-      await sendEmail(group.ownerEmail, email.subject, email.html);
-      sent += 1;
-      await recordTaskDueReminderNotifications(group);
-    } catch (error) {
-      console.error(`[TaskReminder] Failed to send reminder digest for user ${group.ownerId}:`, error);
-    }
-  }
-
-  return { checked, sent };
 }

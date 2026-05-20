@@ -1,7 +1,6 @@
 import { db } from '@/server/db';
 import { activities, dealContacts, deals, notifications, pipelineStages, pipelines, users } from '@/server/db/schema';
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
-import { sendEmail } from '@/server/lib/mailer';
 import { getAutomationSettings } from './automation-settings.service';
 
 const REMINDER_TYPE = 'deal_inactivity_email';
@@ -25,59 +24,6 @@ export type DealInactivityReminderGroup = {
 function isTargetPipeline(name: string | null | undefined, configuredPipelines: string[]): boolean {
   const normalized = String(name ?? '').toLowerCase();
   return configuredPipelines.some((keyword) => normalized.includes(keyword));
-}
-
-function buildReminderEmail(args: {
-  ownerFirstName?: string | null;
-  deals: DealInactivityReminderGroup['deals'];
-}) {
-  const ownerName = args.ownerFirstName?.trim() || 'there';
-  const subject = `Follow-up reminders: ${args.deals.length} inactive ${args.deals.length === 1 ? 'prospect' : 'prospects'}`;
-  const rows = args.deals.map((deal) => `
-    <tr>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;">${escapeHtml(deal.title)}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(deal.pipelineName ?? 'Pipeline')}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(deal.stageName ?? 'Stage')}</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">${deal.daysInStage}d</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">${deal.daysInactive}d</td>
-      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;">${escapeHtml(deal.lastTouchedAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }))}</td>
-    </tr>
-  `).join('');
-
-  const html = `
-    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a;">
-      <p>Hi ${ownerName},</p>
-      <p>
-        These open prospects have not had any logged activity within the configured follow-up window.
-      </p>
-      <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;font-size:13px;">
-        <thead>
-          <tr style="background:#f8fafc;color:#475569;text-align:left;">
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Prospect</th>
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Pipeline</th>
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Stage</th>
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">Stuck</th>
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;text-align:right;">Inactive</th>
-            <th style="padding:9px 12px;border-bottom:1px solid #e2e8f0;">Last touchpoint</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <p>Please log follow-up activities for any prospects that are still active.</p>
-      <p style="color:#64748b;font-size:12px;">This is an automated reminder from SecComply CRM.</p>
-    </div>
-  `;
-
-  return { subject, html };
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
 }
 
 async function getLatestActivityAt(args: {
@@ -257,26 +203,4 @@ export async function recordDealInactivityReminderNotifications(group: DealInact
       batched: true,
     },
   })));
-}
-
-export async function sendDealInactivityReminders(now = new Date()): Promise<{ checked: number; sent: number }> {
-  const { checked, groups } = await collectDealInactivityReminderGroups(now);
-  let sent = 0;
-
-  for (const group of groups) {
-    const { subject, html } = buildReminderEmail({
-      ownerFirstName: group.ownerFirstName,
-      deals: group.deals,
-    });
-
-    try {
-      await sendEmail(group.ownerEmail, subject, html, { cc: REMINDER_CC_RECIPIENTS });
-      sent += 1;
-      await recordDealInactivityReminderNotifications(group);
-    } catch (error) {
-      console.error(`[DealInactivity] Failed to send reminder digest for user ${group.ownerId}:`, error);
-    }
-  }
-
-  return { checked, sent };
 }

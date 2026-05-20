@@ -143,11 +143,11 @@ function buildConsolidatedReminderEmail(group: ConsolidatedReminderGroup) {
   return { subject, html };
 }
 
-export async function sendConsolidatedReminderDigest(now = new Date()): Promise<{
+export async function collectConsolidatedReminderDigest(now = new Date()): Promise<{
   checked: number;
   checkedTasks: number;
   checkedInactiveProspects: number;
-  sent: number;
+  groups: ConsolidatedReminderGroup[];
 }> {
   const [taskResult, inactivityResult] = await Promise.all([
     collectTaskDueReminderGroups(now),
@@ -159,9 +159,25 @@ export async function sendConsolidatedReminderDigest(now = new Date()): Promise<
     inactivityGroups: inactivityResult.groups,
   });
 
+  return {
+    checked: taskResult.checked + inactivityResult.checked,
+    checkedTasks: taskResult.checked,
+    checkedInactiveProspects: inactivityResult.checked,
+    groups,
+  };
+}
+
+export async function sendConsolidatedReminderDigest(now = new Date()): Promise<{
+  checked: number;
+  checkedTasks: number;
+  checkedInactiveProspects: number;
+  sent: number;
+}> {
+  const digest = await collectConsolidatedReminderDigest(now);
+
   let sent = 0;
 
-  for (const group of groups) {
+  for (const group of digest.groups) {
     const { subject, html } = buildConsolidatedReminderEmail(group);
     try {
       await sendEmail(group.ownerEmail, subject, html, { cc: REMINDER_CC_RECIPIENTS });
@@ -190,9 +206,101 @@ export async function sendConsolidatedReminderDigest(now = new Date()): Promise<
   }
 
   return {
-    checked: taskResult.checked + inactivityResult.checked,
-    checkedTasks: taskResult.checked,
-    checkedInactiveProspects: inactivityResult.checked,
+    checked: digest.checked,
+    checkedTasks: digest.checkedTasks,
+    checkedInactiveProspects: digest.checkedInactiveProspects,
     sent,
+  };
+}
+
+function buildTestDigestEmail(args: {
+  checked: number;
+  checkedTasks: number;
+  checkedInactiveProspects: number;
+  groups: ConsolidatedReminderGroup[];
+}) {
+  const totalTasks = args.groups.reduce((sum, group) => sum + group.tasks.length, 0);
+  const totalInactive = args.groups.reduce((sum, group) => sum + group.inactiveDeals.length, 0);
+  const subject = `[TEST] CRM reminder digest preview: ${totalTasks} reminders + ${totalInactive} inactive prospects`;
+
+  const previews = args.groups.length > 0
+    ? args.groups.map((group) => {
+      const preview = buildConsolidatedReminderEmail(group);
+      return `
+        <div style="border:1px solid #cbd5e1;border-radius:12px;margin:20px 0;overflow:hidden;">
+          <div style="background:#f8fafc;padding:12px 14px;border-bottom:1px solid #e2e8f0;">
+            <div style="font-size:13px;color:#475569;">Would normally send to</div>
+            <div style="font-size:15px;font-weight:700;color:#0f172a;">${escapeHtml(group.ownerEmail)}</div>
+            <div style="font-size:12px;color:#64748b;">Subject: ${escapeHtml(preview.subject)}</div>
+          </div>
+          <div style="padding:14px;">${preview.html}</div>
+        </div>
+      `;
+    }).join('')
+    : `
+      <div style="border:1px solid #cbd5e1;border-radius:12px;margin:20px 0;padding:18px;background:#f8fafc;">
+        <p style="margin:0;font-weight:700;color:#0f172a;">No reminders are due right now.</p>
+        <p style="margin:6px 0 0;color:#64748b;">The production job would not send any reminder emails at this moment.</p>
+      </div>
+    `;
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a;">
+      <h1 style="font-size:20px;margin:0 0 8px;">CRM reminder digest test preview</h1>
+      <p style="margin:0 0 12px;color:#475569;">
+        This is a safe test email. It was sent only to the test recipient, with no CC, and it did not create reminder notification records.
+      </p>
+      <table style="border-collapse:collapse;margin:14px 0 18px;font-size:13px;">
+        <tbody>
+          <tr><td style="padding:5px 12px 5px 0;color:#64748b;">Checked task reminders</td><td style="font-weight:700;">${args.checkedTasks}</td></tr>
+          <tr><td style="padding:5px 12px 5px 0;color:#64748b;">Checked inactive prospects</td><td style="font-weight:700;">${args.checkedInactiveProspects}</td></tr>
+          <tr><td style="padding:5px 12px 5px 0;color:#64748b;">Users who would receive digest</td><td style="font-weight:700;">${args.groups.length}</td></tr>
+        </tbody>
+      </table>
+      ${previews}
+    </div>
+  `;
+
+  return { subject, html };
+}
+
+export async function buildReminderDigestTestPreview(now = new Date()): Promise<{
+  checked: number;
+  checkedTasks: number;
+  checkedInactiveProspects: number;
+  previewedUsers: number;
+  subject: string;
+  html: string;
+}> {
+  const digest = await collectConsolidatedReminderDigest(now);
+  const { subject, html } = buildTestDigestEmail(digest);
+
+  return {
+    checked: digest.checked,
+    checkedTasks: digest.checkedTasks,
+    checkedInactiveProspects: digest.checkedInactiveProspects,
+    previewedUsers: digest.groups.length,
+    subject,
+    html,
+  };
+}
+
+export async function sendReminderDigestTestEmail(to: string, now = new Date()): Promise<{
+  checked: number;
+  checkedTasks: number;
+  checkedInactiveProspects: number;
+  previewedUsers: number;
+  sent: number;
+}> {
+  const preview = await buildReminderDigestTestPreview(now);
+
+  await sendEmail(to, preview.subject, preview.html, { cc: [], retries: 1 });
+
+  return {
+    checked: preview.checked,
+    checkedTasks: preview.checkedTasks,
+    checkedInactiveProspects: preview.checkedInactiveProspects,
+    previewedUsers: preview.previewedUsers,
+    sent: 1,
   };
 }

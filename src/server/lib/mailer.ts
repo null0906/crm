@@ -4,8 +4,17 @@ let transporter: nodemailer.Transporter | null = null;
 
 type SendEmailOptions = {
   cc?: string | string[];
+  provider?: 'auto' | 'resend' | 'smtp';
   retries?: number;
 };
+
+function hasSmtpCredentials(): boolean {
+  return Boolean(process.env.SMTP_USER && (process.env.SMTP_PASS || process.env.SMTP_PASSWORD));
+}
+
+function withStatus(error: Error, status: number): Error & { status: number } {
+  return Object.assign(error, { status });
+}
 
 function getTransporter(): nodemailer.Transporter {
   if (transporter) return transporter;
@@ -57,7 +66,7 @@ async function sendViaResend(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Resend send failed (${response.status}): ${body}`);
+    throw withStatus(new Error(`Resend send failed (${response.status}): ${body}`), response.status);
   }
 }
 
@@ -82,17 +91,41 @@ export async function sendEmail(
   const options = typeof optionsOrRetries === 'number'
     ? { retries: optionsOrRetries }
     : optionsOrRetries;
+  const provider = options.provider ?? (process.env.EMAIL_PROVIDER as SendEmailOptions['provider']) ?? 'auto';
   const retries = options.retries ?? 1;
 
   try {
-    if (process.env.RESEND_API_KEY) {
+    if (provider === 'smtp') {
+      await sendViaSmtp(to, subject, html, options);
+      return;
+    }
+
+    if (provider === 'resend') {
       await sendViaResend(to, subject, html, options);
       return;
     }
 
+    if (process.env.RESEND_API_KEY) {
+      try {
+        await sendViaResend(to, subject, html, options);
+        return;
+      } catch (resendError) {
+        if (hasSmtpCredentials()) {
+          console.warn('[Mailer] Resend failed, falling back to SMTP…', resendError);
+          await sendViaSmtp(to, subject, html, options);
+          return;
+        }
+
+        throw resendError;
+      }
+    }
+
     await sendViaSmtp(to, subject, html, options);
   } catch (err) {
-    if (retries > 0) {
+    const status = typeof err === 'object' && err && 'status' in err ? Number((err as { status?: unknown }).status) : undefined;
+    const shouldRetry = retries > 0 && status !== 429;
+
+    if (shouldRetry) {
       console.warn('[Mailer] Send failed, retrying once…', err);
       await new Promise((r) => setTimeout(r, 2000));
       await sendEmail(to, subject, html, { ...options, retries: retries - 1 });
