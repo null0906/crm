@@ -22,6 +22,7 @@ import { dealTasksRouter } from './routers/deal-tasks.router';
 import { demoRecordsRouter } from './routers/demo-records.router';
 import { projectsRouter } from './routers/projects.router';
 import { reportsRouter } from './routers/reports.router';
+import { complianceRouter } from './routers/compliance.router';
 
 export const appRouter = router({
   contacts: contactRouter,
@@ -47,6 +48,7 @@ export const appRouter = router({
   demoRecords: demoRecordsRouter,
   projects: projectsRouter,
   reports: reportsRouter,
+  compliance: complianceRouter,
 });
 
 export type AppRouter = typeof appRouter;

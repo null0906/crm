@@ -161,4 +161,87 @@ export const partnerRouter = router({
 
       return updated;
     }),
+
+  referredLeads: protectedProcedure
+    .input(z.object({ partnerCompanyId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      // Contacts referred by this partner
+      const referredContacts = await db
+        .select({
+          id: contacts.id,
+          firstName: contacts.firstName,
+          lastName: contacts.lastName,
+          email: contacts.email,
+          jobTitle: contacts.jobTitle,
+          status: contacts.status,
+          referralDate: contacts.referralDate,
+          companyName: companies.name,
+          companyId: contacts.companyId,
+        })
+        .from(contacts)
+        .leftJoin(companies, eq(contacts.companyId, companies.id))
+        .where(and(
+          isNull(contacts.deletedAt),
+          eq(contacts.referredByPartnerId, input.partnerCompanyId),
+        ))
+        .orderBy(desc(contacts.createdAt));
+
+      // Deals referred by this partner
+      const referredDeals = await db
+        .select({
+          id: deals.id,
+          title: deals.title,
+          amount: deals.amount,
+          currency: deals.currency,
+          status: deals.status,
+          stageName: pipelineStages.name,
+          companyName: companies.name,
+          createdAt: deals.createdAt,
+        })
+        .from(deals)
+        .leftJoin(companies, eq(deals.companyId, companies.id))
+        .leftJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
+        .where(and(
+          isNull(deals.deletedAt),
+          eq(deals.referredByPartnerId, input.partnerCompanyId),
+        ))
+        .orderBy(desc(deals.createdAt));
+
+      return { contacts: referredContacts, deals: referredDeals };
+    }),
+
+  attributionStats: protectedProcedure
+    .input(z.object({ partnerCompanyId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const [contactStats] = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(contacts)
+        .where(and(
+          isNull(contacts.deletedAt),
+          eq(contacts.referredByPartnerId, input.partnerCompanyId),
+        ));
+
+      const dealRows = await db
+        .select({ status: deals.status, amount: deals.amount, currency: deals.currency })
+        .from(deals)
+        .where(and(
+          isNull(deals.deletedAt),
+          eq(deals.referredByPartnerId, input.partnerCompanyId),
+        ));
+
+      const openDeals  = dealRows.filter((d) => d.status === 'open');
+      const wonDeals   = dealRows.filter((d) => d.status === 'won');
+      const wonRevenue = wonDeals.reduce((sum, d) => sum + (parseFloat(String(d.amount ?? '0')) || 0), 0);
+      const pipeline   = openDeals.reduce((sum, d) => sum + (parseFloat(String(d.amount ?? '0')) || 0), 0);
+      const currency   = dealRows[0]?.currency ?? 'INR';
+
+      return {
+        referredLeads:   contactStats?.total ?? 0,
+        openDeals:       openDeals.length,
+        wonDeals:        wonDeals.length,
+        wonRevenue,
+        pipeline,
+        currency,
+      };
+    }),
 });

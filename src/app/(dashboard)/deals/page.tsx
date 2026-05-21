@@ -55,7 +55,8 @@ export default function DealsPage() {
   const [bulkTagsToAdd, setBulkTagsToAdd] = useState<{ id: string; name: string; color: string }[]>([]);
   const debouncedSearch = useDebounce(search, 300);
 
-  const { data: pipelines = [], isLoading: pipelinesLoading } = trpc.pipelines.list.useQuery();
+  const { data: allPipelines = [], isLoading: pipelinesLoading } = trpc.pipelines.list.useQuery();
+  const pipelines = allPipelines.filter((p) => (p as Record<string, unknown>).pipelineType !== 'compliance');
   const { data: usersData } = trpc.users.list.useQuery();
   const { data: contactsData } = trpc.contacts.list.useQuery({ pagination: { limit: 200 } });
   const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 200 } });

@@ -37,6 +37,9 @@ export function ContactForm({ onSuccess, onCancel, defaultValues, compact = fals
 
   const { data: users = [] } = trpc.users.list.useQuery();
   const { data: customFields = [] } = trpc.customFields.list.useQuery({ entityType: 'contact' });
+  const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 200 } });
+  const partnerCompanies = (companiesData?.items ?? [] as Array<Record<string, unknown>>)
+    .filter((c) => String((c as Record<string, unknown>).companyType ?? '') === 'partner') as Array<Record<string, unknown>>;
 
   const createContact = trpc.contacts.create.useMutation({
     onSuccess: (data) => {
@@ -78,6 +81,8 @@ export function ContactForm({ onSuccess, onCancel, defaultValues, compact = fals
       ...defaultValues,
     },
   });
+
+  const watchedSource = form.watch('source');
 
   // Once session loads, set ownerId to current user if not explicitly provided
   React.useEffect(() => {
@@ -214,6 +219,28 @@ export function ContactForm({ onSuccess, onCancel, defaultValues, compact = fals
               <option value="cold_outreach">Cold Outreach</option>
             </select>
           </div>
+
+          {watchedSource === 'referral' && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="referredByPartnerId">Referred by Partner</Label>
+                <select
+                  id="referredByPartnerId"
+                  {...form.register('referredByPartnerId')}
+                  className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  <option value="">Select partner</option>
+                  {partnerCompanies.map((c) => (
+                    <option key={String(c.id)} value={String(c.id)}>{String(c.name)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="referralDate">Referral Date</Label>
+                <Input id="referralDate" type="date" {...form.register('referralDate')} />
+              </div>
+            </>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="ownerId">Owner</Label>

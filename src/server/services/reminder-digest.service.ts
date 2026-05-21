@@ -167,50 +167,62 @@ export async function collectConsolidatedReminderDigest(now = new Date()): Promi
   };
 }
 
+let digestRunning = false;
+
 export async function sendConsolidatedReminderDigest(now = new Date()): Promise<{
   checked: number;
   checkedTasks: number;
   checkedInactiveProspects: number;
   sent: number;
 }> {
-  const digest = await collectConsolidatedReminderDigest(now);
-
-  let sent = 0;
-
-  for (const group of digest.groups) {
-    const { subject, html } = buildConsolidatedReminderEmail(group);
-    try {
-      await sendEmail(group.ownerEmail, subject, html, { cc: REMINDER_CC_RECIPIENTS });
-      sent += 1;
-
-      if (group.tasks.length > 0) {
-        await recordTaskDueReminderNotifications({
-          ownerId: group.ownerId,
-          ownerEmail: group.ownerEmail,
-          ownerFirstName: group.ownerFirstName,
-          tasks: group.tasks,
-        });
-      }
-
-      if (group.inactiveDeals.length > 0) {
-        await recordDealInactivityReminderNotifications({
-          ownerId: group.ownerId,
-          ownerEmail: group.ownerEmail,
-          ownerFirstName: group.ownerFirstName,
-          deals: group.inactiveDeals,
-        });
-      }
-    } catch (error) {
-      console.error(`[ReminderDigest] Failed to send consolidated digest for user ${group.ownerId}:`, error);
-    }
+  if (digestRunning) {
+    console.log('[ReminderDigest] Already running, skipping this invocation');
+    return { checked: 0, checkedTasks: 0, checkedInactiveProspects: 0, sent: 0 };
   }
+  digestRunning = true;
 
-  return {
-    checked: digest.checked,
-    checkedTasks: digest.checkedTasks,
-    checkedInactiveProspects: digest.checkedInactiveProspects,
-    sent,
-  };
+  try {
+    const digest = await collectConsolidatedReminderDigest(now);
+
+    let sent = 0;
+
+    for (const group of digest.groups) {
+      const { subject, html } = buildConsolidatedReminderEmail(group);
+      try {
+        await sendEmail(group.ownerEmail, subject, html, { cc: REMINDER_CC_RECIPIENTS });
+        sent += 1;
+
+        if (group.tasks.length > 0) {
+          await recordTaskDueReminderNotifications({
+            ownerId: group.ownerId,
+            ownerEmail: group.ownerEmail,
+            ownerFirstName: group.ownerFirstName,
+            tasks: group.tasks,
+          });
+        }
+
+        if (group.inactiveDeals.length > 0) {
+          await recordDealInactivityReminderNotifications({
+            ownerId: group.ownerId,
+            ownerEmail: group.ownerEmail,
+            ownerFirstName: group.ownerFirstName,
+            deals: group.inactiveDeals,
+          });
+        }
+      } catch (error) {
+        console.error(`[ReminderDigest] Failed to send consolidated digest for user ${group.ownerId}:`, error);
+      }
+    }
+
+    return {
+      checked: digest.checked,
+      checkedTasks: digest.checkedTasks,
+      checkedInactiveProspects: digest.checkedInactiveProspects,
+      sent,
+    };
+  } finally {
+    digestRunning = false;
+  }
 }
 
 function buildTestDigestEmail(args: {

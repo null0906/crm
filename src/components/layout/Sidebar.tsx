@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Users, Building2, TrendingUp, Activity, LayoutDashboard,
-  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban, BarChart3, Gauge,
+  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban, BarChart3, Gauge, ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -29,6 +29,11 @@ const mainNav: NavItem[] = [
   { href: '/partners',   label: 'Partners',    icon: Handshake },
   { href: '/ai-chat',    label: 'AI Assistant', icon: Sparkles },
   { href: '/activities', label: 'Activities',  icon: Activity },
+];
+
+const complianceNav: NavItem[] = [
+  { href: '/compliance/soc2', label: 'SOC 2 Workflow', icon: ShieldCheck },
+  { href: '/compliance/dpdp', label: 'DPDP Workflow',  icon: ShieldCheck },
 ];
 
 const insightsNav: NavItem[] = [
@@ -80,9 +85,10 @@ export function Sidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-3 space-y-4">
-          <NavSection title=""         items={mainNav}     collapsed={collapsed} pathname={pathname} />
-          <NavSection title="Insights" items={insightsNav} collapsed={collapsed} pathname={pathname} />
-          <NavSection title="Admin"    items={adminNav}    collapsed={collapsed} pathname={pathname} />
+          <NavSection title=""           items={mainNav}        collapsed={collapsed} pathname={pathname} />
+          <NavSection title="Compliance" items={complianceNav}  collapsed={collapsed} pathname={pathname} />
+          <NavSection title="Insights"   items={insightsNav}    collapsed={collapsed} pathname={pathname} />
+          <NavSection title="Admin"      items={adminNav}       collapsed={collapsed} pathname={pathname} />
         </nav>
 
         {/* Collapse toggle */}

@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Handshake, Plus, Search, TrendingUp, Users,
-  ChevronDown, ChevronRight, ExternalLink, Link2, BriefcaseBusiness,
+  ChevronDown, ChevronRight, ExternalLink, Link2, BriefcaseBusiness, UserPlus, BarChart3,
 } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -103,9 +103,18 @@ function AttachDealPanel({
   );
 }
 
+const CONTACT_STATUS_COLORS: Record<string, string> = {
+  new:       'bg-blue-50 text-blue-700',
+  active:    'bg-emerald-50 text-emerald-700',
+  nurturing: 'bg-amber-50 text-amber-700',
+  converted: 'bg-indigo-50 text-indigo-700',
+  lost:      'bg-red-50 text-red-700',
+};
+
 function PartnerRow({ partner }: { partner: Company }) {
   const utils = trpc.useUtils();
   const [expanded, setExpanded] = useState(false);
+  const [activeTab, setActiveTab] = useState<'prospects' | 'referred' | 'contacts' | 'stats'>('prospects');
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const [createDealOpen, setCreateDealOpen] = useState(false);
@@ -120,6 +129,14 @@ function PartnerRow({ partner }: { partner: Company }) {
     { partnerCompanyId: partnerId },
     { enabled: expanded }
   );
+  const { data: referredData } = trpc.partners.referredLeads.useQuery(
+    { partnerCompanyId: partnerId },
+    { enabled: expanded }
+  );
+  const { data: stats } = trpc.partners.attributionStats.useQuery(
+    { partnerCompanyId: partnerId },
+    { enabled: expanded }
+  );
   const { data: pipelines = [] } = trpc.pipelines.list.useQuery(undefined, { enabled: createDealOpen });
 
   const salesPipelines = useMemo(
@@ -130,13 +147,24 @@ function PartnerRow({ partner }: { partner: Company }) {
 
   const deals = (dealsData ?? []) as Deal[];
   const contacts = (partnerContacts ?? []) as Contact[];
+  const referredContacts = (referredData?.contacts ?? []) as Array<Record<string, unknown>>;
+  const referredDeals = (referredData?.deals ?? []) as Deal[];
   const totalValue = deals.reduce((sum, d) => sum + (parseFloat(String(d.amount ?? '0')) || 0), 0);
   const wonDeals = deals.filter((d) => d.status === 'won');
 
   const handleRefresh = () => {
     void utils.partners.dealsByPartner.invalidate({ partnerCompanyId: partnerId });
     void utils.partners.availableSalesDeals.invalidate({ partnerCompanyId: partnerId });
+    void utils.partners.referredLeads.invalidate({ partnerCompanyId: partnerId });
+    void utils.partners.attributionStats.invalidate({ partnerCompanyId: partnerId });
   };
+
+  const tabs = [
+    { key: 'prospects', label: 'Prospects', count: deals.length },
+    { key: 'referred',  label: 'Referred Leads', count: (referredContacts.length + referredDeals.length) || undefined },
+    { key: 'contacts',  label: 'Partner Contacts', count: contacts.length },
+    { key: 'stats',     label: 'Attribution', count: undefined },
+  ] as const;
 
   return (
     <>
@@ -174,22 +202,23 @@ function PartnerRow({ partner }: { partner: Company }) {
 
           <div className="flex items-center gap-6 flex-shrink-0">
             <div className="text-center">
-              <p className="text-sm font-bold text-slate-800">{deals.length}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Sales Prospects</p>
+              <p className="text-sm font-bold text-slate-800">{stats?.referredLeads ?? '—'}</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Referred Leads</p>
             </div>
             <div className="text-center">
-              <p className="text-sm font-bold text-emerald-700">{wonDeals.length}</p>
+              <p className="text-sm font-bold text-blue-700">{stats?.openDeals ?? deals.length}</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Open Deals</p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-bold text-emerald-700">{stats?.wonDeals ?? wonDeals.length}</p>
               <p className="text-[10px] text-slate-400 uppercase tracking-wide">Won</p>
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-bold text-slate-800">{contacts.length}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Contacts</p>
             </div>
             <div className="text-center min-w-[80px]">
               <p className="text-sm font-bold text-slate-800">
-                {totalValue > 0 ? formatCurrency(totalValue, String(deals[0]?.currency ?? 'INR')) : '—'}
+                {stats?.wonRevenue ? formatCurrency(stats.wonRevenue, String(stats.currency ?? 'INR')) :
+                  totalValue > 0 ? formatCurrency(totalValue, String(deals[0]?.currency ?? 'INR')) : '—'}
               </p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Pipeline</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Won Revenue</p>
             </div>
           </div>
 
@@ -209,78 +238,201 @@ function PartnerRow({ partner }: { partner: Company }) {
         </div>
 
         {expanded && (
-          <div className="border-t border-slate-100 grid grid-cols-2 divide-x divide-slate-100">
-            <div className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-1.5">
-                  <TrendingUp className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="text-xs font-semibold text-slate-600">Sales prospects under this partner</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setAttachOpen(true)}>
-                    <Link2 className="w-3.5 h-3.5 mr-1" />
-                    Attach Prospect
-                  </Button>
-                  <Button size="sm" onClick={() => setCreateDealOpen(true)}>
-                    <BriefcaseBusiness className="w-3.5 h-3.5 mr-1" />
-                    New Prospect
-                  </Button>
-                </div>
-              </div>
-              {deals.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">No sales prospects linked to this partner yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {deals.map((deal) => (
-                    <div key={String(deal.id)} className="flex items-center justify-between gap-2 text-xs">
-                      <div className="min-w-0 flex-1">
-                        <span className="text-slate-700 font-medium truncate block">{String(deal.title)}</span>
-                        {Boolean(deal.companyName) && (
-                          <span className="text-slate-400">{String(deal.companyName)}</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        {Boolean(deal.stageName) && (
-                          <span className="text-slate-400">{String(deal.stageName)}</span>
-                        )}
-                        {Boolean(deal.amount) && (
-                          <span className="font-mono text-slate-600">
-                            {formatCurrency(parseFloat(String(deal.amount)), String(deal.currency ?? 'INR'))}
-                          </span>
-                        )}
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium capitalize ${STATUS_COLORS[String(deal.status ?? 'open')]}`}>
-                          {String(deal.status)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+          <div className="border-t border-slate-100">
+            {/* Tab bar */}
+            <div className="flex items-center gap-0 border-b border-slate-100 bg-slate-50 px-4">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                    activeTab === tab.key
+                      ? 'border-blue-500 text-blue-700'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {tab.label}
+                  {tab.count !== undefined && (
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                      activeTab === tab.key ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-500'
+                    }`}>{tab.count}</span>
+                  )}
+                </button>
+              ))}
             </div>
 
+            {/* Tab content */}
             <div className="p-4">
-              <div className="flex items-center gap-1.5 mb-3">
-                <Users className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-xs font-semibold text-slate-600">Contacts at this partner</span>
-              </div>
-              {contacts.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">No contacts linked to this partner yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {contacts.map((contact) => (
-                    <div key={String(contact.id)} className="flex items-center gap-2 text-xs">
-                      <Avatar className="w-5 h-5 flex-shrink-0">
-                        <AvatarFallback className="text-[9px] bg-blue-100 text-blue-700">
-                          {String(contact.firstName ?? '').charAt(0)}{String(contact.lastName ?? '').charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-slate-700 font-medium">{String(contact.firstName)} {String(contact.lastName)}</span>
-                      {Boolean(contact.jobTitle) && (
-                        <span className="text-slate-400 truncate">{String(contact.jobTitle)}</span>
-                      )}
+              {activeTab === 'prospects' && (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-1.5">
+                      <TrendingUp className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-xs font-semibold text-slate-600">Sales prospects under this partner</span>
                     </div>
-                  ))}
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setAttachOpen(true)}>
+                        <Link2 className="w-3.5 h-3.5 mr-1" />
+                        Attach
+                      </Button>
+                      <Button size="sm" onClick={() => setCreateDealOpen(true)}>
+                        <BriefcaseBusiness className="w-3.5 h-3.5 mr-1" />
+                        New Prospect
+                      </Button>
+                    </div>
+                  </div>
+                  {deals.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No sales prospects linked to this partner yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {deals.map((deal) => (
+                        <div key={String(deal.id)} className="flex items-center justify-between gap-2 text-xs">
+                          <div className="min-w-0 flex-1">
+                            <span className="text-slate-700 font-medium truncate block">{String(deal.title)}</span>
+                            {Boolean(deal.companyName) && <span className="text-slate-400">{String(deal.companyName)}</span>}
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {Boolean(deal.stageName) && <span className="text-slate-400">{String(deal.stageName)}</span>}
+                            {Boolean(deal.amount) && (
+                              <span className="font-mono text-slate-600">{formatCurrency(parseFloat(String(deal.amount)), String(deal.currency ?? 'INR'))}</span>
+                            )}
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium capitalize ${STATUS_COLORS[String(deal.status ?? 'open')]}`}>
+                              {String(deal.status)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {activeTab === 'referred' && (
+                <div className="space-y-4">
+                  {/* Referred contacts */}
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <UserPlus className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-xs font-semibold text-slate-600">Referred contacts ({referredContacts.length})</span>
+                    </div>
+                    {referredContacts.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">No contacts referred by this partner yet. Set source = Referral and choose this partner when adding a contact.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {referredContacts.map((c) => (
+                          <div key={String(c.id)} className="flex items-center justify-between gap-2 text-xs rounded-lg bg-slate-50 px-3 py-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar className="w-5 h-5 flex-shrink-0">
+                                <AvatarFallback className="text-[9px] bg-violet-100 text-violet-700">
+                                  {String(c.firstName ?? '').charAt(0)}{String(c.lastName ?? '').charAt(0)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="font-medium text-slate-800">{String(c.firstName)} {String(c.lastName)}</span>
+                              {Boolean(c.companyName) && <span className="text-slate-400 truncate">· {String(c.companyName)}</span>}
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {Boolean(c.referralDate) && <span className="text-slate-400 font-mono">{String(c.referralDate)}</span>}
+                              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium capitalize ${CONTACT_STATUS_COLORS[String(c.status ?? 'new')] ?? 'bg-slate-100 text-slate-600'}`}>
+                                {String(c.status ?? 'new')}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Referred deals */}
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <TrendingUp className="w-3.5 h-3.5 text-slate-400" />
+                      <span className="text-xs font-semibold text-slate-600">Referred deals ({referredDeals.length})</span>
+                    </div>
+                    {referredDeals.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">No deals with this partner as the referral source yet.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {referredDeals.map((d) => (
+                          <div key={String(d.id)} className="flex items-center justify-between gap-2 text-xs rounded-lg bg-slate-50 px-3 py-2">
+                            <div className="min-w-0 flex-1">
+                              <span className="font-medium text-slate-800 truncate block">{String(d.title)}</span>
+                              {Boolean(d.companyName) && <span className="text-slate-400">{String(d.companyName)}</span>}
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {Boolean(d.stageName) && <span className="text-slate-400">{String(d.stageName)}</span>}
+                              {Boolean(d.amount) && <span className="font-mono text-slate-600">{formatCurrency(parseFloat(String(d.amount)), String(d.currency ?? 'INR'))}</span>}
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium capitalize ${STATUS_COLORS[String(d.status ?? 'open')]}`}>
+                                {String(d.status)}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
+              )}
+
+              {activeTab === 'contacts' && (
+                <>
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <Users className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="text-xs font-semibold text-slate-600">Contacts at this partner company</span>
+                  </div>
+                  {contacts.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No contacts linked to this partner yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {contacts.map((contact) => (
+                        <div key={String(contact.id)} className="flex items-center gap-2 text-xs">
+                          <Avatar className="w-5 h-5 flex-shrink-0">
+                            <AvatarFallback className="text-[9px] bg-blue-100 text-blue-700">
+                              {String(contact.firstName ?? '').charAt(0)}{String(contact.lastName ?? '').charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-slate-700 font-medium">{String(contact.firstName)} {String(contact.lastName)}</span>
+                          {Boolean(contact.jobTitle) && <span className="text-slate-400 truncate">{String(contact.jobTitle)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {activeTab === 'stats' && (
+                <>
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <BarChart3 className="w-3.5 h-3.5 text-slate-400" />
+                    <span className="text-xs font-semibold text-slate-600">Lead attribution for this partner</span>
+                  </div>
+                  {!stats ? (
+                    <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
+                  ) : (
+                    <div className="grid grid-cols-3 gap-3">
+                      {[
+                        { label: 'Referred Leads', value: stats.referredLeads, color: 'text-violet-700', bg: 'bg-violet-50' },
+                        { label: 'Open Deals', value: stats.openDeals, color: 'text-blue-700', bg: 'bg-blue-50' },
+                        { label: 'Won Deals', value: stats.wonDeals, color: 'text-emerald-700', bg: 'bg-emerald-50' },
+                        { label: 'Pipeline Value', value: formatCurrency(stats.pipeline, String(stats.currency ?? 'INR')), color: 'text-slate-800', bg: 'bg-slate-50' },
+                        { label: 'Won Revenue', value: formatCurrency(stats.wonRevenue, String(stats.currency ?? 'INR')), color: 'text-emerald-700', bg: 'bg-emerald-50' },
+                        {
+                          label: 'Conversion Rate',
+                          value: stats.referredLeads > 0
+                            ? `${Math.round((stats.wonDeals / stats.referredLeads) * 100)}%`
+                            : '—',
+                          color: 'text-indigo-700',
+                          bg: 'bg-indigo-50',
+                        },
+                      ].map((stat) => (
+                        <div key={stat.label} className={`rounded-lg ${stat.bg} px-3 py-2.5`}>
+                          <p className={`text-sm font-bold ${stat.color}`}>{stat.value}</p>
+                          <p className="text-[10px] text-slate-400 uppercase tracking-wide mt-0.5">{stat.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

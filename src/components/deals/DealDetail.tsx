@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Calendar, DollarSign, Pencil, Trash2, BellRing, AlertTriangle, CheckSquare, Users } from 'lucide-react';
+import { X, Calendar, DollarSign, Pencil, Trash2, BellRing, AlertTriangle, CheckSquare, Users, ShieldCheck, ChevronDown } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -42,6 +42,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
   const [delayReasonDraft, setDelayReasonDraft] = useState('');
   const [revisedEndDateDraft, setRevisedEndDateDraft] = useState('');
   const [selectedStageId, setSelectedStageId] = useState('');
+  const [complianceMenuOpen, setComplianceMenuOpen] = useState(false);
 
   const { data: deal, isLoading } = trpc.deals.getById.useQuery(
     { id: dealId },
@@ -86,6 +87,17 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
       void utils.activities.list.invalidate();
     },
     onError: (err) => toast.error('Failed to update stage', { description: err.message }),
+  });
+
+  const moveToWorkflow = trpc.compliance.moveDealToWorkflow.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Moved to ${result.workflowName}`);
+      setComplianceMenuOpen(false);
+      void utils.deals.getById.invalidate({ id: dealId });
+      void utils.deals.byStage.invalidate();
+      void utils.deals.list.invalidate();
+    },
+    onError: (err) => toast.error('Failed to move to workflow', { description: err.message }),
   });
 
   React.useEffect(() => {
@@ -241,10 +253,50 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
               </div>
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <Button size="sm" variant="outline" onClick={() => setReminderOpen(true)}>
-                  <BellRing className="w-3.5 h-3.5 mr-1.5" />
-                  Set Reminder
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setReminderOpen(true)}>
+                    <BellRing className="w-3.5 h-3.5 mr-1.5" />
+                    Set Reminder
+                  </Button>
+
+                  {/* Move to compliance workflow */}
+                  <div className="relative">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={moveToWorkflow.isPending}
+                      onClick={() => setComplianceMenuOpen((v) => !v)}
+                      className="gap-1.5 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      {moveToWorkflow.isPending ? 'Moving…' : 'Move to Workflow'}
+                      <ChevronDown className="w-3 h-3" />
+                    </Button>
+                    {complianceMenuOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setComplianceMenuOpen(false)} />
+                        <div className="absolute left-0 top-full z-20 mt-1 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700"
+                            onClick={() => moveToWorkflow.mutate({ dealId, type: 'soc2' })}
+                          >
+                            <ShieldCheck className="h-3.5 w-3.5 text-indigo-500" />
+                            SOC 2 Workflow
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700"
+                            onClick={() => moveToWorkflow.mutate({ dealId, type: 'dpdp' })}
+                          >
+                            <ShieldCheck className="h-3.5 w-3.5 text-purple-500" />
+                            DPDP Workflow
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
 
                 {stageOptions.length > 0 && (
                   <div className="ml-auto flex items-center gap-2">

@@ -25,13 +25,16 @@ export function initializeCron(): void {
     checkAndRunSchedules().catch((err) => {
       console.error('[Cron] checkAndRunSchedules error:', err);
     });
+  });
 
+  console.log('[Cron] Digest scheduler started (every minute)');
+
+  // Send consolidated reminder digest once daily at 4:00 AM UTC (9:30 AM IST)
+  cron.schedule('0 4 * * *', () => {
     sendConsolidatedReminderDigest().catch((err) => {
       console.error('[Cron] sendConsolidatedReminderDigest error:', err);
     });
   });
-
-  console.log('[Cron] Digest scheduler started (every minute)');
 
   cron.schedule('30 0 * * *', () => {
     recalculateLeadScores().catch((err) => {
