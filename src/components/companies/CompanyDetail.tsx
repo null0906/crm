@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Globe, Phone, X, Pencil, Trash2, FolderKanban, CalendarDays, CheckSquare } from 'lucide-react';
+import { Globe, Phone, X, Pencil, Trash2, FolderKanban, CalendarDays, CheckSquare, ArrowLeft } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -15,6 +15,7 @@ import { CompanyTypeBadge } from './CompanyTypeBadge';
 import { CompanyForm } from './CompanyForm';
 import { TagBadge } from '@/components/tags/TagBadge';
 import { ActivityFeed } from '@/components/activities/ActivityFeed';
+import { LogDemoPanel } from '@/components/activities/LogDemoPanel';
 import { formatCurrency, formatDate, formatRelative } from '@/lib/formatters';
 import { toast } from 'sonner';
 
@@ -23,9 +24,10 @@ interface CompanyDetailProps {
   open: boolean;
   onClose: () => void;
   onDeleted?: () => void;
+  fullPage?: boolean;
 }
 
-export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDetailProps) {
+export function CompanyDetail({ companyId, open, onClose, onDeleted, fullPage }: CompanyDetailProps) {
   const utils = trpc.useUtils();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -99,177 +101,183 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
     status: (company?.status as 'active' | 'inactive' | 'churned' | 'archived') ?? 'active',
   } : undefined;
 
-  return (
-    <>
-      <SlideOverPanel open={open} onClose={onClose} width="lg">
-        {isLoading ? (
-          <DetailSkeleton />
-        ) : error ? (
-          <div className="p-6 text-center">
-            <p className="text-sm font-semibold text-red-700">Could not load company</p>
-            <p className="mt-2 text-sm text-slate-500">{error.message}</p>
-            <Button variant="outline" className="mt-4" onClick={onClose}>Close</Button>
+  const bodyContent = isLoading ? (
+    <DetailSkeleton />
+  ) : error ? (
+    <div className="p-6 text-center">
+      <p className="text-sm font-semibold text-red-700">Could not load company</p>
+      <p className="mt-2 text-sm text-slate-500">{error.message}</p>
+      <Button variant="outline" className="mt-4" onClick={onClose}>Close</Button>
+    </div>
+  ) : !company ? (
+    <div className="p-6 text-center text-slate-500">Company not found</div>
+  ) : (
+    <div>
+      {/* Header */}
+      <div className="px-6 pt-6 pb-4 border-b border-slate-200">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            {fullPage && (
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-700 p-1 -ml-1" title="Back">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            )}
+            <Avatar className="w-12 h-12">
+              <AvatarFallback className="text-base bg-indigo-100 text-indigo-700 font-semibold">
+                {name?.substring(0, 2).toUpperCase() ?? '?'}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">{name}</h2>
+              {industry && <p className="text-sm text-slate-500">{industry}</p>}
+              <div className="flex items-center gap-2 mt-1.5">
+                <CompanyTypeBadge type={companyType} />
+                {companySize && (
+                  <Badge variant="outline" className="text-xs">{companySize} employees</Badge>
+                )}
+              </div>
+            </div>
           </div>
-        ) : !company ? (
-          <div className="p-6 text-center text-slate-500">Company not found</div>
-        ) : (
-          <div>
-            {/* Header */}
-            <div className="px-6 pt-6 pb-4 border-b border-slate-200">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-4">
-                  <Avatar className="w-12 h-12">
-                    <AvatarFallback className="text-base bg-indigo-100 text-indigo-700 font-semibold">
-                      {name?.substring(0, 2).toUpperCase() ?? '?'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h2 className="text-xl font-semibold text-slate-900">{name}</h2>
-                    {industry && <p className="text-sm text-slate-500">{industry}</p>}
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <CompanyTypeBadge type={companyType} />
-                      {companySize && (
-                        <Badge variant="outline" className="text-xs">{companySize} employees</Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setEditOpen(true)}
-                    className="text-slate-400 hover:text-blue-600"
-                    title="Edit company"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setDeleteOpen(true)}
-                    className="text-slate-400 hover:text-red-600"
-                    title="Delete company"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                  <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 ml-1">
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setEditOpen(true)}
+              className="text-slate-400 hover:text-blue-600"
+              title="Edit company"
+            >
+              <Pencil className="w-4 h-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setDeleteOpen(true)}
+              className="text-slate-400 hover:text-red-600"
+              title="Delete company"
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+            {!fullPage && (
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 ml-1">
+                <X className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+        </div>
 
-              {tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-3">
-                  {tags.map((tag) => (
-                    <TagBadge
-                      key={tag.id}
-                      name={tag.name}
-                      color={tag.color}
-                      onRemove={() => removeTags.mutate({ id: companyId, tagIds: [tag.id] })}
-                    />
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 mt-4">
-                {website && (
-                  <Button size="sm" variant="outline" asChild>
-                    <a href={website} target="_blank" rel="noopener noreferrer">
-                      <Globe className="w-3.5 h-3.5 mr-1" />
-                      Website
-                    </a>
-                  </Button>
-                )}
-                {phone && (
-                  <Button size="sm" variant="outline" asChild>
-                    <a href={`tel:${phone}`}>
-                      <Phone className="w-3.5 h-3.5 mr-1" />
-                      Call
-                    </a>
-                  </Button>
-                )}
-              </div>
-
-              {metrics && (
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <CompanyMetricCard label="Contacts" value={String(metrics.contactCount ?? 0)} />
-                  <CompanyMetricCard label="Pipeline" value={formatCurrency(metrics.pipelineValue ?? 0)} />
-                  <CompanyMetricCard label="Open Prospects" value={String(metrics.openDeals ?? 0)} />
-                  <CompanyMetricCard label="Active Projects" value={String(metrics.activeProjects ?? 0)} />
-                </div>
-              )}
-            </div>
-
-            {/* Tabs */}
-            <div className="px-6 py-4">
-              <Tabs defaultValue="overview">
-                <TabsList>
-                  <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="activity">Activity</TabsTrigger>
-                  <TabsTrigger value="contacts">Contacts</TabsTrigger>
-                  <TabsTrigger value="deals">Prospects</TabsTrigger>
-                  <TabsTrigger value="projects">Projects</TabsTrigger>
-                  <TabsTrigger value="demos">Demo Records</TabsTrigger>
-                  <TabsTrigger value="tasks">Tasks</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="overview" className="mt-4">
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                    {domain && <InfoField label="Domain" value={domain} mono />}
-                    {phone && <InfoField label="Phone" value={phone} />}
-                    {city && <InfoField label="City" value={city} />}
-                    {country && <InfoField label="Country" value={country} />}
-                    {location && <InfoField label="Location" value={location} />}
-                    {annualRevenueRange && <InfoField label="Annual Revenue" value={annualRevenueRange} />}
-                    {metrics && metrics.contactCount > 0 && (
-                      <InfoField label="Contacts" value={String(metrics.contactCount)} />
-                    )}
-                    {createdAt && <InfoField label="Created" value={formatDate(createdAt)} />}
-                    {lastContactedAt && <InfoField label="Last Contacted" value={formatRelative(lastContactedAt)} />}
-                    {ownerFirstName && (
-                      <InfoField label="Owner" value={`${ownerFirstName} ${ownerLastName ?? ''}`} />
-                    )}
-                  </div>
-
-                  {description && (
-                    <div className="mt-4">
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Notes</p>
-                      <p className="text-sm text-slate-700">{description}</p>
-                    </div>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="activity" className="mt-4">
-                  <ActivityFeed companyId={companyId} />
-                </TabsContent>
-
-                <TabsContent value="contacts" className="mt-4">
-                  <CompanyContacts companyId={companyId} />
-                </TabsContent>
-
-                <TabsContent value="deals" className="mt-4">
-                  <CompanyDeals companyId={companyId} />
-                </TabsContent>
-
-                <TabsContent value="projects" className="mt-4">
-                  <CompanyProjects companyId={companyId} />
-                </TabsContent>
-
-                <TabsContent value="demos" className="mt-4">
-                  <CompanyDemoRecords companyId={companyId} />
-                </TabsContent>
-
-                <TabsContent value="tasks" className="mt-4">
-                  <CompanyTasks companyId={companyId} />
-                </TabsContent>
-              </Tabs>
-            </div>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-3">
+            {tags.map((tag) => (
+              <TagBadge
+                key={tag.id}
+                name={tag.name}
+                color={tag.color}
+                onRemove={() => removeTags.mutate({ id: companyId, tagIds: [tag.id] })}
+              />
+            ))}
           </div>
         )}
-      </SlideOverPanel>
 
-      {/* Edit panel */}
+        <div className="flex items-center gap-2 mt-4">
+          {website && (
+            <Button size="sm" variant="outline" asChild>
+              <a href={website} target="_blank" rel="noopener noreferrer">
+                <Globe className="w-3.5 h-3.5 mr-1" />
+                Website
+              </a>
+            </Button>
+          )}
+          {phone && (
+            <Button size="sm" variant="outline" asChild>
+              <a href={`tel:${phone}`}>
+                <Phone className="w-3.5 h-3.5 mr-1" />
+                Call
+              </a>
+            </Button>
+          )}
+        </div>
+
+        {metrics && (
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <CompanyMetricCard label="Contacts" value={String(metrics.contactCount ?? 0)} />
+            <CompanyMetricCard label="Pipeline" value={formatCurrency(metrics.pipelineValue ?? 0)} />
+            <CompanyMetricCard label="Open Prospects" value={String(metrics.openDeals ?? 0)} />
+            <CompanyMetricCard label="Active Projects" value={String(metrics.activeProjects ?? 0)} />
+          </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="px-6 py-4">
+        <Tabs defaultValue="overview">
+          <div className="overflow-x-auto -mx-1 px-1">
+            <TabsList className="w-max min-w-full">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="activity">Activity</TabsTrigger>
+              <TabsTrigger value="contacts">Contacts</TabsTrigger>
+              <TabsTrigger value="deals">Prospects</TabsTrigger>
+              <TabsTrigger value="projects">Projects</TabsTrigger>
+              <TabsTrigger value="demos">Demos</TabsTrigger>
+              <TabsTrigger value="tasks">Tasks</TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="overview" className="mt-4">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+              {domain && <InfoField label="Domain" value={domain} mono />}
+              {phone && <InfoField label="Phone" value={phone} />}
+              {city && <InfoField label="City" value={city} />}
+              {country && <InfoField label="Country" value={country} />}
+              {location && <InfoField label="Location" value={location} />}
+              {annualRevenueRange && <InfoField label="Annual Revenue" value={annualRevenueRange} />}
+              {metrics && metrics.contactCount > 0 && (
+                <InfoField label="Contacts" value={String(metrics.contactCount)} />
+              )}
+              {createdAt && <InfoField label="Created" value={formatDate(createdAt)} />}
+              {lastContactedAt && <InfoField label="Last Contacted" value={formatRelative(lastContactedAt)} />}
+              {ownerFirstName && (
+                <InfoField label="Owner" value={`${ownerFirstName} ${ownerLastName ?? ''}`} />
+              )}
+            </div>
+
+            {description && (
+              <div className="mt-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Notes</p>
+                <p className="text-sm text-slate-700">{description}</p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="activity" className="mt-4">
+            <ActivityFeed companyId={companyId} />
+          </TabsContent>
+
+          <TabsContent value="contacts" className="mt-4">
+            <CompanyContacts companyId={companyId} />
+          </TabsContent>
+
+          <TabsContent value="deals" className="mt-4">
+            <CompanyDeals companyId={companyId} />
+          </TabsContent>
+
+          <TabsContent value="projects" className="mt-4">
+            <CompanyProjects companyId={companyId} />
+          </TabsContent>
+
+          <TabsContent value="demos" className="mt-4">
+            <CompanyDemoRecords companyId={companyId} />
+          </TabsContent>
+
+          <TabsContent value="tasks" className="mt-4">
+            <CompanyTasks companyId={companyId} />
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+
+  const modals = (
+    <>
       <SlideOverPanel open={editOpen} onClose={() => setEditOpen(false)} title="Edit Company" width="md">
         <div className="p-6">
           <CompanyForm
@@ -286,7 +294,6 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
         </div>
       </SlideOverPanel>
 
-      {/* Delete confirm */}
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
@@ -299,27 +306,35 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted }: CompanyDe
       />
     </>
   );
+
+  if (fullPage) {
+    return (
+      <>
+        <div className="min-h-full bg-slate-50">
+          <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              {bodyContent}
+            </div>
+          </div>
+        </div>
+        {modals}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <SlideOverPanel open={open} onClose={onClose} width="lg">
+        {bodyContent}
+      </SlideOverPanel>
+      {modals}
+    </>
+  );
 }
 
 function CompanyDemoRecords({ companyId }: { companyId: string }) {
+  const [showForm, setShowForm] = React.useState(false);
   const { data: demos = [], isLoading } = trpc.demoRecords.list.useQuery({ companyId });
-
-  if (isLoading) {
-    return (
-      <div className="space-y-2">
-        {[1, 2, 3].map((i) => <div key={i} className="skeleton h-16 rounded-lg" />)}
-      </div>
-    );
-  }
-
-  if (demos.length === 0) {
-    return (
-      <div className="py-10 text-center text-slate-400">
-        <CalendarDays className="mx-auto mb-2 h-8 w-8" />
-        <p className="text-sm">No demo or discovery records logged yet.</p>
-      </div>
-    );
-  }
 
   const outcomeClass: Record<string, string> = {
     interested: 'border-indigo-200 bg-indigo-50 text-indigo-700',
@@ -332,98 +347,269 @@ function CompanyDemoRecords({ companyId }: { companyId: string }) {
   };
 
   return (
-    <div className="space-y-2">
-      {demos.map((demo) => {
-        const d = demo as Record<string, unknown>;
-        const contactName = [d.contactFirstName, d.contactLastName].filter(Boolean).join(' ').trim();
-        const callType = String(d.callType ?? 'demo').replace(/_/g, ' ');
-        const outcome = String(d.outcome ?? '');
-        return (
-          <div key={String(d.id)} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold capitalize text-blue-700">
-                    {callType}
+    <div className="space-y-3">
+      {!showForm && (
+        <button
+          type="button"
+          onClick={() => setShowForm(true)}
+          className="w-full flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-sm text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+        >
+          <CalendarDays className="h-4 w-4" />
+          Log Demo / Discovery Call
+        </button>
+      )}
+
+      {showForm && (
+        <LogDemoPanel
+          companyId={companyId}
+          onSuccess={() => setShowForm(false)}
+          onCancel={() => setShowForm(false)}
+        />
+      )}
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => <div key={i} className="skeleton h-16 rounded-lg" />)}
+        </div>
+      ) : demos.length === 0 && !showForm ? (
+        <div className="py-8 text-center text-slate-400">
+          <CalendarDays className="mx-auto mb-2 h-8 w-8" />
+          <p className="text-sm">No demo or discovery records logged yet.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {demos.map((demo) => {
+            const d = demo as Record<string, unknown>;
+            const contactName = [d.contactFirstName, d.contactLastName].filter(Boolean).join(' ').trim();
+            const callType = String(d.callType ?? 'demo').replace(/_/g, ' ');
+            const outcome = String(d.outcome ?? '');
+            return (
+              <div key={String(d.id)} className="rounded-lg border border-slate-100 bg-white px-3 py-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold capitalize text-blue-700">
+                        {callType}
+                      </span>
+                      {outcome && (
+                        <span className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold capitalize ${outcomeClass[outcome] ?? 'border-slate-200 bg-white text-slate-600'}`}>
+                          {outcome.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 truncate text-sm font-semibold text-slate-800">
+                      {contactName || String(d.companyName ?? 'Company demo')}
+                      {d.dealTitle ? <span className="font-normal text-slate-400"> · {String(d.dealTitle)}</span> : null}
+                    </p>
+                    {Boolean(d.clientRequirements) && (
+                      <p className="mt-0.5 text-xs text-slate-500 line-clamp-1">Req: {String(d.clientRequirements)}</p>
+                    )}
+                    {Boolean(d.painPoints) && (
+                      <p className="mt-0.5 text-xs text-slate-500 line-clamp-1">Pain: {String(d.painPoints)}</p>
+                    )}
+                    {Boolean(d.nextAction) && (
+                      <p className="mt-1 text-xs text-blue-600 font-medium">
+                        → {String(d.nextAction)}
+                        {d.nextActionDate ? ` · ${formatDate(new Date(String(d.nextActionDate)))}` : ''}
+                      </p>
+                    )}
+                  </div>
+                  <span className="shrink-0 font-mono text-xs text-slate-400">
+                    {d.scheduledAt ? formatDate(new Date(String(d.scheduledAt))) : 'No date'}
                   </span>
-                  {outcome && (
-                    <span className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold capitalize ${outcomeClass[outcome] ?? 'border-slate-200 bg-white text-slate-600'}`}>
-                      {outcome.replace(/_/g, ' ')}
-                    </span>
-                  )}
                 </div>
-                <p className="mt-1 truncate text-sm font-semibold text-slate-800">
-                  {contactName || String(d.companyName ?? 'Company demo')}
-                  {d.dealTitle ? <span className="font-normal text-slate-400"> · {String(d.dealTitle)}</span> : null}
-                </p>
-                {Boolean(d.nextAction) && (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Next: {String(d.nextAction)}
-                    {d.nextActionDate ? ` · Due ${formatDate(new Date(String(d.nextActionDate)))}` : ''}
-                  </p>
-                )}
               </div>
-              <span className="shrink-0 font-mono text-xs text-slate-400">
-                {d.scheduledAt ? formatDate(new Date(String(d.scheduledAt))) : 'No date'}
-              </span>
-            </div>
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
 function CompanyTasks({ companyId }: { companyId: string }) {
-  const { data: tasks = [], isLoading } = trpc.projects.tasksByCompany.useQuery({ companyId });
+  const utils = trpc.useUtils();
+  const [showForm, setShowForm] = React.useState(false);
+  const [taskSubject, setTaskSubject] = React.useState('');
+  const [taskDueDate, setTaskDueDate] = React.useState('');
+  const [taskPriority, setTaskPriority] = React.useState('medium');
 
-  if (isLoading) {
-    return (
-      <div className="space-y-2">
-        {[1, 2, 3].map((i) => <div key={i} className="skeleton h-14 rounded-lg" />)}
-      </div>
-    );
-  }
+  const { data: projectTasks = [], isLoading: loadingProject } = trpc.projects.tasksByCompany.useQuery({ companyId });
+  const { data: activityTaskData, isLoading: loadingActivity } = trpc.activities.list.useQuery({
+    companyId,
+    activityType: 'task',
+    pagination: { limit: 50 },
+  });
+  const openFollowUps = (activityTaskData?.items ?? []).filter((t) => !(t as Record<string, unknown>).taskCompletedAt);
 
-  if (tasks.length === 0) {
-    return (
-      <div className="py-10 text-center text-slate-400">
-        <CheckSquare className="mx-auto mb-2 h-8 w-8" />
-        <p className="text-sm">No open project tasks for this company.</p>
-      </div>
-    );
-  }
+  const createFollowUp = trpc.activities.create.useMutation({
+    onSuccess: () => {
+      toast.success('Follow-up added');
+      void utils.activities.list.invalidate();
+      setShowForm(false);
+      setTaskSubject('');
+      setTaskDueDate('');
+      setTaskPriority('medium');
+    },
+    onError: (err) => toast.error('Failed to add follow-up', { description: err.message }),
+  });
 
-  const priorityClass: Record<string, string> = {
+  const completeFollowUp = trpc.activities.update.useMutation({
+    onSuccess: () => {
+      toast.success('Task marked complete');
+      void utils.activities.list.invalidate();
+    },
+    onError: (err) => toast.error('Failed to update', { description: err.message }),
+  });
+
+  const priorityDot: Record<string, string> = {
     urgent: 'bg-red-500',
     high: 'bg-orange-500',
     medium: 'bg-amber-500',
     low: 'bg-slate-400',
   };
 
+  const inputCls = 'flex h-8 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500';
+
   return (
-    <div className="space-y-2">
-      {tasks.map((task) => {
-        const t = task as Record<string, unknown>;
-        const dueDate = t.dueDate ? new Date(String(t.dueDate)) : null;
-        const isOverdue = dueDate ? dueDate < new Date(new Date().toDateString()) : false;
-        const assignee = [t.assigneeFirstName, t.assigneeLastName].filter(Boolean).join(' ').trim();
-        return (
-          <div key={String(t.id)} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
-            <span className={`h-2 w-2 shrink-0 rounded-full ${priorityClass[String(t.priority ?? 'medium')] ?? priorityClass.medium}`} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-800">{String(t.title ?? '')}</p>
-              <p className="truncate text-xs text-slate-400">
-                {String(t.projectName ?? 'Project')} · {String(t.status ?? 'pending').replace(/_/g, ' ')}
-                {assignee ? ` · ${assignee}` : ''}
-              </p>
-            </div>
-            <span className={`shrink-0 font-mono text-xs ${isOverdue ? 'font-semibold text-red-600' : 'text-slate-400'}`}>
-              {dueDate ? formatDate(dueDate) : 'No due date'}
-            </span>
+    <div className="space-y-3">
+      {!showForm && (
+        <button
+          type="button"
+          onClick={() => setShowForm(true)}
+          className="w-full flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-sm text-slate-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+        >
+          <CheckSquare className="h-4 w-4" />
+          Add Follow-up Task
+        </button>
+      )}
+
+      {showForm && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+          <input
+            value={taskSubject}
+            onChange={(e) => setTaskSubject(e.target.value)}
+            placeholder="Task subject *"
+            className={inputCls}
+          />
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={taskDueDate}
+              onChange={(e) => setTaskDueDate(e.target.value)}
+              className={inputCls}
+            />
+            <select
+              value={taskPriority}
+              onChange={(e) => setTaskPriority(e.target.value)}
+              className={inputCls}
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
           </div>
-        );
-      })}
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => { setShowForm(false); setTaskSubject(''); setTaskDueDate(''); setTaskPriority('medium'); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!taskSubject.trim() || createFollowUp.isPending}
+              onClick={() => {
+                if (!taskSubject.trim()) return;
+                createFollowUp.mutate({
+                  activityType: 'task',
+                  subject: taskSubject.trim(),
+                  taskDueDate: taskDueDate || null,
+                  taskPriority: taskPriority as 'low' | 'medium' | 'high' | 'urgent',
+                  companyId,
+                });
+              }}
+            >
+              {createFollowUp.isPending ? 'Adding...' : 'Add Task'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {(loadingProject || loadingActivity) ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => <div key={i} className="skeleton h-14 rounded-lg" />)}
+        </div>
+      ) : (
+        <>
+          {openFollowUps.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-1">Follow-ups</p>
+              {openFollowUps.map((item) => {
+                const t = item as Record<string, unknown>;
+                const due = t.taskDueDate ? new Date(String(t.taskDueDate)) : null;
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                const overdue = due ? due < today : false;
+                const pri = String(t.taskPriority ?? 'medium');
+                return (
+                  <div key={String(t.id)} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-white px-3 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => completeFollowUp.mutate({ id: String(t.id), taskCompletedAt: new Date().toISOString() })}
+                      className="h-4 w-4 shrink-0 rounded border-2 border-slate-300 hover:border-emerald-500 hover:bg-emerald-50 transition-colors"
+                      title="Mark complete"
+                    />
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${priorityDot[pri] ?? priorityDot.medium}`} />
+                    <p className="min-w-0 flex-1 truncate text-sm text-slate-800">{String(t.subject ?? '')}</p>
+                    <span className={`shrink-0 font-mono text-xs ${overdue ? 'font-semibold text-red-600' : 'text-slate-400'}`}>
+                      {due ? formatDate(due) : 'No due date'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {projectTasks.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 px-1">Project Tasks</p>
+              {projectTasks.map((task) => {
+                const t = task as Record<string, unknown>;
+                const due = t.dueDate ? new Date(String(t.dueDate)) : null;
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                const overdue = due ? due < today : false;
+                const assignee = [t.assigneeFirstName, t.assigneeLastName].filter(Boolean).join(' ').trim();
+                return (
+                  <div key={String(t.id)} className="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${priorityDot[String(t.priority ?? 'medium')] ?? priorityDot.medium}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-800">{String(t.title ?? '')}</p>
+                      <p className="truncate text-xs text-slate-400">
+                        {String(t.projectName ?? 'Project')} · {String(t.status ?? 'pending').replace(/_/g, ' ')}
+                        {assignee ? ` · ${assignee}` : ''}
+                      </p>
+                    </div>
+                    <span className={`shrink-0 font-mono text-xs ${overdue ? 'font-semibold text-red-600' : 'text-slate-400'}`}>
+                      {due ? formatDate(due) : 'No due date'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {openFollowUps.length === 0 && projectTasks.length === 0 && !showForm && (
+            <div className="py-8 text-center text-slate-400">
+              <CheckSquare className="mx-auto mb-2 h-8 w-8" />
+              <p className="text-sm">No open tasks. Add a follow-up to get started.</p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

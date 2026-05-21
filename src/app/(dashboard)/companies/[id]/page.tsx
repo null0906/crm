@@ -12,6 +12,7 @@ export default function CompanyRecordPage() {
     <CompanyDetail
       companyId={companyId}
       open
+      fullPage
       onClose={() => router.push('/companies')}
       onDeleted={() => router.push('/companies')}
     />

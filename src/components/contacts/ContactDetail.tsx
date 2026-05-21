@@ -16,6 +16,7 @@ import { ContactForm } from './ContactForm';
 import { ContactReminderDialog } from './ContactReminderDialog';
 import { TagBadge } from '@/components/tags/TagBadge';
 import { ActivityFeed } from '@/components/activities/ActivityFeed';
+import { EntityTasksPanel } from '@/components/activities/EntityTasksPanel';
 import { DealForm } from '@/components/deals/DealForm';
 import { formatDate, formatRelative, getInitials } from '@/lib/formatters';
 import { getWhatsAppHref } from '@/lib/whatsapp';
@@ -246,6 +247,7 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="activity">Activity</TabsTrigger>
                   <TabsTrigger value="deals">Prospects</TabsTrigger>
+                  <TabsTrigger value="tasks">Tasks</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="mt-4">
@@ -282,6 +284,10 @@ export function ContactDetail({ contactId, open, onClose, onDeleted }: ContactDe
 
                 <TabsContent value="deals" className="mt-4">
                   <ContactDeals contactId={contactId} />
+                </TabsContent>
+
+                <TabsContent value="tasks" className="mt-4">
+                  <EntityTasksPanel contactId={contactId} />
                 </TabsContent>
               </Tabs>
             </div>

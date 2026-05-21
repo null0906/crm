@@ -98,10 +98,10 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
   const isCall = activityType === 'call';
   const showDirection = ['call', 'email_sent', 'email_received', 'sms'].includes(activityType);
 
-  async function onSubmit(data: FormData) {
+  function onSubmit(data: FormData) {
     const occurredAtIso = toActivityIsoString(data.occurredAt ?? '') ?? new Date().toISOString();
 
-    await createActivity.mutateAsync({
+    createActivity.mutate({
       activityType: data.activityType,
       subject: data.subject,
       body: data.body ?? null,
