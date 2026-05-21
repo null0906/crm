@@ -1,6 +1,6 @@
 import { db } from '@/server/db';
-import { activities, dealContacts, deals, notifications, pipelineStages, pipelines, users } from '@/server/db/schema';
-import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { activities, companies, contacts, dealContacts, deals, notifications, pipelineStages, pipelines, users } from '@/server/db/schema';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { getAutomationSettings } from './automation-settings.service';
 
 const REMINDER_TYPE = 'deal_inactivity_email';
@@ -43,6 +43,17 @@ async function getLatestActivityAt(args: {
 
   if (args.companyId) {
     activityConditions.push(eq(activities.companyId, args.companyId));
+
+    // Activities logged from a contact page often carry only contact_id.
+    // Count any activity on any contact at the same company as a touchpoint
+    // for the prospect, even if that contact is not explicitly linked to it.
+    activityConditions.push(sql`EXISTS (
+      SELECT 1
+      FROM ${contacts}
+      WHERE ${contacts.id} = ${activities.contactId}
+        AND ${contacts.companyId} = ${args.companyId}
+        AND ${contacts.deletedAt} IS NULL
+    )`);
   }
 
   if (contactIds.length > 0) {
@@ -59,7 +70,21 @@ async function getLatestActivityAt(args: {
     .orderBy(desc(activities.occurredAt))
     .limit(1);
 
-  return row?.occurredAt ?? null;
+  const latestActivityAt = row?.occurredAt ?? null;
+
+  if (!args.companyId) return latestActivityAt;
+
+  const [companyTouchpoint] = await db
+    .select({ lastContactedAt: companies.lastContactedAt })
+    .from(companies)
+    .where(eq(companies.id, args.companyId))
+    .limit(1);
+
+  const companyLastContactedAt = companyTouchpoint?.lastContactedAt ?? null;
+  if (!latestActivityAt) return companyLastContactedAt;
+  if (!companyLastContactedAt) return latestActivityAt;
+
+  return latestActivityAt > companyLastContactedAt ? latestActivityAt : companyLastContactedAt;
 }
 
 function getWholeDaysBetween(from: Date, to: Date): number {
