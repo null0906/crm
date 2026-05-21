@@ -1,23 +1,46 @@
 import { db } from '@/server/db';
 import { activities, companies, contacts, deals, demoRecords, users } from '@/server/db/schema';
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import type { SessionUser } from '@/lib/types';
 import type { DemoCallType, DemoOutcome } from '@/server/db/schema/demo-records';
 
 export async function listDemoRecords(filters: {
   contactId?: string;
+  contactCompanyId?: string;
   dealId?: string;
+  dealCompanyId?: string;
   companyId?: string;
 }) {
   const conditions = [];
-  if (filters.contactId) conditions.push(eq(demoRecords.contactId, filters.contactId));
-  if (filters.dealId) conditions.push(eq(demoRecords.dealId, filters.dealId));
+
+  if (filters.contactId && filters.contactCompanyId) {
+    conditions.push(
+      or(
+        eq(demoRecords.contactId, filters.contactId),
+        eq(demoRecords.companyId, filters.contactCompanyId),
+      )!,
+    );
+  } else if (filters.contactId) {
+    conditions.push(eq(demoRecords.contactId, filters.contactId));
+  }
+
+  if (filters.dealId && filters.dealCompanyId) {
+    conditions.push(
+      or(
+        eq(demoRecords.dealId, filters.dealId),
+        eq(demoRecords.companyId, filters.dealCompanyId),
+      )!,
+    );
+  } else if (filters.dealId) {
+    conditions.push(eq(demoRecords.dealId, filters.dealId));
+  }
+
   if (filters.companyId) {
     conditions.push(
       or(
         eq(demoRecords.companyId, filters.companyId),
-        eq(contacts.companyId, filters.companyId)
-      )!
+        eq(contacts.companyId, filters.companyId),
+      )!,
     );
   }
 
@@ -158,4 +181,59 @@ export async function updateDemoRecord(id: string, data: Partial<Parameters<type
 
 export async function deleteDemoRecord(id: string) {
   await db.delete(demoRecords).where(eq(demoRecords.id, id));
+}
+
+// Returns activities of type 'demo' that have no linked demo_record yet
+export async function previewDemoBackfill() {
+  return db
+    .select({
+      id: activities.id,
+      subject: activities.subject,
+      body: activities.body,
+      occurredAt: activities.occurredAt,
+      contactId: activities.contactId,
+      companyId: activities.companyId,
+      dealId: activities.dealId,
+      performedBy: activities.performedBy,
+      contactFirstName: contacts.firstName,
+      contactLastName: contacts.lastName,
+      companyName: companies.name,
+      dealTitle: deals.title,
+      performerFirstName: users.firstName,
+      performerLastName: users.lastName,
+    })
+    .from(activities)
+    .leftJoin(demoRecords, eq(activities.id, demoRecords.activityId))
+    .leftJoin(contacts, eq(activities.contactId, contacts.id))
+    .leftJoin(companies, eq(activities.companyId, companies.id))
+    .leftJoin(deals, eq(activities.dealId, deals.id))
+    .leftJoin(users, eq(activities.performedBy, users.id))
+    .where(
+      and(
+        eq(activities.activityType, 'demo'),
+        isNull(activities.deletedAt),
+        isNull(demoRecords.id),
+      ),
+    )
+    .orderBy(desc(activities.occurredAt));
+}
+
+export async function runDemoBackfill(conductedById: string) {
+  const toMigrate = await previewDemoBackfill();
+  if (toMigrate.length === 0) return { migrated: 0 };
+
+  for (const activity of toMigrate) {
+    await db.insert(demoRecords).values({
+      activityId: activity.id,
+      contactId: activity.contactId,
+      companyId: activity.companyId,
+      dealId: activity.dealId,
+      callType: 'demo',
+      scheduledAt: activity.occurredAt,
+      demoNotes: activity.body,
+      conductedBy: activity.performedBy ?? conductedById,
+    });
+  }
+
+  return { migrated: toMigrate.length };
 }

@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ActivityFeed } from '@/components/activities/ActivityFeed';
 import { EntityTasksPanel } from '@/components/activities/EntityTasksPanel';
+import { EntityDemosPanel } from '@/components/activities/EntityDemosPanel';
 import { DealForm } from './DealForm';
 import { DealReminderDialog } from './DealReminderDialog';
 import { formatDate, formatRelative, formatCurrency } from '@/lib/formatters';
@@ -278,6 +279,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   {showProjectTab && <TabsTrigger value="project">Project</TabsTrigger>}
                   <TabsTrigger value="activity">Activity</TabsTrigger>
+                  <TabsTrigger value="demos">Demos</TabsTrigger>
                   <TabsTrigger value="tasks">Tasks</TabsTrigger>
                   <TabsTrigger value="history">Stage History</TabsTrigger>
                 </TabsList>
@@ -466,6 +468,10 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
 
                 <TabsContent value="activity" className="mt-4">
                   <ActivityFeed dealId={dealId} />
+                </TabsContent>
+
+                <TabsContent value="demos" className="mt-4">
+                  <EntityDemosPanel dealId={dealId} dealCompanyId={companyId} />
                 </TabsContent>
 
                 <TabsContent value="tasks" className="mt-4">

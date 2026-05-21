@@ -300,7 +300,7 @@ export default function ActivitiesPage() {
         >
           All
         </button>
-        {ACTIVITY_TYPES.slice(0, 9).map((t) => (
+        {ACTIVITY_TYPES.map((t) => (
           <button
             key={t.value}
             className={`text-[11px] font-medium px-2.5 py-1 rounded-md whitespace-nowrap transition-colors ${typeFilter === t.value ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'}`}

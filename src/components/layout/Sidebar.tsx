@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Users, Building2, TrendingUp, Activity, LayoutDashboard,
-  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban, BarChart3,
+  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban, BarChart3, Gauge,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -32,8 +32,9 @@ const mainNav: NavItem[] = [
 ];
 
 const insightsNav: NavItem[] = [
-  { href: '/dashboard',  label: 'Dashboard',   icon: LayoutDashboard },
-  { href: '/reports',    label: 'Reports',     icon: BarChart3 },
+  { href: '/command-center', label: 'Command Center', icon: Gauge },
+  { href: '/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
+  { href: '/reports',        label: 'Reports',        icon: BarChart3 },
 ];
 
 const adminNav: NavItem[] = [

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Tag, Users, LayoutGrid, FileText, Shield, ChevronRight, Bot, CalendarClock, BellRing } from 'lucide-react';
+import { Tag, Users, LayoutGrid, FileText, Shield, ChevronRight, Bot, CalendarClock, BellRing, DatabaseZap } from 'lucide-react';
 import Link from 'next/link';
 
 const settingsSections = [
@@ -18,6 +18,12 @@ const settingsSections = [
     items: [
       { label: 'Users & Roles', description: 'Manage team members and permissions', href: '/settings/users', icon: Users },
       { label: 'Audit Log', description: 'View all system activity and changes', href: '/settings/audit-log', icon: Shield },
+    ],
+  },
+  {
+    title: 'Data',
+    items: [
+      { label: 'Data Migration', description: 'Migrate legacy activity data into structured records', href: '/settings/data-migration', icon: DatabaseZap },
     ],
   },
   {

@@ -9,7 +9,9 @@ export const demoRecordsRouter = router({
     .use(requirePermission('activities', 'read'))
     .input(z.object({
       contactId: z.string().uuid().optional(),
+      contactCompanyId: z.string().uuid().optional(),
       dealId: z.string().uuid().optional(),
+      dealCompanyId: z.string().uuid().optional(),
       companyId: z.string().uuid().optional(),
     }))
     .query(async ({ input }) => {
@@ -36,5 +38,17 @@ export const demoRecordsRouter = router({
     .mutation(async ({ input }) => {
       await demoRecordService.deleteDemoRecord(input.id);
       return { success: true };
+    }),
+
+  previewBackfill: protectedProcedure
+    .use(requirePermission('activities', 'read'))
+    .query(async () => {
+      return demoRecordService.previewDemoBackfill();
+    }),
+
+  runBackfill: protectedProcedure
+    .use(requirePermission('activities', 'create'))
+    .mutation(async ({ ctx }) => {
+      return demoRecordService.runDemoBackfill(ctx.user!.id);
     }),
 });
