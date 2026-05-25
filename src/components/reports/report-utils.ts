@@ -10,6 +10,82 @@ export const REPORT_PRESETS = [
 
 export type ReportPreset = (typeof REPORT_PRESETS)[number]['value'];
 
+export const REPORT_ACTIVITY_TYPES = [
+  { value: 'call', label: 'Calls' },
+  { value: 'email_sent', label: 'Sent emails' },
+  { value: 'email_received', label: 'Received emails' },
+  { value: 'meeting', label: 'Meetings' },
+  { value: 'demo', label: 'Demos' },
+  { value: 'note', label: 'Notes' },
+  { value: 'task', label: 'Tasks' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'linkedin', label: 'LinkedIn' },
+  { value: 'proposal', label: 'Proposals' },
+] as const;
+
+export const REPORT_CALL_OUTCOMES = [
+  { value: 'connected', label: 'Connected' },
+  { value: 'voicemail', label: 'Voicemail' },
+  { value: 'no_answer', label: 'No answer' },
+  { value: 'busy', label: 'Busy' },
+  { value: 'wrong_number', label: 'Wrong number' },
+] as const;
+
+export const REPORT_DEMO_OUTCOMES = [
+  { value: 'interested', label: 'Interested' },
+  { value: 'not_interested', label: 'Not interested' },
+  { value: 'follow_up', label: 'Follow up' },
+  { value: 'proposal_requested', label: 'Proposal requested' },
+  { value: 'unknown', label: 'Unknown' },
+] as const;
+
+export const REPORT_TASK_PRIORITIES = [
+  { value: 'urgent', label: 'Urgent' },
+  { value: 'high', label: 'High' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'low', label: 'Low' },
+] as const;
+
+export type ReportTagFilter = {
+  id: string;
+  name: string;
+  color: string;
+};
+
+export type ReportFilters = {
+  activityTypes?: string[];
+  callOutcomes?: string[];
+  demoOutcomes?: string[];
+  taskPriorities?: string[];
+  tags?: ReportTagFilter[];
+  location?: string;
+  search?: string;
+};
+
+export function hasReportFilters(filters: ReportFilters) {
+  return Boolean(
+    filters.activityTypes?.length ||
+      filters.callOutcomes?.length ||
+      filters.demoOutcomes?.length ||
+      filters.taskPriorities?.length ||
+      filters.tags?.length ||
+      filters.location?.trim() ||
+      filters.search?.trim()
+  );
+}
+
+export function compactReportFilters(filters: ReportFilters): ReportFilters {
+  return {
+    activityTypes: filters.activityTypes?.filter(Boolean),
+    callOutcomes: filters.callOutcomes?.filter(Boolean),
+    demoOutcomes: filters.demoOutcomes?.filter(Boolean),
+    taskPriorities: filters.taskPriorities?.filter(Boolean),
+    tags: filters.tags?.filter((tag) => tag.id),
+    location: filters.location?.trim() || undefined,
+    search: filters.search?.trim() || undefined,
+  };
+}
+
 export function formatINR(value: unknown) {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',

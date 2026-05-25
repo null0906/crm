@@ -100,6 +100,19 @@ function CoverPage({ data }: { data: RepReportData }) {
       <Text style={styles.subtitle}>{data.rep.name} · {data.rep.role}</Text>
       <Text style={[styles.subtitle, { marginTop: 2 }]}>{data.rep.email}</Text>
       <Text style={[styles.subtitle, { marginTop: 10 }]}>Period: {formatDate(data.period.dateFrom)} - {formatDate(data.period.dateTo)}</Text>
+      {data.appliedFilters.length ? (
+        <>
+          <Text style={styles.sectionTitle}>Applied Filters</Text>
+          <View style={styles.card}>
+            {data.appliedFilters.map((item) => (
+              <View key={item} style={styles.highlight}>
+                <View style={styles.dot} />
+                <Text>{item}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      ) : null}
       <Text style={styles.sectionTitle}>Highlights</Text>
       <View style={styles.card}>
         {(data.highlights.length ? data.highlights : ['No major highlights detected for this period.']).map((item) => (

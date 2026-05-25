@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { SQL, sql } from 'drizzle-orm';
 import { db as defaultDb } from '@/server/db';
 import { writeAuditLog } from '@/server/services/audit.service';
 
@@ -51,6 +51,7 @@ export interface RepReportParams {
   dateTo: Date;
   requestedBy: string;
   activityLimit?: number;
+  filters?: ReportFilters;
   db?: DbClient;
 }
 
@@ -67,6 +68,18 @@ export interface RepReportData {
   weeklyBreakdown: WeeklyBreakdown[];
   comparisonToPrevious: PeriodComparison;
   highlights: string[];
+  appliedFilters: string[];
+}
+
+export interface ReportFilters {
+  activityTypes?: string[];
+  callOutcomes?: string[];
+  demoOutcomes?: string[];
+  taskPriorities?: string[];
+  tagIds?: string[];
+  tagNames?: string[];
+  location?: string;
+  search?: string;
 }
 
 export interface RepProfile {
@@ -180,6 +193,113 @@ export interface ActivityFeedItem {
   demoNextActionDate: string | null;
 }
 
+function compactValues(values: string[] | undefined): string[] {
+  return [...new Set((values ?? []).map((value) => String(value).trim()).filter(Boolean))];
+}
+
+function hasFilters(filters: ReportFilters | undefined): filters is ReportFilters {
+  return Boolean(
+    compactValues(filters?.activityTypes).length ||
+      compactValues(filters?.callOutcomes).length ||
+      compactValues(filters?.demoOutcomes).length ||
+      compactValues(filters?.taskPriorities).length ||
+      compactValues(filters?.tagIds).length ||
+      filters?.location?.trim() ||
+      filters?.search?.trim()
+  );
+}
+
+function inList(column: SQL, values: string[] | undefined): SQL | null {
+  const cleaned = compactValues(values);
+  if (!cleaned.length) return null;
+  return sql`${column} IN (${sql.join(cleaned.map((value) => sql`${value}`), sql`, `)})`;
+}
+
+function buildActivityFilterWhere(filters: ReportFilters | undefined): SQL {
+  if (!hasFilters(filters)) return sql``;
+
+  const conditions: SQL[] = [];
+  const activityTypes = inList(sql`a.activity_type`, filters.activityTypes);
+  const callOutcomes = inList(sql`a.call_outcome`, filters.callOutcomes);
+  const demoOutcomes = inList(sql`COALESCE(dr.outcome, 'unknown')`, filters.demoOutcomes);
+  const taskPriorities = inList(sql`a.task_priority`, filters.taskPriorities);
+
+  if (activityTypes) conditions.push(activityTypes);
+  if (callOutcomes) conditions.push(callOutcomes);
+  if (demoOutcomes) conditions.push(demoOutcomes);
+  if (taskPriorities) conditions.push(taskPriorities);
+
+  const location = filters.location?.trim();
+  if (location) {
+    const pattern = `%${location}%`;
+    conditions.push(sql`(
+      a.meeting_location ILIKE ${pattern}
+      OR c.city ILIKE ${pattern}
+      OR c.state ILIKE ${pattern}
+      OR c.country ILIKE ${pattern}
+      OR c.location ILIKE ${pattern}
+      OR co.city ILIKE ${pattern}
+      OR co.state ILIKE ${pattern}
+      OR co.country ILIKE ${pattern}
+      OR co.location ILIKE ${pattern}
+    )`);
+  }
+
+  const search = filters.search?.trim();
+  if (search) {
+    const pattern = `%${search}%`;
+    conditions.push(sql`(
+      a.subject ILIKE ${pattern}
+      OR a.body ILIKE ${pattern}
+      OR NULLIF(concat_ws(' ', c.first_name, c.last_name), '') ILIKE ${pattern}
+      OR co.name ILIKE ${pattern}
+      OR d.title ILIKE ${pattern}
+    )`);
+  }
+
+  const tagIds = compactValues(filters.tagIds);
+  if (tagIds.length) {
+    const ids = tagIds.map((value) => sql`${value}`);
+    conditions.push(sql`EXISTS (
+      SELECT 1
+      FROM (
+        SELECT contact_tags.tag_id
+        FROM contact_tags
+        WHERE contact_tags.contact_id = c.id
+        UNION ALL
+        SELECT company_tags.tag_id
+        FROM company_tags
+        WHERE company_tags.company_id = COALESCE(a.company_id, c.company_id, d.company_id)
+        UNION ALL
+        SELECT deal_tags.tag_id
+        FROM deal_tags
+        WHERE deal_tags.deal_id = d.id
+      ) report_tag_links
+      WHERE report_tag_links.tag_id IN (${sql.join(ids, sql`, `)})
+    )`);
+  }
+
+  return conditions.length ? sql`AND (${sql.join(conditions, sql` AND `)})` : sql``;
+}
+
+export function describeReportFilters(filters: ReportFilters | undefined): string[] {
+  if (!hasFilters(filters)) return [];
+  const labels: string[] = [];
+  const add = (label: string, values: string[] | undefined) => {
+    const cleaned = compactValues(values);
+    if (cleaned.length) labels.push(`${label}: ${cleaned.map((value) => value.replace(/_/g, ' ')).join(', ')}`);
+  };
+
+  add('Activity type', filters.activityTypes);
+  add('Call outcome', filters.callOutcomes);
+  add('Demo outcome', filters.demoOutcomes);
+  add('Task priority', filters.taskPriorities);
+  add('Tags', compactValues(filters.tagNames).length ? filters.tagNames : filters.tagIds);
+  if (filters.location?.trim()) labels.push(`Location: ${filters.location.trim()}`);
+  if (filters.search?.trim()) labels.push(`Search: ${filters.search.trim()}`);
+  return labels;
+}
+
 export interface WeeklyBreakdown {
   weekStart: string;
   label: string;
@@ -202,6 +322,7 @@ export async function buildRepReport(params: RepReportParams): Promise<RepReport
   const dateFrom = toDate(params.dateFrom);
   const dateTo = toDate(params.dateTo);
   const activityLimit = params.activityLimit ?? 30;
+  const filters = params.filters;
 
   await writeAuditLog({
     userId: params.requestedBy,
@@ -212,6 +333,7 @@ export async function buildRepReport(params: RepReportParams): Promise<RepReport
       dateFrom: dateFrom.toISOString(),
       dateTo: dateTo.toISOString(),
       activityLimit,
+      filters,
     },
   });
 
@@ -228,15 +350,15 @@ export async function buildRepReport(params: RepReportParams): Promise<RepReport
     previousPeriod,
   ] = await Promise.all([
     getRepProfile(params.userId, db),
-    getActivitySummary(params.userId, dateFrom, dateTo, db),
+    getActivitySummary(params.userId, dateFrom, dateTo, filters, db),
     getPipelineContribution(params.userId, dateFrom, dateTo, db),
     getConversionMetrics(params.userId, dateFrom, dateTo, db),
     getVelocityMetrics(params.userId, dateFrom, dateTo, db),
     getTopDeals(params.userId, dateFrom, dateTo, db),
-    getDemoAnalysis(params.userId, dateFrom, dateTo, db),
-    getActivityFeed(params.userId, dateFrom, dateTo, { limit: activityLimit, offset: 0 }, db),
-    getWeeklyBreakdown(params.userId, dateFrom, dateTo, db),
-    getPreviousPeriodData(params.userId, dateFrom, dateTo, db),
+    getDemoAnalysis(params.userId, dateFrom, dateTo, filters, db),
+    getActivityFeed(params.userId, dateFrom, dateTo, { limit: activityLimit, offset: 0 }, filters, db),
+    getWeeklyBreakdown(params.userId, dateFrom, dateTo, filters, db),
+    getPreviousPeriodData(params.userId, dateFrom, dateTo, filters, db),
   ]);
 
   const highlights = generateHighlights(activitySummary, pipeline, conversion, previousPeriod, demoAnalysis);
@@ -254,6 +376,7 @@ export async function buildRepReport(params: RepReportParams): Promise<RepReport
     weeklyBreakdown,
     comparisonToPrevious: previousPeriod,
     highlights,
+    appliedFilters: describeReportFilters(filters),
   };
 }
 
@@ -290,35 +413,42 @@ export async function getActivitySummary(
   userId: string,
   dateFrom: Date,
   dateTo: Date,
+  filters?: ReportFilters,
   db: DbClient = defaultDb
 ): Promise<ActivitySummary> {
+  const filterWhere = buildActivityFilterWhere(filters);
   const result = await db.execute(sql`
     SELECT
-      COUNT(*) FILTER (WHERE activity_type = 'call')::int AS calls_total,
-      COUNT(*) FILTER (WHERE activity_type = 'call' AND call_outcome = 'connected')::int AS calls_connected,
-      COUNT(*) FILTER (WHERE activity_type = 'call' AND call_outcome = 'voicemail')::int AS calls_voicemail,
-      COUNT(*) FILTER (WHERE activity_type = 'call' AND call_outcome = 'no_answer')::int AS calls_no_answer,
-      COUNT(*) FILTER (WHERE activity_type = 'email_sent')::int AS emails_sent,
-      COUNT(*) FILTER (WHERE activity_type = 'email_received')::int AS emails_received,
-      COUNT(*) FILTER (WHERE activity_type = 'meeting')::int AS meetings,
-      COUNT(*) FILTER (WHERE activity_type = 'demo')::int AS demos,
-      COUNT(*) FILTER (WHERE activity_type = 'note')::int AS notes,
-      COUNT(*) FILTER (WHERE activity_type = 'whatsapp')::int AS whatsapp,
-      COUNT(*) FILTER (WHERE activity_type = 'linkedin')::int AS linkedin,
-      COUNT(*) FILTER (WHERE activity_type = 'task' AND task_completed_at IS NOT NULL)::int AS tasks_completed,
-      COUNT(*) FILTER (WHERE activity_type = 'task' AND task_completed_at IS NULL AND task_due_date < CURRENT_DATE)::int AS tasks_overdue,
-      COALESCE(SUM(call_duration_seconds) FILTER (WHERE activity_type = 'call' AND call_outcome = 'connected'), 0)::int AS total_call_seconds,
-      COALESCE(AVG(call_duration_seconds) FILTER (WHERE activity_type = 'call' AND call_outcome = 'connected'), 0)::numeric AS avg_call_seconds,
+      COUNT(*) FILTER (WHERE a.activity_type = 'call')::int AS calls_total,
+      COUNT(*) FILTER (WHERE a.activity_type = 'call' AND a.call_outcome = 'connected')::int AS calls_connected,
+      COUNT(*) FILTER (WHERE a.activity_type = 'call' AND a.call_outcome = 'voicemail')::int AS calls_voicemail,
+      COUNT(*) FILTER (WHERE a.activity_type = 'call' AND a.call_outcome = 'no_answer')::int AS calls_no_answer,
+      COUNT(*) FILTER (WHERE a.activity_type = 'email_sent')::int AS emails_sent,
+      COUNT(*) FILTER (WHERE a.activity_type = 'email_received')::int AS emails_received,
+      COUNT(*) FILTER (WHERE a.activity_type = 'meeting')::int AS meetings,
+      COUNT(*) FILTER (WHERE a.activity_type = 'demo')::int AS demos,
+      COUNT(*) FILTER (WHERE a.activity_type = 'note')::int AS notes,
+      COUNT(*) FILTER (WHERE a.activity_type = 'whatsapp')::int AS whatsapp,
+      COUNT(*) FILTER (WHERE a.activity_type = 'linkedin')::int AS linkedin,
+      COUNT(*) FILTER (WHERE a.activity_type = 'task' AND a.task_completed_at IS NOT NULL)::int AS tasks_completed,
+      COUNT(*) FILTER (WHERE a.activity_type = 'task' AND a.task_completed_at IS NULL AND a.task_due_date < CURRENT_DATE)::int AS tasks_overdue,
+      COALESCE(SUM(a.call_duration_seconds) FILTER (WHERE a.activity_type = 'call' AND a.call_outcome = 'connected'), 0)::int AS total_call_seconds,
+      COALESCE(AVG(a.call_duration_seconds) FILTER (WHERE a.activity_type = 'call' AND a.call_outcome = 'connected'), 0)::numeric AS avg_call_seconds,
       COUNT(*)::int AS total_activities,
-      COUNT(DISTINCT DATE(occurred_at AT TIME ZONE 'Asia/Kolkata'))::int AS active_days,
-      COUNT(DISTINCT contact_id) FILTER (WHERE contact_id IS NOT NULL)::int AS unique_contacts_touched,
-      COUNT(DISTINCT company_id) FILTER (WHERE company_id IS NOT NULL)::int AS unique_companies_touched
-    FROM activities
-    WHERE performed_by = ${userId}
-      AND occurred_at >= ${dateFrom}
-      AND occurred_at <= ${dateTo}
-      AND COALESCE(is_automated, false) = false
-      AND deleted_at IS NULL
+      COUNT(DISTINCT DATE(a.occurred_at AT TIME ZONE 'Asia/Kolkata'))::int AS active_days,
+      COUNT(DISTINCT a.contact_id) FILTER (WHERE a.contact_id IS NOT NULL)::int AS unique_contacts_touched,
+      COUNT(DISTINCT COALESCE(a.company_id, c.company_id)) FILTER (WHERE COALESCE(a.company_id, c.company_id) IS NOT NULL)::int AS unique_companies_touched
+    FROM activities a
+    LEFT JOIN contacts c ON c.id = a.contact_id
+    LEFT JOIN companies co ON co.id = COALESCE(a.company_id, c.company_id)
+    LEFT JOIN deals d ON d.id = a.deal_id
+    LEFT JOIN demo_records dr ON dr.activity_id = a.id
+    WHERE a.performed_by = ${userId}
+      AND a.occurred_at >= ${dateFrom}
+      AND a.occurred_at <= ${dateTo}
+      AND COALESCE(a.is_automated, false) = false
+      AND a.deleted_at IS NULL
+      ${filterWhere}
   `);
 
   const r = asRows<Record<string, unknown>>(result)[0] ?? {};
@@ -552,20 +682,27 @@ export async function getDemoAnalysis(
   userId: string,
   dateFrom: Date,
   dateTo: Date,
+  filters?: ReportFilters,
   db: DbClient = defaultDb
 ): Promise<DemoAnalysis> {
+  const filterWhere = buildActivityFilterWhere(filters);
   const result = await db.execute(sql`
     SELECT
-      call_type,
-      COALESCE(outcome, 'unknown') AS outcome,
+      dr.call_type,
+      COALESCE(dr.outcome, 'unknown') AS outcome,
       COUNT(*)::int AS count,
-      COUNT(*) FILTER (WHERE next_action IS NOT NULL)::int AS with_next_action,
-      COUNT(*) FILTER (WHERE next_action_date < CURRENT_DATE AND next_action IS NOT NULL)::int AS overdue_follow_ups
-    FROM demo_records
-    WHERE conducted_by = ${userId}
-      AND COALESCE(scheduled_at, created_at) >= ${dateFrom}
-      AND COALESCE(scheduled_at, created_at) <= ${dateTo}
-    GROUP BY call_type, COALESCE(outcome, 'unknown')
+      COUNT(*) FILTER (WHERE dr.next_action IS NOT NULL)::int AS with_next_action,
+      COUNT(*) FILTER (WHERE dr.next_action_date < CURRENT_DATE AND dr.next_action IS NOT NULL)::int AS overdue_follow_ups
+    FROM demo_records dr
+    LEFT JOIN activities a ON a.id = dr.activity_id
+    LEFT JOIN contacts c ON c.id = a.contact_id
+    LEFT JOIN companies co ON co.id = COALESCE(a.company_id, c.company_id)
+    LEFT JOIN deals d ON d.id = a.deal_id
+    WHERE dr.conducted_by = ${userId}
+      AND COALESCE(dr.scheduled_at, dr.created_at) >= ${dateFrom}
+      AND COALESCE(dr.scheduled_at, dr.created_at) <= ${dateTo}
+      ${filterWhere}
+    GROUP BY dr.call_type, COALESCE(dr.outcome, 'unknown')
     ORDER BY count DESC
   `);
 
@@ -597,8 +734,10 @@ export async function getActivityFeed(
   dateFrom: Date,
   dateTo: Date,
   pagination: { limit: number; offset: number },
+  filters?: ReportFilters,
   db: DbClient = defaultDb
 ): Promise<ActivityFeedItem[]> {
+  const filterWhere = buildActivityFilterWhere(filters);
   const result = await db.execute(sql`
     SELECT
       a.id,
@@ -629,6 +768,7 @@ export async function getActivityFeed(
       AND a.occurred_at <= ${dateTo}
       AND COALESCE(a.is_automated, false) = false
       AND a.deleted_at IS NULL
+      ${filterWhere}
     ORDER BY a.occurred_at DESC
     LIMIT ${pagination.limit}
     OFFSET ${pagination.offset}
@@ -660,24 +800,31 @@ export async function getWeeklyBreakdown(
   userId: string,
   dateFrom: Date,
   dateTo: Date,
+  filters?: ReportFilters,
   db: DbClient = defaultDb
 ): Promise<WeeklyBreakdown[]> {
+  const filterWhere = buildActivityFilterWhere(filters);
   const result = await db.execute(sql`
     SELECT
-      DATE_TRUNC('week', occurred_at AT TIME ZONE 'Asia/Kolkata')::date AS week_start,
+      DATE_TRUNC('week', a.occurred_at AT TIME ZONE 'Asia/Kolkata')::date AS week_start,
       COUNT(*)::int AS total,
-      COUNT(*) FILTER (WHERE activity_type = 'call')::int AS calls,
-      COUNT(*) FILTER (WHERE activity_type IN ('email_sent', 'email_received'))::int AS emails,
-      COUNT(*) FILTER (WHERE activity_type = 'meeting')::int AS meetings,
-      COUNT(*) FILTER (WHERE activity_type = 'demo')::int AS demos,
-      COUNT(DISTINCT contact_id) FILTER (WHERE contact_id IS NOT NULL)::int AS contacts_touched
-    FROM activities
-    WHERE performed_by = ${userId}
-      AND occurred_at >= ${dateFrom}
-      AND occurred_at <= ${dateTo}
-      AND COALESCE(is_automated, false) = false
-      AND deleted_at IS NULL
-    GROUP BY DATE_TRUNC('week', occurred_at AT TIME ZONE 'Asia/Kolkata')::date
+      COUNT(*) FILTER (WHERE a.activity_type = 'call')::int AS calls,
+      COUNT(*) FILTER (WHERE a.activity_type IN ('email_sent', 'email_received'))::int AS emails,
+      COUNT(*) FILTER (WHERE a.activity_type = 'meeting')::int AS meetings,
+      COUNT(*) FILTER (WHERE a.activity_type = 'demo')::int AS demos,
+      COUNT(DISTINCT a.contact_id) FILTER (WHERE a.contact_id IS NOT NULL)::int AS contacts_touched
+    FROM activities a
+    LEFT JOIN contacts c ON c.id = a.contact_id
+    LEFT JOIN companies co ON co.id = COALESCE(a.company_id, c.company_id)
+    LEFT JOIN deals d ON d.id = a.deal_id
+    LEFT JOIN demo_records dr ON dr.activity_id = a.id
+    WHERE a.performed_by = ${userId}
+      AND a.occurred_at >= ${dateFrom}
+      AND a.occurred_at <= ${dateTo}
+      AND COALESCE(a.is_automated, false) = false
+      AND a.deleted_at IS NULL
+      ${filterWhere}
+    GROUP BY DATE_TRUNC('week', a.occurred_at AT TIME ZONE 'Asia/Kolkata')::date
     ORDER BY week_start ASC
   `);
 
@@ -703,6 +850,7 @@ export async function getPreviousPeriodData(
   userId: string,
   dateFrom: Date,
   dateTo: Date,
+  filters?: ReportFilters,
   db: DbClient = defaultDb
 ): Promise<PeriodComparison> {
   const periodLength = dateTo.getTime() - dateFrom.getTime();
@@ -710,7 +858,7 @@ export async function getPreviousPeriodData(
   const prevFrom = new Date(prevTo.getTime() - periodLength);
 
   const [summary, pipeline] = await Promise.all([
-    getActivitySummary(userId, prevFrom, prevTo, db),
+    getActivitySummary(userId, prevFrom, prevTo, filters, db),
     getPipelineContribution(userId, prevFrom, prevTo, db),
   ]);
 

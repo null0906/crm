@@ -3,18 +3,9 @@
 import React from 'react';
 import Link from 'next/link';
 import { CalendarDays, Mail, MessageCircle, Phone, StickyNote, Users } from 'lucide-react';
-import { activityLabel, formatDate, formatTime } from './report-utils';
+import { activityLabel, formatDate, formatTime, type ReportFilters } from './report-utils';
 
 type Item = Record<string, any>;
-
-const FILTERS = [
-  { value: 'all', label: 'All' },
-  { value: 'call', label: 'Calls' },
-  { value: 'email_sent', label: 'Emails' },
-  { value: 'meeting', label: 'Meetings' },
-  { value: 'demo', label: 'Demos' },
-  { value: 'note', label: 'Notes' },
-] as const;
 
 function iconFor(type: string) {
   if (type === 'call') return Phone;
@@ -38,42 +29,38 @@ export function ActivityFeed({
   onLoadMore,
   loadingMore,
   hasMore,
+  filters,
 }: {
   initialItems: Item[];
   onLoadMore: () => void;
   loadingMore: boolean;
   hasMore: boolean;
+  filters: ReportFilters;
 }) {
-  const [filter, setFilter] = React.useState('all');
-  const items = filter === 'all' ? initialItems : initialItems.filter((item) => item.activityType === filter || (filter === 'email_sent' && item.activityType?.startsWith('email')));
-  const groups = groupByDate(items);
+  const groups = groupByDate(initialItems);
+  const activeFilterCount = [
+    filters.activityTypes?.length,
+    filters.callOutcomes?.length,
+    filters.demoOutcomes?.length,
+    filters.taskPriorities?.length,
+    filters.tags?.length,
+    filters.location?.trim() ? 1 : 0,
+    filters.search?.trim() ? 1 : 0,
+  ].reduce<number>((total, value) => total + Number(value ?? 0), 0);
 
   return (
     <section className="rounded-2xl border border-[var(--border-subtle)] bg-white p-5 shadow-sm">
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-lg font-black tracking-[-0.03em] text-[var(--text-primary)]">Activity Log</h2>
-          <p className="text-sm text-[var(--text-tertiary)]">{initialItems.length} activities loaded. Newest first.</p>
-        </div>
-        <div className="flex flex-wrap gap-1.5 print:hidden">
-          {FILTERS.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              onClick={() => setFilter(item.value)}
-              className={`rounded-full border px-3 py-1 text-xs font-bold ${
-                filter === item.value
-                  ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
-                  : 'border-[var(--border-default)] bg-white text-[var(--text-secondary)] hover:bg-[var(--accent-light)] hover:text-[var(--accent)]'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
+          <p className="text-sm text-[var(--text-tertiary)]">
+            {initialItems.length} activities loaded. Newest first.
+            {activeFilterCount > 0 ? ` ${activeFilterCount} feed filters applied.` : ''}
+          </p>
         </div>
       </div>
 
-      {items.length === 0 ? (
+      {initialItems.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[var(--border-default)] p-8 text-center text-sm text-[var(--text-tertiary)]">
           No activity matches this filter.
         </div>

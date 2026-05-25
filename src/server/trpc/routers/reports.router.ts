@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { asc, eq, sql } from 'drizzle-orm';
 import { router, protectedProcedure } from '../router';
 import { activities, users, roles } from '@/server/db/schema';
-import { buildRepReport, getActivityFeed, getRepProfile } from '@/server/services/report.service';
+import { buildRepReport, describeReportFilters, getActivityFeed, getRepProfile, type ReportFilters } from '@/server/services/report.service';
 import { generateReportPDF } from '@/server/lib/report-pdf';
 import { hasPermission } from '@/server/lib/permissions';
 import type { SessionUser } from '@/lib/types';
@@ -13,6 +13,31 @@ const presets = ['this_week', 'last_week', 'this_month', 'last_month', 'this_qua
 type ReportPreset = (typeof presets)[number];
 const presetSchema = z.string().default('this_month').transform((value) => {
   return (presets as readonly string[]).includes(value) ? (value as ReportPreset) : 'this_month';
+});
+const reportFiltersSchema = z.object({
+  activityTypes: z.array(z.string()).optional(),
+  callOutcomes: z.array(z.string()).optional(),
+  demoOutcomes: z.array(z.string()).optional(),
+  taskPriorities: z.array(z.string()).optional(),
+  tags: z.array(z.object({
+    id: z.string().uuid(),
+    name: z.string(),
+    color: z.string().nullable().optional(),
+  })).optional(),
+  location: z.string().optional(),
+  search: z.string().optional(),
+}).optional().transform((filters): ReportFilters | undefined => {
+  if (!filters) return undefined;
+  return {
+    activityTypes: filters.activityTypes,
+    callOutcomes: filters.callOutcomes,
+    demoOutcomes: filters.demoOutcomes,
+    taskPriorities: filters.taskPriorities,
+    tagIds: filters.tags?.map((tag) => tag.id),
+    tagNames: filters.tags?.map((tag) => tag.name),
+    location: filters.location,
+    search: filters.search,
+  };
 });
 
 function startOfToday() {
@@ -119,7 +144,7 @@ function csvCell(value: unknown): string {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
-function buildActivityFeedCsv(items: Awaited<ReturnType<typeof getActivityFeed>>): string {
+function buildActivityFeedCsv(items: Awaited<ReturnType<typeof getActivityFeed>>, filters: string[]): string {
   const headers = [
     'Occurred At',
     'Type',
@@ -150,7 +175,16 @@ function buildActivityFeedCsv(items: Awaited<ReturnType<typeof getActivityFeed>>
     item.demoNextActionDate,
   ]);
 
+  const filterRows = filters.length
+    ? [
+        ['Applied Filters'],
+        ...filters.map((filter) => [filter]),
+        [],
+      ].map((row) => row.map(csvCell).join(','))
+    : [];
+
   return [
+    ...filterRows,
     headers.map(csvCell).join(','),
     ...rows.map((row) => row.map(csvCell).join(',')),
   ].join('\n');
@@ -163,6 +197,7 @@ export const reportsRouter = router({
       preset: presetSchema,
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
+      filters: reportFiltersSchema,
     }))
     .query(async ({ ctx, input }) => {
       assertReportAccess(ctx.user, input.userId);
@@ -172,6 +207,7 @@ export const reportsRouter = router({
         dateFrom,
         dateTo,
         requestedBy: ctx.user.id,
+        filters: input.filters,
       });
     }),
 
@@ -181,6 +217,7 @@ export const reportsRouter = router({
       preset: presetSchema,
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
+      filters: reportFiltersSchema,
       offset: z.number().int().min(0).default(0),
       limit: z.number().int().min(1).max(60).default(30),
     }))
@@ -190,7 +227,7 @@ export const reportsRouter = router({
       return getActivityFeed(input.userId, dateFrom, dateTo, {
         offset: input.offset,
         limit: input.limit,
-      });
+      }, input.filters);
     }),
 
   getReportableUsers: protectedProcedure
@@ -230,6 +267,7 @@ export const reportsRouter = router({
       preset: presetSchema,
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
+      filters: reportFiltersSchema,
     }))
     .mutation(async ({ ctx, input }) => {
       assertReportAccess(ctx.user, input.userId);
@@ -244,6 +282,7 @@ export const reportsRouter = router({
         dateTo,
         requestedBy: ctx.user.id,
         activityLimit: 500,
+        filters: input.filters,
       });
 
       const pdfBuffer = await generateReportPDF(reportData);
@@ -261,6 +300,7 @@ export const reportsRouter = router({
       preset: presetSchema,
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
+      filters: reportFiltersSchema,
     }))
     .mutation(async ({ ctx, input }) => {
       assertReportAccess(ctx.user, input.userId);
@@ -271,7 +311,7 @@ export const reportsRouter = router({
       const { dateFrom, dateTo } = await resolveInputRange(input, input.userId, ctx.db);
       const [rep, items] = await Promise.all([
         getRepProfile(input.userId),
-        getActivityFeed(input.userId, dateFrom, dateTo, { offset: 0, limit: 10000 }),
+        getActivityFeed(input.userId, dateFrom, dateTo, { offset: 0, limit: 10000 }, input.filters),
       ]);
 
       await writeAuditLog({
@@ -283,11 +323,12 @@ export const reportsRouter = router({
           reportType: 'activity_feed_csv',
           dateFrom: dateFrom.toISOString(),
           dateTo: dateTo.toISOString(),
+          filters: input.filters,
           rowCount: items.length,
         },
       });
 
-      const csv = buildActivityFeedCsv(items);
+      const csv = buildActivityFeedCsv(items, describeReportFilters(input.filters));
       const filename = `activity-feed-${rep.name.replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`;
 
       return {
