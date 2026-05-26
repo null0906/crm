@@ -499,11 +499,13 @@ export async function getDealsByStage(
   const grouped: Record<string, Record<string, unknown>[]> = {};
   for (const row of rows) {
     let groupedStageId = row.stageId;
-    if (row.status === 'won' && row.stageType !== 'won' && firstWonStageId) {
+    const shouldGroupByLifecycleStatus = row.pipelineType !== 'active_delivery';
+
+    if (shouldGroupByLifecycleStatus && row.status === 'won' && row.stageType !== 'won' && firstWonStageId) {
       groupedStageId = firstWonStageId;
-    } else if ((row.status === 'lost' || row.status === 'abandoned') && row.stageType !== 'lost' && firstLostStageId) {
+    } else if (shouldGroupByLifecycleStatus && (row.status === 'lost' || row.status === 'abandoned') && row.stageType !== 'lost' && firstLostStageId) {
       groupedStageId = firstLostStageId;
-    } else if (row.status === 'open' && row.stageType !== 'active' && firstActiveStageId) {
+    } else if (shouldGroupByLifecycleStatus && row.status === 'open' && row.stageType !== 'active' && firstActiveStageId) {
       groupedStageId = firstActiveStageId;
     }
 

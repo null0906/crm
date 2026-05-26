@@ -22,6 +22,7 @@ const STAGE_MAP: Record<string, ProjectStage> = {
   kickoff: 'kickoff',
   onboarding: 'kickoff',
   'gap assessment': 'gap_assessment',
+  implementation: 'implementation',
   'internal audit': 'internal_audit',
   'external audit': 'external_audit',
   'external audit & certified': 'external_audit',
@@ -36,6 +37,20 @@ function normalizeStageName(name: string) {
 function toProjectStage(stageName: string): ProjectStage | null {
   const normalized = normalizeStageName(stageName);
   return STAGE_MAP[normalized] ?? Object.entries(STAGE_MAP).find(([key]) => normalized.includes(key))?.[1] ?? null;
+}
+
+function isCompleteProgress(value: unknown) {
+  return Number(value ?? 0) >= 100;
+}
+
+function resolveProjectStage(deal: { stageName?: string | null; projectProgressPercent?: number | null; projectActualEndDate?: string | Date | null }): ProjectStage {
+  if (isCompleteProgress(deal.projectProgressPercent) || deal.projectActualEndDate) return 'certified';
+  return toProjectStage(deal.stageName ?? '') ?? 'kickoff';
+}
+
+function progressForDealStage(deal: { stageName?: string | null; projectProgressPercent?: number | null; projectActualEndDate?: string | Date | null }) {
+  const projectStage = resolveProjectStage(deal);
+  return Math.max(Number(deal.projectProgressPercent ?? 0), getProjectStageProgress(projectStage));
 }
 
 function statusForStage(stage: ProjectStage): ProjectStatus {
@@ -139,6 +154,9 @@ async function getProjectWithDeal(projectId: string) {
       contractValue: projects.contractValue,
       currency: projects.currency,
       ownerId: projects.ownerId,
+      createdBy: projects.createdBy,
+      dealStatus: deals.status,
+      dealActualCloseDate: deals.actualCloseDate,
       dealPipelineId: deals.pipelineId,
       dealStageId: deals.stageId,
     })
@@ -155,6 +173,7 @@ async function findDealStageForProjectStage(pipelineId: string, projectStage: Pr
   const searchTermsByStage: Record<ProjectStage, string[]> = {
     kickoff: ['project kickstarted', 'kickoff', 'onboarding'],
     gap_assessment: ['gap assessment'],
+    implementation: ['implementation'],
     internal_audit: ['internal audit'],
     external_audit: ['external audit'],
     certified: ['external audit & certified', 'certified'],
@@ -182,7 +201,8 @@ export async function createProjectFromDeal(dealId: string, movedByUserId: strin
   if (!['active_delivery', 'compliance'].includes(deal.pipelineType ?? '')) return null;
   if (deal.linkedProjectId) return deal.linkedProjectId;
 
-  const projectStage = toProjectStage(deal.stageName ?? '') ?? 'kickoff';
+  const projectStage = resolveProjectStage(deal);
+  const projectProgress = progressForDealStage(deal);
   const [project] = await db
     .insert(projects)
     .values({
@@ -197,7 +217,7 @@ export async function createProjectFromDeal(dealId: string, movedByUserId: strin
       startDate: deal.projectStartDate,
       endDate: deal.projectEndDate,
       actualEndDate: deal.projectActualEndDate,
-      progressPercent: getProjectStageProgress(projectStage),
+      progressPercent: projectProgress,
       isDelayed: deal.isDelayed ?? false,
       delayReason: deal.delayReason,
       revisedEndDate: deal.revisedEndDate,
@@ -215,7 +235,7 @@ export async function createProjectFromDeal(dealId: string, movedByUserId: strin
     .update(deals)
     .set({
       linkedProjectId: project.id,
-      projectProgressPercent: getProjectStageProgress(projectStage),
+      projectProgressPercent: projectProgress,
     })
     .where(eq(deals.id, dealId));
 
@@ -298,8 +318,8 @@ export async function syncDealFieldsToProject(dealId: string): Promise<void> {
   const projectId = deal.linkedProjectId ?? await createProjectFromDeal(dealId, deal.createdBy);
   if (!projectId) return;
 
-  const projectStage = toProjectStage(deal.stageName ?? '');
-  const progressPercent = projectStage ? getProjectStageProgress(projectStage) : deal.projectProgressPercent;
+  const projectStage = resolveProjectStage(deal);
+  const progressPercent = progressForDealStage(deal);
 
   await db
     .update(projects)
@@ -309,13 +329,9 @@ export async function syncDealFieldsToProject(dealId: string): Promise<void> {
       companyId: deal.companyId,
       primaryContactId: deal.primaryContactId,
       serviceType: inferServiceType(deal),
-      ...(projectStage ? {
-        stage: projectStage,
-        progressPercent,
-        status: statusForStage(projectStage),
-      } : {
-        progressPercent,
-      }),
+      stage: projectStage,
+      progressPercent,
+      status: statusForStage(projectStage),
       startDate: deal.projectStartDate,
       endDate: deal.projectEndDate,
       actualEndDate: deal.projectActualEndDate,
@@ -331,7 +347,10 @@ export async function syncDealFieldsToProject(dealId: string): Promise<void> {
 
   await db
     .update(deals)
-    .set({ linkedProjectId: projectId, updatedAt: new Date() })
+    .set({
+      linkedProjectId: projectId,
+      updatedAt: new Date(),
+    })
     .where(eq(deals.id, dealId));
 }
 
@@ -339,7 +358,10 @@ export async function syncProjectFieldsToDeal(projectId: string, movedByUserId?:
   const project = await getProjectWithDeal(projectId);
   if (!project?.dealId) return;
 
-  const nextStatus = dealStatusForProjectStage(project.stage);
+  const terminalStatus = project.stage === 'certified' || project.stage === 'cancelled'
+    ? dealStatusForProjectStage(project.stage)
+    : null;
+  const nextStatus = terminalStatus ?? project.dealStatus ?? 'open';
   let nextStageId = project.dealStageId;
   const matchingStage = project.dealPipelineId ? await findDealStageForProjectStage(project.dealPipelineId, project.stage) : null;
   if (matchingStage) nextStageId = matchingStage.id;
@@ -366,7 +388,7 @@ export async function syncProjectFieldsToDeal(projectId: string, movedByUserId?:
       ...(nextStageId ? { stageId: nextStageId } : {}),
       status: nextStatus,
       stageEnteredAt: stageChanged ? new Date() : undefined,
-      actualCloseDate: nextStatus === 'open' ? null : new Date().toISOString().slice(0, 10),
+      actualCloseDate: terminalStatus ? new Date().toISOString().slice(0, 10) : project.dealActualCloseDate,
       updatedAt: new Date(),
     })
     .where(eq(deals.id, project.dealId));
@@ -385,6 +407,82 @@ export async function syncProjectFieldsToDeal(projectId: string, movedByUserId?:
       enteredAt: new Date(),
     });
   }
+}
+
+export async function createOrSyncDealFromProject(projectId: string, movedByUserId?: string): Promise<string | null> {
+  const project = await getProjectWithDeal(projectId);
+  if (!project) return null;
+
+  if (project.dealId) {
+    await syncProjectFieldsToDeal(projectId, movedByUserId);
+    return project.dealId;
+  }
+
+  const [activePipeline] = await db
+    .select({ id: pipelines.id })
+    .from(pipelines)
+    .where(and(eq(pipelines.pipelineType, 'active_delivery'), eq(pipelines.isActive, true)))
+    .orderBy(pipelines.position)
+    .limit(1);
+
+  if (!activePipeline) return null;
+
+  const matchingStage = await findDealStageForProjectStage(activePipeline.id, project.stage);
+  const [fallbackStage] = matchingStage
+    ? [matchingStage]
+    : await db
+        .select({ id: pipelineStages.id, stageType: pipelineStages.stageType })
+        .from(pipelineStages)
+        .where(eq(pipelineStages.pipelineId, activePipeline.id))
+        .orderBy(pipelineStages.position)
+        .limit(1);
+
+  if (!fallbackStage) return null;
+
+  const [deal] = await db
+    .insert(deals)
+    .values({
+      title: project.name,
+      description: project.description,
+      pipelineId: activePipeline.id,
+      stageId: fallbackStage.id,
+      amount: project.contractValue,
+      currency: project.currency ?? 'INR',
+      status: dealStatusForProjectStage(project.stage),
+      companyId: project.companyId,
+      primaryContactId: project.primaryContactId,
+      projectStartDate: project.startDate,
+      projectEndDate: project.endDate,
+      projectActualEndDate: project.actualEndDate,
+      projectProgressPercent: project.progressPercent,
+      isDelayed: project.isDelayed ?? false,
+      delayReason: project.delayReason,
+      revisedEndDate: project.revisedEndDate,
+      linkedProjectId: project.id,
+      ownerId: project.ownerId,
+      createdBy: movedByUserId ?? project.createdBy,
+    })
+    .returning();
+
+  if (!deal) return null;
+
+  await db
+    .update(projects)
+    .set({ dealId: deal.id, updatedAt: new Date() })
+    .where(eq(projects.id, project.id));
+
+  await db.insert(dealStageHistory).values({
+    dealId: deal.id,
+    fromStageId: null,
+    toStageId: fallbackStage.id,
+    movedBy: movedByUserId ?? project.createdBy,
+    enteredAt: new Date(),
+  });
+
+  await syncProjectTeamToDeal(project.id);
+  await syncProjectTasksToDeal(project.id);
+
+  return deal.id;
 }
 
 export async function syncDealTeamToProject(dealId: string): Promise<void> {

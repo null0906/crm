@@ -22,6 +22,7 @@ const serviceTypeSchema = z.enum([
 const projectStageSchema = z.enum([
   'kickoff',
   'gap_assessment',
+  'implementation',
   'internal_audit',
   'external_audit',
   'certified',

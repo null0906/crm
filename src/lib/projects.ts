@@ -3,8 +3,9 @@ import type { ProjectServiceType, ProjectStage, ProjectStatus, ProjectTaskStatus
 export const PROJECT_STAGES: Array<{ key: ProjectStage; label: string; color: string }> = [
   { key: 'kickoff', label: 'Kickoff', color: '#6366F1' },
   { key: 'gap_assessment', label: 'Gap Assessment', color: '#F59E0B' },
+  { key: 'implementation', label: 'Implementation', color: '#3B82F6' },
   { key: 'internal_audit', label: 'Internal Audit', color: '#F97316' },
-  { key: 'external_audit', label: 'External Audit', color: '#8B5CF6' },
+  { key: 'external_audit', label: 'External Audit & Certified', color: '#06B6D4' },
   { key: 'certified', label: 'Certified', color: '#10B981' },
   { key: 'on_hold', label: 'On Hold', color: '#94A3B8' },
   { key: 'cancelled', label: 'Cancelled', color: '#EF4444' },
@@ -54,6 +55,7 @@ export function getProjectStageProgress(stage: string | null | undefined) {
   const progressByStage: Record<ProjectStage, number> = {
     kickoff: 10,
     gap_assessment: 30,
+    implementation: 45,
     internal_audit: 55,
     external_audit: 80,
     certified: 100,

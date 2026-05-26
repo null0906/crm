@@ -15,7 +15,7 @@ import {
 import eventBus from '@/server/lib/event-bus';
 import { PROJECT_STAGES, getProjectStageProgress } from '@/lib/projects';
 import type { ProjectMemberRole, ProjectServiceType, ProjectStage, ProjectStatus, ProjectTaskStatus, SessionUser } from '@/lib/types';
-import { syncProjectFieldsToDeal } from './project-sync.service';
+import { createOrSyncDealFromProject, syncProjectFieldsToDeal } from './project-sync.service';
 
 export interface ProjectListFilters {
   companyId?: string;
@@ -308,6 +308,8 @@ export const projectService = {
     if (project.dealId) {
       await db.update(deals).set({ linkedProjectId: project.id }).where(eq(deals.id, project.dealId));
       await syncProjectFieldsToDeal(project.id, createdBy);
+    } else {
+      await createOrSyncDealFromProject(project.id, createdBy);
     }
 
     eventBus.emit('project.created', {
