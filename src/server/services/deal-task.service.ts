@@ -2,6 +2,7 @@ import { db } from '@/server/db';
 import { dealTasks, users } from '@/server/db/schema';
 import { and, asc, eq } from 'drizzle-orm';
 import type { DealTaskStatus, SessionUser, TaskPriority } from '@/lib/types';
+import { syncDealTasksToProject } from './project-sync.service';
 
 export async function listDealTasks(dealId: string, status?: DealTaskStatus) {
   const conditions = [eq(dealTasks.dealId, dealId)];
@@ -53,6 +54,8 @@ export async function createDealTask(
     })
     .returning();
 
+  await syncDealTasksToProject(data.dealId);
+
   return task;
 }
 
@@ -66,6 +69,8 @@ export async function updateDealTaskStatus(id: string, status: DealTaskStatus) {
     })
     .where(eq(dealTasks.id, id))
     .returning();
+
+  if (task?.dealId) await syncDealTasksToProject(task.dealId);
 
   return task;
 }
@@ -92,9 +97,13 @@ export async function updateDealTask(
     .where(eq(dealTasks.id, id))
     .returning();
 
+  if (task?.dealId) await syncDealTasksToProject(task.dealId);
+
   return task;
 }
 
 export async function deleteDealTask(id: string) {
+  const [task] = await db.select({ dealId: dealTasks.dealId }).from(dealTasks).where(eq(dealTasks.id, id)).limit(1);
   await db.delete(dealTasks).where(eq(dealTasks.id, id));
+  if (task?.dealId) await syncDealTasksToProject(task.dealId);
 }

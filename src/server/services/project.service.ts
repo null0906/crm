@@ -15,6 +15,7 @@ import {
 import eventBus from '@/server/lib/event-bus';
 import { PROJECT_STAGES, getProjectStageProgress } from '@/lib/projects';
 import type { ProjectMemberRole, ProjectServiceType, ProjectStage, ProjectStatus, ProjectTaskStatus, SessionUser } from '@/lib/types';
+import { syncProjectFieldsToDeal } from './project-sync.service';
 
 export interface ProjectListFilters {
   companyId?: string;
@@ -306,6 +307,7 @@ export const projectService = {
 
     if (project.dealId) {
       await db.update(deals).set({ linkedProjectId: project.id }).where(eq(deals.id, project.dealId));
+      await syncProjectFieldsToDeal(project.id, createdBy);
     }
 
     eventBus.emit('project.created', {
@@ -327,6 +329,7 @@ export const projectService = {
       .set({ ...payload, updatedAt: new Date() })
       .where(and(eq(projects.id, id), isNull(projects.deletedAt)))
       .returning();
+    if (updated?.dealId) await syncProjectFieldsToDeal(id);
     return updated;
   },
 
@@ -363,29 +366,7 @@ export const projectService = {
       .where(eq(projects.id, projectId))
       .returning();
 
-    if (project.dealId) {
-      const [deal] = await db.select({ pipelineId: deals.pipelineId }).from(deals).where(eq(deals.id, project.dealId)).limit(1);
-      const label = stageLabel(newStage).replace('Certified', 'External Audit & Certified');
-      const [dealStage] = deal
-        ? await db
-            .select({ id: pipelineStages.id })
-            .from(pipelineStages)
-            .where(and(eq(pipelineStages.pipelineId, deal.pipelineId), ilike(pipelineStages.name, `%${label}%`)))
-            .limit(1)
-        : [];
-
-      if (dealStage) {
-        await db.update(deals).set({ stageId: dealStage.id, updatedAt: new Date() }).where(eq(deals.id, project.dealId));
-      }
-
-      await db
-        .update(deals)
-        .set({
-          projectProgressPercent: getProjectStageProgress(newStage),
-          updatedAt: new Date(),
-        })
-        .where(eq(deals.id, project.dealId));
-    }
+    if (project.dealId) await syncProjectFieldsToDeal(projectId, movedBy);
 
     eventBus.emit('project.stage_changed', {
       projectId,
@@ -419,18 +400,7 @@ export const projectService = {
 
     if (!updated) throw new Error('Project not found');
 
-    if (updated.dealId) {
-      await db
-        .update(deals)
-        .set({
-          projectProgressPercent: progressPercent,
-          isDelayed: isDelayed ?? false,
-          delayReason: delayReason ?? null,
-          revisedEndDate: revisedEndDate instanceof Date ? revisedEndDate.toISOString().slice(0, 10) : revisedEndDate ?? null,
-          updatedAt: new Date(),
-        })
-        .where(eq(deals.id, updated.dealId));
-    }
+    if (updated.dealId) await syncProjectFieldsToDeal(projectId, updatedBy);
 
     await db.insert(activities).values({
       activityType: 'note',

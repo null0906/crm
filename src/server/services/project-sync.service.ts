@@ -2,17 +2,20 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '@/server/db';
 import {
   activities,
+  dealStageHistory,
   dealTeamMembers,
+  dealTasks,
   deals,
   pipelineStages,
   pipelines,
   projectMembers,
   projects,
   projectStageHistory,
+  projectTasks,
 } from '@/server/db/schema';
 import eventBus from '@/server/lib/event-bus';
-import { getProjectStageProgress } from '@/lib/projects';
-import type { ProjectServiceType, ProjectStage, ProjectStatus } from '@/lib/types';
+import { PROJECT_STAGES, getProjectStageProgress } from '@/lib/projects';
+import type { DealStatus, DealTaskStatus, ProjectServiceType, ProjectStage, ProjectStatus, ProjectTaskStatus } from '@/lib/types';
 
 const STAGE_MAP: Record<string, ProjectStage> = {
   'project kickstarted': 'kickoff',
@@ -42,8 +45,30 @@ function statusForStage(stage: ProjectStage): ProjectStatus {
   return 'active';
 }
 
+function dealStatusForProjectStage(stage: ProjectStage): DealStatus {
+  if (stage === 'certified') return 'won';
+  if (stage === 'cancelled') return 'lost';
+  return 'open';
+}
+
+function projectStageLabel(stage: ProjectStage) {
+  return PROJECT_STAGES.find((item) => item.key === stage)?.label ?? stage;
+}
+
 function normalizeMemberRole(role: string | null | undefined) {
   return ['lead', 'member', 'reviewer', 'consultant'].includes(role ?? '') ? role as 'lead' | 'member' | 'reviewer' | 'consultant' : 'member';
+}
+
+function normalizeProjectTaskStatus(status: string | null | undefined): ProjectTaskStatus {
+  return ['pending', 'in_progress', 'completed', 'blocked', 'not_applicable'].includes(status ?? '')
+    ? status as ProjectTaskStatus
+    : 'pending';
+}
+
+function normalizeDealTaskStatus(status: string | null | undefined): DealTaskStatus {
+  return ['pending', 'in_progress', 'completed', 'blocked'].includes(status ?? '')
+    ? status as DealTaskStatus
+    : 'pending';
 }
 
 export function inferServiceType(deal: { title?: string | null; services?: unknown; serviceOther?: string | null }): ProjectServiceType {
@@ -64,12 +89,14 @@ async function getDealWithPipeline(dealId: string) {
     .select({
       id: deals.id,
       title: deals.title,
+      description: deals.description,
       amount: deals.amount,
       currency: deals.currency,
       companyId: deals.companyId,
       primaryContactId: deals.primaryContactId,
       projectStartDate: deals.projectStartDate,
       projectEndDate: deals.projectEndDate,
+      projectActualEndDate: deals.projectActualEndDate,
       projectProgressPercent: deals.projectProgressPercent,
       isDelayed: deals.isDelayed,
       delayReason: deals.delayReason,
@@ -91,6 +118,64 @@ async function getDealWithPipeline(dealId: string) {
   return deal ?? null;
 }
 
+async function getProjectWithDeal(projectId: string) {
+  const [project] = await db
+    .select({
+      id: projects.id,
+      name: projects.name,
+      description: projects.description,
+      dealId: projects.dealId,
+      companyId: projects.companyId,
+      primaryContactId: projects.primaryContactId,
+      serviceType: projects.serviceType,
+      stage: projects.stage,
+      startDate: projects.startDate,
+      endDate: projects.endDate,
+      actualEndDate: projects.actualEndDate,
+      progressPercent: projects.progressPercent,
+      isDelayed: projects.isDelayed,
+      delayReason: projects.delayReason,
+      revisedEndDate: projects.revisedEndDate,
+      contractValue: projects.contractValue,
+      currency: projects.currency,
+      ownerId: projects.ownerId,
+      dealPipelineId: deals.pipelineId,
+      dealStageId: deals.stageId,
+    })
+    .from(projects)
+    .leftJoin(deals, eq(projects.dealId, deals.id))
+    .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
+    .limit(1);
+
+  return project ?? null;
+}
+
+async function findDealStageForProjectStage(pipelineId: string, projectStage: ProjectStage) {
+  const label = projectStageLabel(projectStage);
+  const searchTermsByStage: Record<ProjectStage, string[]> = {
+    kickoff: ['project kickstarted', 'kickoff', 'onboarding'],
+    gap_assessment: ['gap assessment'],
+    internal_audit: ['internal audit'],
+    external_audit: ['external audit'],
+    certified: ['external audit & certified', 'certified'],
+    on_hold: ['on hold'],
+    cancelled: ['cancelled', 'lost'],
+  };
+
+  const terms = searchTermsByStage[projectStage] ?? [label];
+  for (const term of terms) {
+    const [stage] = await db
+      .select({ id: pipelineStages.id, stageType: pipelineStages.stageType })
+      .from(pipelineStages)
+      .where(and(eq(pipelineStages.pipelineId, pipelineId), sql`lower(${pipelineStages.name}) LIKE ${`%${term.toLowerCase()}%`}`))
+      .orderBy(pipelineStages.position)
+      .limit(1);
+    if (stage) return stage;
+  }
+
+  return null;
+}
+
 export async function createProjectFromDeal(dealId: string, movedByUserId: string): Promise<string | null> {
   const deal = await getDealWithPipeline(dealId);
   if (!deal) return null;
@@ -102,6 +187,7 @@ export async function createProjectFromDeal(dealId: string, movedByUserId: strin
     .insert(projects)
     .values({
       name: deal.title,
+      description: deal.description,
       dealId: deal.id,
       companyId: deal.companyId,
       primaryContactId: deal.primaryContactId,
@@ -110,6 +196,7 @@ export async function createProjectFromDeal(dealId: string, movedByUserId: strin
       stageEnteredAt: new Date(),
       startDate: deal.projectStartDate,
       endDate: deal.projectEndDate,
+      actualEndDate: deal.projectActualEndDate,
       progressPercent: getProjectStageProgress(projectStage),
       isDelayed: deal.isDelayed ?? false,
       delayReason: deal.delayReason,
@@ -159,6 +246,22 @@ export async function createProjectFromDeal(dealId: string, movedByUserId: strin
       .onConflictDoNothing();
   }
 
+  const existingTasks = await db.select().from(dealTasks).where(eq(dealTasks.dealId, dealId));
+  if (existingTasks.length > 0) {
+    await db.insert(projectTasks).values(existingTasks.map((task) => ({
+      projectId: project.id,
+      title: task.title,
+      description: task.description,
+      status: normalizeProjectTaskStatus(task.status),
+      priority: task.priority,
+      assignedTo: task.assignedTo,
+      dueDate: task.dueDate,
+      completedAt: task.completedAt,
+      position: task.position,
+      createdBy: task.createdBy,
+    }))).onConflictDoNothing();
+  }
+
   await db.insert(activities).values({
     activityType: 'note',
     subject: `Project created: "${project.name}"`,
@@ -179,6 +282,185 @@ export async function createProjectFromDeal(dealId: string, movedByUserId: strin
   });
 
   return project.id;
+}
+
+export async function createOrSyncProjectFromDeal(dealId: string, movedByUserId: string): Promise<string | null> {
+  const projectId = await createProjectFromDeal(dealId, movedByUserId);
+  await syncDealFieldsToProject(dealId);
+  return projectId;
+}
+
+export async function syncDealFieldsToProject(dealId: string): Promise<void> {
+  const deal = await getDealWithPipeline(dealId);
+  if (!deal) return;
+  if (!['active_delivery', 'compliance'].includes(deal.pipelineType ?? '')) return;
+
+  const projectId = deal.linkedProjectId ?? await createProjectFromDeal(dealId, deal.createdBy);
+  if (!projectId) return;
+
+  const projectStage = toProjectStage(deal.stageName ?? '');
+  const progressPercent = projectStage ? getProjectStageProgress(projectStage) : deal.projectProgressPercent;
+
+  await db
+    .update(projects)
+    .set({
+      name: deal.title,
+      description: deal.description,
+      companyId: deal.companyId,
+      primaryContactId: deal.primaryContactId,
+      serviceType: inferServiceType(deal),
+      ...(projectStage ? {
+        stage: projectStage,
+        progressPercent,
+        status: statusForStage(projectStage),
+      } : {
+        progressPercent,
+      }),
+      startDate: deal.projectStartDate,
+      endDate: deal.projectEndDate,
+      actualEndDate: deal.projectActualEndDate,
+      isDelayed: deal.isDelayed ?? false,
+      delayReason: deal.delayReason,
+      revisedEndDate: deal.revisedEndDate,
+      contractValue: deal.amount,
+      currency: deal.currency ?? 'INR',
+      ownerId: deal.ownerId,
+      updatedAt: new Date(),
+    })
+    .where(eq(projects.id, projectId));
+
+  await db
+    .update(deals)
+    .set({ linkedProjectId: projectId, updatedAt: new Date() })
+    .where(eq(deals.id, dealId));
+}
+
+export async function syncProjectFieldsToDeal(projectId: string, movedByUserId?: string): Promise<void> {
+  const project = await getProjectWithDeal(projectId);
+  if (!project?.dealId) return;
+
+  const nextStatus = dealStatusForProjectStage(project.stage);
+  let nextStageId = project.dealStageId;
+  const matchingStage = project.dealPipelineId ? await findDealStageForProjectStage(project.dealPipelineId, project.stage) : null;
+  if (matchingStage) nextStageId = matchingStage.id;
+
+  const stageChanged = Boolean(nextStageId && nextStageId !== project.dealStageId);
+  await db
+    .update(deals)
+    .set({
+      title: project.name,
+      description: project.description,
+      companyId: project.companyId,
+      primaryContactId: project.primaryContactId,
+      amount: project.contractValue,
+      currency: project.currency ?? 'INR',
+      ownerId: project.ownerId,
+      projectStartDate: project.startDate,
+      projectEndDate: project.endDate,
+      projectActualEndDate: project.actualEndDate,
+      projectProgressPercent: project.progressPercent,
+      isDelayed: project.isDelayed ?? false,
+      delayReason: project.delayReason,
+      revisedEndDate: project.revisedEndDate,
+      linkedProjectId: project.id,
+      ...(nextStageId ? { stageId: nextStageId } : {}),
+      status: nextStatus,
+      stageEnteredAt: stageChanged ? new Date() : undefined,
+      actualCloseDate: nextStatus === 'open' ? null : new Date().toISOString().slice(0, 10),
+      updatedAt: new Date(),
+    })
+    .where(eq(deals.id, project.dealId));
+
+  if (stageChanged && movedByUserId) {
+    await db
+      .update(dealStageHistory)
+      .set({ exitedAt: new Date() })
+      .where(and(eq(dealStageHistory.dealId, project.dealId), isNull(dealStageHistory.exitedAt)));
+
+    await db.insert(dealStageHistory).values({
+      dealId: project.dealId,
+      fromStageId: project.dealStageId,
+      toStageId: nextStageId!,
+      movedBy: movedByUserId,
+      enteredAt: new Date(),
+    });
+  }
+}
+
+export async function syncDealTeamToProject(dealId: string): Promise<void> {
+  const [deal] = await db.select({ linkedProjectId: deals.linkedProjectId }).from(deals).where(eq(deals.id, dealId)).limit(1);
+  if (!deal?.linkedProjectId) return;
+
+  const members = await db.select().from(dealTeamMembers).where(eq(dealTeamMembers.dealId, dealId));
+  await db.delete(projectMembers).where(eq(projectMembers.projectId, deal.linkedProjectId));
+  if (members.length) {
+    await db.insert(projectMembers).values(members.map((member) => ({
+      projectId: deal.linkedProjectId!,
+      userId: member.userId,
+      role: normalizeMemberRole(member.role),
+    }))).onConflictDoNothing();
+  }
+}
+
+export async function syncProjectTeamToDeal(projectId: string): Promise<void> {
+  const [project] = await db.select({ dealId: projects.dealId }).from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project?.dealId) return;
+
+  const members = await db.select().from(projectMembers).where(eq(projectMembers.projectId, projectId));
+  await db.delete(dealTeamMembers).where(eq(dealTeamMembers.dealId, project.dealId));
+  if (members.length) {
+    await db.insert(dealTeamMembers).values(members.map((member) => ({
+      dealId: project.dealId!,
+      userId: member.userId,
+      role: member.role ?? 'member',
+    }))).onConflictDoNothing();
+  }
+}
+
+export async function syncDealTasksToProject(dealId: string): Promise<void> {
+  const [deal] = await db.select({ linkedProjectId: deals.linkedProjectId }).from(deals).where(eq(deals.id, dealId)).limit(1);
+  if (!deal?.linkedProjectId) return;
+
+  const tasks = await db.select().from(dealTasks).where(eq(dealTasks.dealId, dealId));
+  await db.delete(projectTasks).where(eq(projectTasks.projectId, deal.linkedProjectId));
+  if (tasks.length) {
+    await db.insert(projectTasks).values(tasks.map((task) => ({
+      projectId: deal.linkedProjectId!,
+      title: task.title,
+      description: task.description,
+      status: normalizeProjectTaskStatus(task.status),
+      priority: task.priority,
+      assignedTo: task.assignedTo,
+      dueDate: task.dueDate,
+      completedAt: task.completedAt,
+      position: task.position,
+      createdBy: task.createdBy,
+    }))).onConflictDoNothing();
+  }
+}
+
+export async function syncProjectTasksToDeal(projectId: string): Promise<void> {
+  const [project] = await db.select({ dealId: projects.dealId }).from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project?.dealId) return;
+
+  const tasks = await db.select().from(projectTasks).where(eq(projectTasks.projectId, projectId));
+  await db.delete(dealTasks).where(eq(dealTasks.dealId, project.dealId));
+  if (tasks.length) {
+    await db.insert(dealTasks).values(tasks
+      .filter((task) => task.status !== 'not_applicable')
+      .map((task) => ({
+        dealId: project.dealId!,
+        title: task.title,
+        description: task.description,
+        status: normalizeDealTaskStatus(task.status),
+        priority: task.priority,
+        assignedTo: task.assignedTo,
+        dueDate: task.dueDate,
+        completedAt: task.completedAt,
+        position: task.position,
+        createdBy: task.createdBy,
+      }))).onConflictDoNothing();
+  }
 }
 
 export async function syncStageToProject(dealId: string, newStageName: string, movedByUserId: string): Promise<void> {

@@ -5,6 +5,7 @@ import { router, protectedProcedure } from '../router';
 import { db } from '@/server/db';
 import { projectMembers, projects, projectTasks, users } from '@/server/db/schema';
 import { projectService } from '@/server/services/project.service';
+import { syncProjectTasksToDeal, syncProjectTeamToDeal } from '@/server/services/project-sync.service';
 
 const serviceTypeSchema = z.enum([
   'soc2_type1',
@@ -116,6 +117,7 @@ export const projectsRouter = router({
           userId,
           role: 'member' as const,
         }))).onConflictDoNothing();
+        await syncProjectTeamToDeal(project.id);
       }
       return project;
     }),
@@ -178,6 +180,7 @@ export const projectsRouter = router({
         target: [projectMembers.projectId, projectMembers.userId],
         set: { role: input.role },
       });
+      await syncProjectTeamToDeal(input.projectId);
       return { success: true };
     }),
 
@@ -192,6 +195,7 @@ export const projectsRouter = router({
         eq(projectMembers.projectId, input.projectId),
         eq(projectMembers.userId, input.userId)
       ));
+      await syncProjectTeamToDeal(input.projectId);
       return { success: true };
     }),
 
@@ -268,6 +272,7 @@ export const projectsRouter = router({
         ...input,
         createdBy: ctx.user.id,
       }).returning();
+      await syncProjectTasksToDeal(input.projectId);
       return task;
     }),
 
@@ -296,13 +301,16 @@ export const projectsRouter = router({
         ...(completedAt !== undefined ? { completedAt } : {}),
         updatedAt: new Date(),
       }).where(eq(projectTasks.id, input.id)).returning();
+      if (updated?.projectId) await syncProjectTasksToDeal(updated.projectId);
       return updated;
     }),
 
   deleteTask: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input }) => {
+      const [task] = await db.select({ projectId: projectTasks.projectId }).from(projectTasks).where(eq(projectTasks.id, input.id)).limit(1);
       await db.delete(projectTasks).where(eq(projectTasks.id, input.id));
+      if (task?.projectId) await syncProjectTasksToDeal(task.projectId);
       return { success: true };
     }),
 
@@ -319,6 +327,11 @@ export const projectsRouter = router({
         .update(projectTasks)
         .set({ position: task.position, status: task.status, updatedAt: new Date() })
         .where(eq(projectTasks.id, task.id))));
+      const projectIds = await db
+        .selectDistinct({ projectId: projectTasks.projectId })
+        .from(projectTasks)
+        .where(sql`${projectTasks.id} IN (${sql.join(input.tasks.map((task) => sql`${task.id}`), sql`, `)})`);
+      await Promise.all(projectIds.map((row) => syncProjectTasksToDeal(row.projectId)));
       return { success: true };
     }),
 });

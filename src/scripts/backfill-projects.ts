@@ -1,12 +1,12 @@
 import { loadEnvConfig } from '@next/env';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 
 loadEnvConfig(process.cwd());
 
 async function backfillProjects() {
   const { db } = await import('@/server/db');
   const { deals, pipelines } = await import('@/server/db/schema');
-  const { createProjectFromDeal } = await import('@/server/services/project-sync.service');
+  const { createOrSyncProjectFromDeal } = await import('@/server/services/project-sync.service');
 
   console.log('Starting project backfill...');
 
@@ -19,19 +19,18 @@ async function backfillProjects() {
     .from(deals)
     .innerJoin(pipelines, eq(pipelines.id, deals.pipelineId))
     .where(and(
-      eq(pipelines.pipelineType, 'active_delivery'),
+      or(eq(pipelines.pipelineType, 'active_delivery'), eq(pipelines.pipelineType, 'compliance')),
       isNull(deals.deletedAt),
-      eq(deals.status, 'open'),
-      isNull(deals.linkedProjectId)
+      eq(deals.status, 'open')
     ));
 
-  console.log(`Found ${deliveryDeals.length} deals to backfill`);
+  console.log(`Found ${deliveryDeals.length} delivery/compliance deals to create or sync`);
 
   for (const deal of deliveryDeals) {
     try {
-      const projectId = await createProjectFromDeal(deal.id, deal.createdBy);
+      const projectId = await createOrSyncProjectFromDeal(deal.id, deal.createdBy);
       if (projectId) {
-        console.log(`  Created project for deal: ${deal.title}`);
+        console.log(`  Synced project for deal: ${deal.title}`);
       } else {
         console.log(`  Skipped deal: ${deal.title}`);
       }

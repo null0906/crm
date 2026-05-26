@@ -1,5 +1,5 @@
 import { db } from '@/server/db';
-import { deals, dealTags, dealContacts, dealStageHistory, dealTeamMembers, dealTasks, tags, companies, contacts, users, pipelineStages, pipelines, activities } from '@/server/db/schema';
+import { deals, dealTags, dealContacts, dealStageHistory, dealTeamMembers, dealTasks, tags, companies, contacts, users, pipelineStages, pipelines, activities, projects } from '@/server/db/schema';
 import { eq, and, isNull, or, ilike, sql, lt, desc, asc, inArray, SQL, type SQLWrapper } from 'drizzle-orm';
 import type { NewDeal } from '@/server/db/schema';
 import type { DealStatus, FilterConfig, PaginatedResult, SessionUser, StageType } from '@/lib/types';
@@ -7,7 +7,13 @@ import { writeAuditLog, buildChangeDiff } from './audit.service';
 import eventBus from '@/server/lib/event-bus';
 import { getPermissionLevel } from '@/server/lib/permissions';
 import { buildFilterWhere } from './filter.service';
-import { maybeCreateOrSyncProjectForDealStage, syncProgressToProject } from './project-sync.service';
+import {
+  createOrSyncProjectFromDeal,
+  maybeCreateOrSyncProjectForDealStage,
+  syncDealFieldsToProject,
+  syncDealTeamToProject,
+  syncProgressToProject,
+} from './project-sync.service';
 
 interface StageContext {
   id: string;
@@ -736,6 +742,7 @@ export async function createDeal(
     });
 
   await promoteCompanyToPartnerIfEligible(data.companyId, data.pipelineId, resolvedLifecycle.stageId);
+  await createOrSyncProjectFromDeal(deal!.id, user.id);
 
   eventBus.emit('deal.created', { dealId: deal!.id, createdBy: user.id });
 
@@ -892,6 +899,8 @@ export async function updateDeal(
     changes,
   });
 
+  await syncDealFieldsToProject(id);
+
   return updated as Record<string, unknown>;
 }
 
@@ -900,6 +909,9 @@ export async function deleteDeal(user: SessionUser, id: string): Promise<void> {
   if (!deal) throw new Error('Prospect not found');
 
   await db.update(deals).set({ deletedAt: new Date() }).where(and(eq(deals.id, id), isNull(deals.deletedAt)));
+  if (deal.linkedProjectId) {
+    await db.update(projects).set({ deletedAt: new Date(), updatedAt: new Date() }).where(eq(projects.id, deal.linkedProjectId as string));
+  }
   eventBus.emit('deal.deleted', { dealId: id, deletedBy: user.id });
 
   await writeAuditLog({
@@ -1068,6 +1080,7 @@ export async function bulkUpdateDeals(
       .update(deals)
       .set(updateData as Partial<typeof deals.$inferInsert>)
       .where(and(inArray(deals.id, ids), isNull(deals.deletedAt)));
+    await Promise.all(ids.map((id) => syncDealFieldsToProject(id)));
   }
 
   for (const id of ids) {
@@ -1173,6 +1186,8 @@ export async function addTeamMember(
     })
     .returning();
 
+  await syncDealTeamToProject(dealId);
+
   return member as Record<string, unknown>;
 }
 
@@ -1181,4 +1196,5 @@ export async function removeTeamMember(user: SessionUser, dealId: string, userId
   if (!deal) throw new Error('Prospect not found');
 
   await db.delete(dealTeamMembers).where(and(eq(dealTeamMembers.dealId, dealId), eq(dealTeamMembers.userId, userId)));
+  await syncDealTeamToProject(dealId);
 }
