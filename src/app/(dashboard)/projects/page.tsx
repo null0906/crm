@@ -15,11 +15,29 @@ import { CSS } from '@dnd-kit/utilities';
 import { CalendarDays, FolderKanban, LayoutGrid, List, Plus, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
-import { PROJECT_STAGES, getProjectStageColor, getProjectStageProgress, getServiceTypeConfig } from '@/lib/projects';
+import {
+  PROJECT_STAGES,
+  getProjectStageProgress,
+  getProjectStagesFromPipelineStages,
+  getServiceTypeConfig,
+  type ProjectStageOption,
+} from '@/lib/projects';
 import type { ProjectStage } from '@/lib/types';
 
 type ProjectRecord = Record<string, any>;
 type ViewMode = 'board' | 'list' | 'timeline';
+
+function getStageOption(stages: ProjectStageOption[], stage: string | null | undefined) {
+  return stages.find((item) => item.key === stage) ?? PROJECT_STAGES.find((item) => item.key === stage) ?? PROJECT_STAGES[0]!;
+}
+
+function getSyncedStageColor(stages: ProjectStageOption[], stage: string | null | undefined) {
+  return getStageOption(stages, stage).color;
+}
+
+function getSyncedStageLabel(stages: ProjectStageOption[], stage: string | null | undefined) {
+  return getStageOption(stages, stage).label;
+}
 
 function formatINR(value: unknown) {
   const amount = Number(value ?? 0);
@@ -84,7 +102,7 @@ function TeamAvatarStack({ members }: { members: ProjectRecord[] | undefined }) 
   );
 }
 
-function ProjectCard({ project }: { project: ProjectRecord }) {
+function ProjectCard({ project, stages }: { project: ProjectRecord; stages: ProjectStageOption[] }) {
   const router = useRouter();
   const stageProgress = getProjectStageProgress(project.stage);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -93,7 +111,7 @@ function ProjectCard({ project }: { project: ProjectRecord }) {
   });
   const style = {
     transform: CSS.Translate.toString(transform),
-    borderLeftColor: getProjectStageColor(project.stage),
+    borderLeftColor: getSyncedStageColor(stages, project.stage),
   } as React.CSSProperties;
 
   return (
@@ -140,7 +158,7 @@ function ProjectCard({ project }: { project: ProjectRecord }) {
   );
 }
 
-function ProjectColumn({ stage, projects }: { stage: (typeof PROJECT_STAGES)[number]; projects: ProjectRecord[] }) {
+function ProjectColumn({ stage, projects, stages }: { stage: ProjectStageOption; projects: ProjectRecord[]; stages: ProjectStageOption[] }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.key });
   const total = projects.reduce((sum, project) => sum + Number(project.contractValue ?? 0), 0);
 
@@ -159,14 +177,14 @@ function ProjectColumn({ stage, projects }: { stage: (typeof PROJECT_STAGES)[num
       </div>
       <div className="min-h-[240px] py-1">
         {projects.map((project) => (
-          <ProjectCard key={project.id} project={project} />
+          <ProjectCard key={project.id} project={project} stages={stages} />
         ))}
       </div>
     </section>
   );
 }
 
-function BoardView({ projects }: { projects: ProjectRecord[] }) {
+function BoardView({ projects, stages }: { projects: ProjectRecord[]; stages: ProjectStageOption[] }) {
   const utils = trpc.useUtils();
   const moveStage = trpc.projects.moveStage.useMutation({
     onSuccess: () => void utils.projects.list.invalidate(),
@@ -201,10 +219,11 @@ function BoardView({ projects }: { projects: ProjectRecord[] }) {
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <div className="flex flex-1 gap-4 overflow-x-auto p-4">
-        {PROJECT_STAGES.map((stage) => (
+        {stages.map((stage) => (
           <ProjectColumn
             key={stage.key}
             stage={stage}
+            stages={stages}
             projects={projects.filter((project) => project.stage === stage.key)}
           />
         ))}
@@ -213,7 +232,7 @@ function BoardView({ projects }: { projects: ProjectRecord[] }) {
   );
 }
 
-function ListView({ projects }: { projects: ProjectRecord[] }) {
+function ListView({ projects, stages }: { projects: ProjectRecord[]; stages: ProjectStageOption[] }) {
   const router = useRouter();
   return (
     <div className="m-4 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-white shadow-sm">
@@ -239,7 +258,7 @@ function ListView({ projects }: { projects: ProjectRecord[] }) {
               <td className="px-4 py-3 text-[13.5px] font-semibold text-[var(--text-primary)]">{project.name}</td>
               <td className="px-4 py-3"><ServiceTypeBadge type={project.serviceType} /></td>
               <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">{project.company?.name ?? '-'}</td>
-              <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">{PROJECT_STAGES.find((s) => s.key === project.stage)?.label ?? project.stage}</td>
+              <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">{getSyncedStageLabel(stages, project.stage)}</td>
               <td className="px-4 py-3">
                 <div className="w-32"><ProgressBar percent={getProjectStageProgress(project.stage)} delayed={Boolean(project.isDelayed)} /></div>
               </td>
@@ -253,7 +272,7 @@ function ListView({ projects }: { projects: ProjectRecord[] }) {
   );
 }
 
-function TimelineView({ projects }: { projects: ProjectRecord[] }) {
+function TimelineView({ projects, stages }: { projects: ProjectRecord[]; stages: ProjectStageOption[] }) {
   const router = useRouter();
   const validProjects = projects.filter((project) => project.startDate && project.endDate);
   const dates = validProjects.flatMap((project) => [new Date(String(project.startDate)), new Date(String(project.revisedEndDate ?? project.endDate))]);
@@ -286,7 +305,7 @@ function TimelineView({ projects }: { projects: ProjectRecord[] }) {
                 <button
                   type="button"
                   className="absolute top-1 h-6 rounded-md px-2 text-left text-[11px] font-semibold text-white shadow-sm"
-                  style={{ left: `${left}%`, width: `${width}%`, background: getProjectStageColor(project.stage) }}
+                  style={{ left: `${left}%`, width: `${width}%`, background: getSyncedStageColor(stages, project.stage) }}
                   title={`${project.name}: ${Number(project.progressPercent ?? 0)}%`}
                   onClick={() => router.push(`/projects/${project.id}`)}
                 >
@@ -320,6 +339,19 @@ export default function ProjectsPage() {
     },
     onError: (err) => toast.error('Could not create project', { description: err.message }),
   });
+  const { data: pipelines = [] } = trpc.pipelines.list.useQuery();
+  const activePipelineId = React.useMemo(() => {
+    const activePipeline = pipelines.find((pipeline) => String((pipeline as Record<string, unknown>).pipelineType ?? '') === 'active_delivery');
+    return activePipeline ? String(activePipeline.id) : '';
+  }, [pipelines]);
+  const { data: activePipeline } = trpc.pipelines.getWithStages.useQuery(
+    { id: activePipelineId },
+    { enabled: Boolean(activePipelineId) }
+  );
+  const projectStages = React.useMemo(
+    () => getProjectStagesFromPipelineStages((activePipeline?.stages ?? []) as Array<Record<string, unknown>>),
+    [activePipeline?.stages]
+  );
 
   const { data = [], isLoading } = trpc.projects.list.useQuery({
     search: search || undefined,
@@ -351,7 +383,7 @@ export default function ProjectsPage() {
           </div>
           <select value={stage} onChange={(event) => setStage(event.target.value)} className="h-8 rounded-lg border border-[var(--border-default)] bg-white px-2 text-sm">
             <option value="">All stages</option>
-            {PROJECT_STAGES.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+            {projectStages.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
           </select>
           <select value={serviceType} onChange={(event) => setServiceType(event.target.value)} className="h-8 rounded-lg border border-[var(--border-default)] bg-white px-2 text-sm">
             <option value="">All services</option>
@@ -414,11 +446,11 @@ export default function ProjectsPage() {
           ))}
         </div>
       ) : view === 'board' ? (
-        <BoardView projects={projects} />
+        <BoardView projects={projects} stages={projectStages} />
       ) : view === 'list' ? (
-        <ListView projects={projects} />
+        <ListView projects={projects} stages={projectStages} />
       ) : (
-        <TimelineView projects={projects} />
+        <TimelineView projects={projects} stages={projectStages} />
       )}
     </div>
   );

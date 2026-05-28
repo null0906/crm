@@ -1,15 +1,51 @@
-import type { ProjectServiceType, ProjectStage, ProjectStatus, ProjectTaskStatus } from './types';
+import type { ProjectServiceType, ProjectStage, ProjectStatus, ProjectTaskStatus, StageType } from './types';
 
-export const PROJECT_STAGES: Array<{ key: ProjectStage; label: string; color: string }> = [
-  { key: 'kickoff', label: 'Kickoff', color: '#6366F1' },
+export type ProjectStageOption = { key: ProjectStage; label: string; color: string };
+export type PipelineStageLike = {
+  name?: string | null;
+  slug?: string | null;
+  color?: string | null;
+  stageType?: StageType | string | null;
+};
+
+export const PROJECT_STAGES: ProjectStageOption[] = [
+  { key: 'kickoff', label: 'Project Kickstarted', color: '#6366F1' },
   { key: 'gap_assessment', label: 'Gap Assessment', color: '#F59E0B' },
   { key: 'implementation', label: 'Implementation', color: '#3B82F6' },
   { key: 'internal_audit', label: 'Internal Audit', color: '#F97316' },
   { key: 'external_audit', label: 'External Audit & Certified', color: '#06B6D4' },
-  { key: 'certified', label: 'Certified', color: '#10B981' },
-  { key: 'on_hold', label: 'On Hold', color: '#94A3B8' },
-  { key: 'cancelled', label: 'Cancelled', color: '#EF4444' },
+  { key: 'cancelled', label: 'Lost', color: '#94A3B8' },
 ];
+
+export function mapPipelineStageToProjectStage(stage: PipelineStageLike): ProjectStage {
+  const text = `${stage.slug ?? ''} ${stage.name ?? ''}`.trim().toLowerCase();
+  if (stage.stageType === 'lost' || text.includes('lost') || text.includes('cancel')) return 'cancelled';
+  if (stage.stageType === 'won' || text.includes('external audit') || text.includes('certified') || text.includes('certification')) return 'external_audit';
+  if (text.includes('internal audit')) return 'internal_audit';
+  if (text.includes('implementation')) return 'implementation';
+  if (text.includes('gap')) return 'gap_assessment';
+  if (text.includes('kick') || text.includes('onboarding') || text.includes('start')) return 'kickoff';
+  return 'kickoff';
+}
+
+export function getProjectStagesFromPipelineStages(stages: PipelineStageLike[] | null | undefined): ProjectStageOption[] {
+  if (!stages?.length) return PROJECT_STAGES;
+
+  const seen = new Set<ProjectStage>();
+  const options: ProjectStageOption[] = [];
+  for (const stage of stages) {
+    const key = mapPipelineStageToProjectStage(stage);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    options.push({
+      key,
+      label: stage.name?.trim() || getProjectStage(key).label,
+      color: stage.color || getProjectStage(key).color,
+    });
+  }
+
+  return options.length > 0 ? options : PROJECT_STAGES;
+}
 
 export const PROJECT_TASK_STATUSES: Array<{ key: ProjectTaskStatus; label: string }> = [
   { key: 'pending', label: 'Pending' },

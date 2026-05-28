@@ -14,7 +14,7 @@ import {
   projectTasks,
 } from '@/server/db/schema';
 import eventBus from '@/server/lib/event-bus';
-import { PROJECT_STAGES, getProjectStageProgress } from '@/lib/projects';
+import { PROJECT_STAGES, getProjectStageProgress, mapPipelineStageToProjectStage } from '@/lib/projects';
 import type { DealStatus, DealTaskStatus, ProjectServiceType, ProjectStage, ProjectStatus, ProjectTaskStatus } from '@/lib/types';
 
 const STAGE_MAP: Record<string, ProjectStage> = {
@@ -26,7 +26,7 @@ const STAGE_MAP: Record<string, ProjectStage> = {
   'internal audit': 'internal_audit',
   'external audit': 'external_audit',
   'external audit & certified': 'external_audit',
-  certified: 'certified',
+  certified: 'external_audit',
   lost: 'cancelled',
 };
 
@@ -36,7 +36,7 @@ function normalizeStageName(name: string) {
 
 function toProjectStage(stageName: string): ProjectStage | null {
   const normalized = normalizeStageName(stageName);
-  return STAGE_MAP[normalized] ?? Object.entries(STAGE_MAP).find(([key]) => normalized.includes(key))?.[1] ?? null;
+  return STAGE_MAP[normalized] ?? Object.entries(STAGE_MAP).find(([key]) => normalized.includes(key))?.[1] ?? mapPipelineStageToProjectStage({ name: stageName });
 }
 
 function isCompleteProgress(value: unknown) {
@@ -44,7 +44,6 @@ function isCompleteProgress(value: unknown) {
 }
 
 function resolveProjectStage(deal: { stageName?: string | null; projectProgressPercent?: number | null; projectActualEndDate?: string | Date | null }): ProjectStage {
-  if (isCompleteProgress(deal.projectProgressPercent) || deal.projectActualEndDate) return 'certified';
   return toProjectStage(deal.stageName ?? '') ?? 'kickoff';
 }
 

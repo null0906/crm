@@ -12,6 +12,7 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/server/db/seed.ts",
     "backfill:projects": "tsx src/scripts/backfill-projects.ts",
+    "reset:projects": "tsx src/scripts/reset-projects-from-active-pipeline.ts",
     "test:reminder-email": "tsx src/scripts/test-reminder-digest.ts",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down"

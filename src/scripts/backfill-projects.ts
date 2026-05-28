@@ -5,8 +5,8 @@ loadEnvConfig(process.cwd());
 
 async function backfillProjects() {
   const { db } = await import('@/server/db');
-  const { deals, pipelines, projects } = await import('@/server/db/schema');
-  const { createOrSyncDealFromProject, createOrSyncProjectFromDeal } = await import('@/server/services/project-sync.service');
+  const { deals, pipelines } = await import('@/server/db/schema');
+  const { createOrSyncProjectFromDeal } = await import('@/server/services/project-sync.service');
 
   console.log('Starting project backfill...');
 
@@ -35,32 +35,6 @@ async function backfillProjects() {
       }
     } catch (err) {
       console.error(`  Failed for deal ${deal.title}:`, err);
-    }
-  }
-
-  const projectRows = await db
-    .select({
-      id: projects.id,
-      name: projects.name,
-      createdBy: projects.createdBy,
-    })
-    .from(projects)
-    .where(and(
-      isNull(projects.deletedAt)
-    ));
-
-  console.log(`Found ${projectRows.length} projects to create or sync back into Active Pipeline`);
-
-  for (const project of projectRows) {
-    try {
-      const dealId = await createOrSyncDealFromProject(project.id, project.createdBy);
-      if (dealId) {
-        console.log(`  Synced active pipeline prospect for project: ${project.name}`);
-      } else {
-        console.log(`  Skipped project: ${project.name}`);
-      }
-    } catch (err) {
-      console.error(`  Failed for project ${project.name}:`, err);
     }
   }
 

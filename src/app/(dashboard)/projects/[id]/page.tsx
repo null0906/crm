@@ -6,10 +6,29 @@ import { useParams } from 'next/navigation';
 import { ArrowLeft, CalendarDays, CheckSquare, Clock, Link2, Plus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
-import { PROJECT_STAGES, PROJECT_TASK_STATUSES, getProjectStageColor, getProjectStageProgress, getServiceTypeConfig } from '@/lib/projects';
+import {
+  PROJECT_STAGES,
+  PROJECT_TASK_STATUSES,
+  getProjectStageProgress,
+  getProjectStagesFromPipelineStages,
+  getServiceTypeConfig,
+  type ProjectStageOption,
+} from '@/lib/projects';
 import type { ProjectStage, ProjectTaskStatus } from '@/lib/types';
 
 type ProjectRecord = Record<string, any>;
+
+function getStageOption(stages: ProjectStageOption[], stage: string | null | undefined) {
+  return stages.find((item) => item.key === stage) ?? PROJECT_STAGES.find((item) => item.key === stage) ?? PROJECT_STAGES[0]!;
+}
+
+function getSyncedStageColor(stages: ProjectStageOption[], stage: string | null | undefined) {
+  return getStageOption(stages, stage).color;
+}
+
+function getSyncedStageLabel(stages: ProjectStageOption[], stage: string | null | undefined) {
+  return getStageOption(stages, stage).label;
+}
 
 function formatINR(value: unknown) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value ?? 0));
@@ -39,7 +58,7 @@ function ProgressBar({ percent, delayed }: { percent: number; delayed?: boolean 
   );
 }
 
-function StagePills({ project }: { project: ProjectRecord }) {
+function StagePills({ project, stages }: { project: ProjectRecord; stages: ProjectStageOption[] }) {
   const utils = trpc.useUtils();
   const moveStage = trpc.projects.moveStage.useMutation({
     onSuccess: () => {
@@ -52,7 +71,7 @@ function StagePills({ project }: { project: ProjectRecord }) {
 
   return (
     <div className="flex flex-wrap gap-1.5">
-      {PROJECT_STAGES.filter((stage) => !['on_hold', 'cancelled'].includes(stage.key)).map((stage) => {
+      {stages.map((stage) => {
         const active = project.stage === stage.key;
         return (
           <button
@@ -315,6 +334,19 @@ export default function ProjectDetailPage() {
   const projectId = String(params.id ?? '');
   const [tab, setTab] = React.useState<'overview' | 'tasks' | 'team' | 'timeline' | 'linked'>('overview');
   const { data: project, isLoading } = trpc.projects.getById.useQuery({ id: projectId }, { enabled: Boolean(projectId) });
+  const { data: pipelines = [] } = trpc.pipelines.list.useQuery();
+  const activePipelineId = React.useMemo(() => {
+    const activePipeline = pipelines.find((pipeline) => String((pipeline as Record<string, unknown>).pipelineType ?? '') === 'active_delivery');
+    return activePipeline ? String(activePipeline.id) : '';
+  }, [pipelines]);
+  const { data: activePipeline } = trpc.pipelines.getWithStages.useQuery(
+    { id: activePipelineId },
+    { enabled: Boolean(activePipelineId) }
+  );
+  const projectStages = React.useMemo(
+    () => getProjectStagesFromPipelineStages((activePipeline?.stages ?? []) as Array<Record<string, unknown>>),
+    [activePipeline?.stages]
+  );
 
   if (isLoading) {
     return (
@@ -368,7 +400,7 @@ export default function ProjectDetailPage() {
           </div>
         </div>
         <div className="mt-5">
-          <StagePills project={record} />
+          <StagePills project={record} stages={projectStages} />
         </div>
       </div>
 
@@ -396,7 +428,7 @@ export default function ProjectDetailPage() {
             <div className="rounded-xl border border-[var(--border-subtle)] bg-white p-4 shadow-sm">
               <h2 className="mb-3 text-sm font-bold text-[var(--text-primary)]">Project Details</h2>
               <dl className="grid gap-3 text-sm">
-                <div className="flex justify-between gap-4"><dt className="text-[var(--text-tertiary)]">Stage</dt><dd className="font-semibold text-[var(--text-primary)]" style={{ color: getProjectStageColor(record.stage) }}>{PROJECT_STAGES.find((s) => s.key === record.stage)?.label}</dd></div>
+                <div className="flex justify-between gap-4"><dt className="text-[var(--text-tertiary)]">Stage</dt><dd className="font-semibold text-[var(--text-primary)]" style={{ color: getSyncedStageColor(projectStages, record.stage) }}>{getSyncedStageLabel(projectStages, record.stage)}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-[var(--text-tertiary)]">Status</dt><dd className="font-semibold text-[var(--text-primary)]">{record.status}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-[var(--text-tertiary)]">Start</dt><dd className="font-mono text-[var(--text-primary)]">{formatDate(record.startDate)}</dd></div>
                 <div className="flex justify-between gap-4"><dt className="text-[var(--text-tertiary)]">End</dt><dd className="font-mono text-[var(--text-primary)]">{formatDate(record.revisedEndDate ?? record.endDate)}</dd></div>
@@ -419,8 +451,8 @@ export default function ProjectDetailPage() {
             <div className="space-y-3">
               {(record.stageHistory ?? []).map((history: ProjectRecord) => (
                 <div key={history.id} className="flex items-center gap-3 rounded-lg bg-[var(--surface-input)] p-3 text-sm">
-                  <span className="h-2 w-2 rounded-full" style={{ background: getProjectStageColor(history.toStage) }} />
-                  <span className="font-semibold text-[var(--text-primary)]">{PROJECT_STAGES.find((s) => s.key === history.toStage)?.label ?? history.toStage}</span>
+                  <span className="h-2 w-2 rounded-full" style={{ background: getSyncedStageColor(projectStages, history.toStage) }} />
+                  <span className="font-semibold text-[var(--text-primary)]">{getSyncedStageLabel(projectStages, history.toStage)}</span>
                   <span className="ml-auto font-mono text-xs text-[var(--text-tertiary)]">{formatDate(history.enteredAt)}</span>
                 </div>
               ))}
