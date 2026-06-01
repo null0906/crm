@@ -119,4 +119,42 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
 });
 
+export async function getActiveSessionUser(): Promise<SessionUser | null> {
+  const session = await auth();
+  const sessionUser = session?.user as SessionUser | undefined;
+  if (!sessionUser?.id) return null;
+
+  const [user] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      avatarUrl: users.avatarUrl,
+      roleId: users.roleId,
+      role: {
+        id: roles.id,
+        name: roles.name,
+        slug: roles.slug,
+        permissions: roles.permissions,
+      },
+    })
+    .from(users)
+    .innerJoin(roles, eq(users.roleId, roles.id))
+    .where(eq(users.id, sessionUser.id))
+    .limit(1);
+
+  if (!user) return null;
+
+  const [status] = await db
+    .select({ status: users.status })
+    .from(users)
+    .where(eq(users.id, sessionUser.id))
+    .limit(1);
+
+  if (status?.status !== 'active') return null;
+
+  return user as SessionUser;
+}
+
 export type { SessionUser };

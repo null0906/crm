@@ -1,4 +1,4 @@
-import { auth } from '@/server/lib/auth';
+import { getActiveSessionUser } from '@/server/lib/auth';
 import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
@@ -6,9 +6,9 @@ import { FloatingChatWidget } from '@/components/ai-chat/FloatingChatWidget';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
+  const user = await getActiveSessionUser();
 
-  if (!session) {
+  if (!user) {
     redirect('/login');
   }
 
