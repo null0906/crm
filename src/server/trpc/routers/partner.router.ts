@@ -7,6 +7,11 @@ import { and, asc, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
 
 const SALES_PIPELINE_KEYWORDS = ['sales'];
 
+function maskDealAmountsForRole<T extends Record<string, unknown>>(roleSlug: string | undefined, rows: T[]): T[] {
+  if (roleSlug !== 'sales_rep') return rows;
+  return rows.map((row) => ({ ...row, amount: null }));
+}
+
 function salesPipelineCondition() {
   return or(...SALES_PIPELINE_KEYWORDS.map((keyword) => ilike(pipelines.name, `%${keyword}%`)))!;
 }
@@ -14,8 +19,8 @@ function salesPipelineCondition() {
 export const partnerRouter = router({
   dealsByPartner: protectedProcedure
     .input(z.object({ partnerCompanyId: z.string().uuid() }))
-    .query(async ({ input }) => {
-      return db
+    .query(async ({ ctx, input }) => {
+      const rows = await db
         .select({
           id: deals.id,
           title: deals.title,
@@ -38,11 +43,12 @@ export const partnerRouter = router({
           salesPipelineCondition(),
         ))
         .orderBy(desc(deals.createdAt));
+      return maskDealAmountsForRole(ctx.user.role.slug, rows);
     }),
 
   contactsByPartner: protectedProcedure
     .input(z.object({ partnerCompanyId: z.string().uuid() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       return db
         .select({
           id: contacts.id,
@@ -64,7 +70,7 @@ export const partnerRouter = router({
       search: z.string().optional(),
       partnerCompanyId: z.string().uuid().optional(),
     }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const conditions = [
         isNull(deals.deletedAt),
         salesPipelineCondition(),
@@ -97,9 +103,9 @@ export const partnerRouter = router({
         .orderBy(desc(deals.createdAt))
         .limit(50);
 
-      return rows.filter((row) =>
+      return maskDealAmountsForRole(ctx.user.role.slug, rows.filter((row) =>
         !row.partnerCompanyId || row.partnerCompanyId === input.partnerCompanyId
-      );
+      ));
     }),
 
   attachDeal: protectedProcedure
@@ -164,7 +170,7 @@ export const partnerRouter = router({
 
   referredLeads: protectedProcedure
     .input(z.object({ partnerCompanyId: z.string().uuid() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       // Contacts referred by this partner
       const referredContacts = await db
         .select({
@@ -207,12 +213,12 @@ export const partnerRouter = router({
         ))
         .orderBy(desc(deals.createdAt));
 
-      return { contacts: referredContacts, deals: referredDeals };
+      return { contacts: referredContacts, deals: maskDealAmountsForRole(ctx.user.role.slug, referredDeals) };
     }),
 
   attributionStats: protectedProcedure
     .input(z.object({ partnerCompanyId: z.string().uuid() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const [contactStats] = await db
         .select({ total: sql<number>`count(*)::int` })
         .from(contacts)
@@ -239,8 +245,8 @@ export const partnerRouter = router({
         referredLeads:   contactStats?.total ?? 0,
         openDeals:       openDeals.length,
         wonDeals:        wonDeals.length,
-        wonRevenue,
-        pipeline,
+        wonRevenue: ctx.user.role.slug === 'sales_rep' ? null : wonRevenue,
+        pipeline: ctx.user.role.slug === 'sales_rep' ? null : pipeline,
         currency,
       };
     }),

@@ -82,8 +82,11 @@ function isPipelineValueQuestion(query: string): boolean {
   return mentionsDeals && asksValue;
 }
 
-async function answerPipelineValueQuestion(query: string, db: DbClient): Promise<string | null> {
+async function answerPipelineValueQuestion(query: string, db: DbClient, userContext: UserContext): Promise<string | null> {
   if (!isPipelineValueQuestion(query)) return null;
+  if (userContext.role === 'sales_rep') {
+    return 'Prospect values are restricted for your role, so I cannot show deal amounts, pipeline value, or revenue totals.';
+  }
 
   const normalized = query.toLowerCase();
   const onlyOpenDeals = /\bopen\b/.test(normalized) || /\bpipeline value\b/.test(normalized);
@@ -517,9 +520,11 @@ Permissions JSON: ${JSON.stringify(userContext.permissions)}
 - Always add WHERE deleted_at IS NULL to contacts, companies, activities, and deals queries when those tables are used
 - Never guess currency. Prospect values are stored in deals.amount and deals.currency. When aggregating prospect amount, include deals.currency in SELECT and GROUP BY unless the user explicitly asks for a single-currency conversion.
 - Format INR as INR/₹, USD as USD/$, and never use $ for prospect values unless deals.currency = 'USD'.
+- If user role is 'sales_rep', never SELECT, summarize, calculate, or reveal deals.amount, project contract values, pipeline value, revenue, weighted pipeline, average deal size, or any prospect/deal monetary amount.
+- Sales reps can see all prospects and deals; do not add a deals.owner_id filter just because the role is sales_rep.
 - When a user asks for someone's "activity", default to human logged activity: activities.performed_by = that user's id, activities.is_automated = false, and exclude activity_type = 'task' unless they explicitly ask for tasks/reminders/automations.
 - Do not treat stale-prospect reminders such as "Prospect stuck..." as sales activity unless the user explicitly asks for automated tasks.
-- If user role is 'sales_rep' or permissions are own-scoped, add owner filters:
+- If permissions are own-scoped for a non-sales-rep role, add owner filters:
   - contacts.owner_id = '${userContext.userId}' for contacts
   - deals.owner_id = '${userContext.userId}' for deals
   - companies.owner_id = '${userContext.userId}' for companies
@@ -827,7 +832,7 @@ export async function handleMessage(
 
     const userContext = await getUserContext(userId, db);
     const systemPrompt = buildSystemPrompt(userContext);
-    const pipelineValueAnswer = await answerPipelineValueQuestion(userMessage, db);
+    const pipelineValueAnswer = await answerPipelineValueQuestion(userMessage, db, userContext);
     const userActivityAnswer = await answerUserActivityQuestion(userMessage, db, userContext.userId);
 
     if (pipelineValueAnswer) {

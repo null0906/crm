@@ -97,21 +97,21 @@ export const projectsRouter = router({
       ownerId: z.string().uuid().optional(),
       search: z.string().optional(),
     }).optional())
-    .query(async ({ input }) => {
-      return projectService.list(input ?? {});
+    .query(async ({ ctx, input }) => {
+      return projectService.list(input ?? {}, ctx.user);
     }),
 
   getById: protectedProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      return projectService.getById(input.id, ctx.user.id);
+      return projectService.getById(input.id, ctx.user);
     }),
 
   create: protectedProcedure
     .input(projectCreateSchema)
     .mutation(async ({ ctx, input }) => {
       const { memberIds, ...data } = input;
-      const project = await projectService.create(data, ctx.user.id);
+      const project = await projectService.create(data, ctx.user.id, ctx.user);
       if (memberIds?.length) {
         await db.insert(projectMembers).values(memberIds.map((userId) => ({
           projectId: project.id,
@@ -128,9 +128,9 @@ export const projectsRouter = router({
       id: z.string().uuid(),
       data: projectCreateSchema.partial(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { memberIds: _memberIds, ...data } = input.data;
-      return projectService.update(input.id, data);
+      return projectService.update(input.id, data, ctx.user);
     }),
 
   delete: protectedProcedure
@@ -147,7 +147,7 @@ export const projectsRouter = router({
       notes: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      return projectService.moveStage(input.id, input.stage, ctx.user.id, input.notes);
+      return projectService.moveStage(input.id, input.stage, ctx.user.id, input.notes, ctx.user);
     }),
 
   updateProgress: protectedProcedure
@@ -165,7 +165,8 @@ export const projectsRouter = router({
         ctx.user.id,
         input.isDelayed,
         input.delayReason,
-        input.revisedEndDate
+        input.revisedEndDate,
+        ctx.user
       );
     }),
 
@@ -202,8 +203,8 @@ export const projectsRouter = router({
 
   getByCompany: protectedProcedure
     .input(z.object({ companyId: z.string().uuid() }))
-    .query(async ({ input }) => {
-      return projectService.list({ companyId: input.companyId });
+    .query(async ({ ctx, input }) => {
+      return projectService.list({ companyId: input.companyId }, ctx.user);
     }),
 
   tasksByCompany: protectedProcedure

@@ -2,7 +2,7 @@ import { db } from '@/server/db';
 import { deals, dealTags, dealContacts, dealStageHistory, dealTeamMembers, dealTasks, tags, companies, contacts, users, pipelineStages, pipelines, activities, projects } from '@/server/db/schema';
 import { eq, and, isNull, or, ilike, sql, lt, desc, asc, inArray, SQL, type SQLWrapper } from 'drizzle-orm';
 import type { NewDeal } from '@/server/db/schema';
-import type { DealStatus, FilterConfig, PaginatedResult, SessionUser, StageType } from '@/lib/types';
+import type { DealStatus, FilterConfig, PaginatedResult, PermissionLevel, SessionUser, StageType } from '@/lib/types';
 import { writeAuditLog, buildChangeDiff } from './audit.service';
 import eventBus from '@/server/lib/event-bus';
 import { getPermissionLevel } from '@/server/lib/permissions';
@@ -19,6 +19,32 @@ interface StageContext {
   id: string;
   pipelineId: string;
   stageType: StageType;
+}
+
+function canViewDealAmounts(user: SessionUser) {
+  return user.role.slug !== 'sales_rep';
+}
+
+function getDealReadLevelForUser(user: SessionUser): PermissionLevel {
+  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
+  if (!readLevel) return readLevel;
+  return user.role.slug === 'sales_rep' ? 'all' : readLevel;
+}
+
+function maskDealAmountForUser<T extends Record<string, unknown>>(user: SessionUser, row: T): T {
+  if (canViewDealAmounts(user)) return row;
+  return { ...row, amount: null } as T;
+}
+
+function maskDealAmountsForUser<T extends Record<string, unknown>>(user: SessionUser, rows: T[]): T[] {
+  return canViewDealAmounts(user) ? rows : rows.map((row) => maskDealAmountForUser(user, row));
+}
+
+function sanitizeDealWriteDataForUser<T extends Record<string, unknown>>(user: SessionUser, data: T): T {
+  if (canViewDealAmounts(user)) return data;
+  const sanitized = { ...data };
+  delete sanitized.amount;
+  return sanitized as T;
 }
 
 function getEffectiveDealStatusSql(stageTypeColumn: SQLWrapper): SQL<DealStatus> {
@@ -262,7 +288,7 @@ export async function listDeals(
   const limit = Math.min(pagination.limit, 500);
   const contactsAlias = contacts;
 
-  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
+  const readLevel = getDealReadLevelForUser(user);
   if (!readLevel) return { items: [], nextCursor: null, hasMore: false };
 
   const conditions = [isNull(deals.deletedAt)];
@@ -377,7 +403,7 @@ export async function listDeals(
     .limit(limit + 1);
 
   const hasMore = rows.length > limit;
-  const items = hasMore ? rows.slice(0, limit) : rows;
+  const items = maskDealAmountsForUser(user, hasMore ? rows.slice(0, limit) : rows);
   let nextCursor: string | null = null;
   if (hasMore && items.length > 0) {
     const last = items[items.length - 1]!;
@@ -395,7 +421,7 @@ export async function getDealsByStage(
     search?: string;
   }
 ): Promise<Record<string, unknown[]>> {
-  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
+  const readLevel = getDealReadLevelForUser(user);
   if (!readLevel) return {};
 
   const conditions = [isNull(deals.deletedAt), eq(deals.pipelineId, pipelineId)];
@@ -509,7 +535,7 @@ export async function getDealsByStage(
       groupedStageId = firstActiveStageId;
     }
 
-    const normalizedRow = { ...row, stageId: groupedStageId } as Record<string, unknown>;
+    const normalizedRow = maskDealAmountForUser(user, { ...row, stageId: groupedStageId } as Record<string, unknown>);
     if (!grouped[groupedStageId]) grouped[groupedStageId] = [];
     grouped[groupedStageId]!.push(normalizedRow);
   }
@@ -520,7 +546,7 @@ export async function getDealById(
   user: SessionUser,
   id: string
 ): Promise<Record<string, unknown> | null> {
-  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
+  const readLevel = getDealReadLevelForUser(user);
   if (!readLevel) return null;
 
   // Use aliases to avoid Drizzle column name conflicts
@@ -681,7 +707,7 @@ export async function getDealById(
     .where(eq(dealTasks.dealId, id))
     .orderBy(asc(dealTasks.position), asc(dealTasks.dueDate), asc(dealTasks.createdAt));
 
-  return {
+  return maskDealAmountForUser(user, {
     ...deal,
     primaryContactName: deal.primaryContactName ?? deal.primaryContactJoinedName,
     primaryContactEmail: deal.primaryContactEmail ?? deal.primaryContactJoinedEmail,
@@ -694,30 +720,31 @@ export async function getDealById(
     tasks,
     taskCount: tasks.length,
     completedTaskCount: tasks.filter((task) => task.status === 'completed').length,
-  };
+  });
 }
 
 export async function createDeal(
   user: SessionUser,
   data: Omit<NewDeal, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>
 ): Promise<Record<string, unknown>> {
-  await validatePartnerAssignment(data.pipelineId, data.partnerCompanyId);
+  const writeData = sanitizeDealWriteDataForUser(user, data as Record<string, unknown>) as typeof data;
+  await validatePartnerAssignment(writeData.pipelineId, writeData.partnerCompanyId);
   const resolvedLifecycle = await resolveStageAndStatus({
-    pipelineId: data.pipelineId,
-    stageId: data.stageId,
-    status: (data.status as DealStatus | null | undefined) ?? 'open',
+    pipelineId: writeData.pipelineId,
+    stageId: writeData.stageId,
+    status: (writeData.status as DealStatus | null | undefined) ?? 'open',
   });
-  const primaryContactSnapshot = await resolvePrimaryContactSnapshot(data.primaryContactId);
+  const primaryContactSnapshot = await resolvePrimaryContactSnapshot(writeData.primaryContactId);
 
   const [deal] = await db
     .insert(deals)
     .values({
-      ...data,
+      ...writeData,
       ...primaryContactSnapshot,
       stageId: resolvedLifecycle.stageId,
       status: resolvedLifecycle.status,
       actualCloseDate: resolveActualCloseDate(resolvedLifecycle.status),
-      ownerId: data.ownerId ?? user.id,
+      ownerId: writeData.ownerId ?? user.id,
       createdBy: user.id,
     })
     .returning();
@@ -734,16 +761,16 @@ export async function createDeal(
   await db.insert(activities).values({
     activityType: 'note',
     subject: `Prospect created: ${deal!.title}`,
-      dealId: deal!.id,
-      companyId: data.companyId ?? null,
-      contactId: data.primaryContactId ?? null,
-      performedBy: user.id,
-      isAutomated: true,
-      occurredAt: new Date(),
-      metadata: { dealTitle: deal!.title, stageId: resolvedLifecycle.stageId },
-    });
+    dealId: deal!.id,
+    companyId: writeData.companyId ?? null,
+    contactId: writeData.primaryContactId ?? null,
+    performedBy: user.id,
+    isAutomated: true,
+    occurredAt: new Date(),
+    metadata: { dealTitle: deal!.title, stageId: resolvedLifecycle.stageId },
+  });
 
-  await promoteCompanyToPartnerIfEligible(data.companyId, data.pipelineId, resolvedLifecycle.stageId);
+  await promoteCompanyToPartnerIfEligible(writeData.companyId, writeData.pipelineId, resolvedLifecycle.stageId);
   await createOrSyncProjectFromDeal(deal!.id, user.id);
 
   eventBus.emit('deal.created', { dealId: deal!.id, createdBy: user.id });
@@ -758,7 +785,7 @@ export async function createDeal(
     changes: { title: { new: deal!.title } },
   });
 
-  return deal as Record<string, unknown>;
+  return maskDealAmountForUser(user, deal as Record<string, unknown>);
 }
 
 export async function updateDeal(
@@ -766,6 +793,7 @@ export async function updateDeal(
   id: string,
   data: Partial<Omit<NewDeal, 'id' | 'createdAt' | 'createdBy'>>
 ): Promise<Record<string, unknown>> {
+  const writeData = sanitizeDealWriteDataForUser(user, data as Record<string, unknown>) as typeof data;
   const existing = await getDealById(user, id);
   if (!existing) throw new Error('Prospect not found');
 
@@ -773,35 +801,35 @@ export async function updateDeal(
   if (updateLevel === 'own' && existing.ownerId !== user.id) throw new Error('Insufficient permissions');
   if (!updateLevel) throw new Error('Insufficient permissions');
 
-  const nextPipelineId = (data.pipelineId ?? existing.pipelineId) as string;
-  const nextPartnerCompanyId = data.partnerCompanyId !== undefined
-    ? data.partnerCompanyId
+  const nextPipelineId = (writeData.pipelineId ?? existing.pipelineId) as string;
+  const nextPartnerCompanyId = writeData.partnerCompanyId !== undefined
+    ? writeData.partnerCompanyId
     : (existing.partnerCompanyId as string | null | undefined);
 
   await validatePartnerAssignment(nextPipelineId, nextPartnerCompanyId);
   const pipelineChanged = nextPipelineId !== (existing.pipelineId as string);
-  const shouldSyncLifecycle = data.stageId !== undefined || data.status !== undefined || pipelineChanged;
+  const shouldSyncLifecycle = writeData.stageId !== undefined || writeData.status !== undefined || pipelineChanged;
   const resolvedLifecycle = shouldSyncLifecycle
     ? await resolveStageAndStatus({
         pipelineId: nextPipelineId,
-        stageId: data.stageId as string | null | undefined,
-        status: data.status as DealStatus | null | undefined,
+        stageId: writeData.stageId as string | null | undefined,
+        status: writeData.status as DealStatus | null | undefined,
         fallbackStageId: existing.stageId as string | null | undefined,
         fallbackStatus: existing.status as DealStatus | null | undefined,
       })
     : null;
 
-  const nextStageId = resolvedLifecycle?.stageId ?? (data.stageId as string | undefined) ?? (existing.stageId as string);
-  const nextStatus = resolvedLifecycle?.status ?? (data.status as DealStatus | undefined) ?? (existing.status as DealStatus);
+  const nextStageId = resolvedLifecycle?.stageId ?? (writeData.stageId as string | undefined) ?? (existing.stageId as string);
+  const nextStatus = resolvedLifecycle?.status ?? (writeData.status as DealStatus | undefined) ?? (existing.status as DealStatus);
   const isStageChange = nextStageId !== existing.stageId;
   const isStatusChange = nextStatus !== existing.status;
   const updatePayload: Partial<Omit<NewDeal, 'id' | 'createdAt' | 'createdBy'>> & { updatedAt: Date; stageEnteredAt?: Date } = {
-    ...data,
+    ...writeData,
     updatedAt: new Date(),
   };
 
-  if (data.primaryContactId !== undefined) {
-    Object.assign(updatePayload, await resolvePrimaryContactSnapshot(data.primaryContactId));
+  if (writeData.primaryContactId !== undefined) {
+    Object.assign(updatePayload, await resolvePrimaryContactSnapshot(writeData.primaryContactId));
   }
 
   if (resolvedLifecycle) {
@@ -885,7 +913,7 @@ export async function updateDeal(
   if (isStatusChange && nextStatus === 'won') {
     eventBus.emit('deal.won', { dealId: id, amount: Number(existing.amount ?? 0), wonBy: user.id });
   } else if (isStatusChange && (nextStatus === 'lost' || nextStatus === 'abandoned')) {
-    eventBus.emit('deal.lost', { dealId: id, reason: (data.lostReason as string | undefined) ?? '', lostBy: user.id });
+    eventBus.emit('deal.lost', { dealId: id, reason: (writeData.lostReason as string | undefined) ?? '', lostBy: user.id });
   }
 
   const changes = buildChangeDiff(existing as Record<string, unknown>, updated as Record<string, unknown>);
@@ -903,7 +931,7 @@ export async function updateDeal(
 
   await syncDealFieldsToProject(id);
 
-  return updated as Record<string, unknown>;
+  return maskDealAmountForUser(user, updated as Record<string, unknown>);
 }
 
 export async function deleteDeal(user: SessionUser, id: string): Promise<void> {
@@ -930,7 +958,7 @@ export async function getDealsByContact(
   user: SessionUser,
   contactId: string
 ): Promise<Record<string, unknown>[]> {
-  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
+  const readLevel = getDealReadLevelForUser(user);
   if (!readLevel) return [];
 
   // Deals linked via primaryContactId or via the dealContacts join table
@@ -990,14 +1018,14 @@ export async function getDealsByContact(
       combined.push(row as Record<string, unknown>);
     }
   }
-  return combined;
+  return maskDealAmountsForUser(user, combined);
 }
 
 export async function getDealsByCompany(
   user: SessionUser,
   companyId: string
 ): Promise<Record<string, unknown>[]> {
-  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
+  const readLevel = getDealReadLevelForUser(user);
   if (!readLevel) return [];
 
   const conditions = [
@@ -1026,7 +1054,7 @@ export async function getDealsByCompany(
     .where(and(...conditions))
     .orderBy(desc(deals.createdAt));
 
-  return rows as Record<string, unknown>[];
+  return maskDealAmountsForUser(user, rows as Record<string, unknown>[]);
 }
 
 export async function addDealTags(user: SessionUser, dealId: string, tagIds: string[]): Promise<void> {

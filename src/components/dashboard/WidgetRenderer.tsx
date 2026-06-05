@@ -12,6 +12,7 @@ import {
   TrendingUp, Users, Building2, Activity, Phone, Mail, MessageSquare,
   Target, DollarSign, Award, BarChart2, Calendar, CheckCircle,
 } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import type { DashboardDataSource, WidgetType } from '@/lib/types';
 
 export interface DashboardFilter {
@@ -48,6 +49,12 @@ const STATUS_LABEL: Record<string, string> = {
   unqualified: 'Unqualified', nurturing: 'Nurturing',
   converted: 'Converted', lost: 'Lost', archived: 'Archived',
 };
+
+function useCanViewDealAmounts() {
+  const { data: session } = useSession();
+  const roleSlug = ((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug;
+  return roleSlug !== 'sales_rep';
+}
 
 // ─── Source helpers ────────────────────────────────────────────────
 function getWidgetSource(widget: Widget): DashboardDataSource {
@@ -191,6 +198,7 @@ function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilt
   const metric = widget.config.metric as string | undefined;
   const source = getWidgetSource(widget);
   const accent = widget.color ?? '#3b82f6';
+  const canViewDealAmounts = useCanViewDealAmounts();
 
   const { data: contactsRaw } = trpc.contacts.list.useQuery(
     { pagination: { limit: 500 } },
@@ -229,19 +237,30 @@ function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilt
     subLine = `${source} view`;
   } else if (metric === 'pipeline_value') {
     const open = filteredDeals.filter((d) => d.status === 'open');
-    const total = open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0);
-    const wt = open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0) * ((d.probability as number || 0) / 100), 0);
-    value = formatCurrency(total);
-    subLine = `${formatCurrency(wt)} weighted · ${open.length} prospects`;
+    if (canViewDealAmounts) {
+      const total = open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0);
+      const wt = open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0) * ((d.probability as number || 0) / 100), 0);
+      value = formatCurrency(total);
+      subLine = `${formatCurrency(wt)} weighted · ${open.length} prospects`;
+    } else {
+      value = open.length;
+      subLine = 'open prospects';
+    }
   } else if (metric === 'won_value') {
     const won = filteredDeals.filter((d) => d.status === 'won');
-    value = formatCurrency(won.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0));
+    value = canViewDealAmounts
+      ? formatCurrency(won.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0))
+      : won.length;
     subLine = `${won.length} prospect${won.length !== 1 ? 's' : ''} closed won`;
   } else if (metric === 'open_deals') {
     const open = filteredDeals.filter((d) => d.status === 'open');
     value = open.length;
-    const tv = open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0);
-    subLine = tv > 0 ? formatCurrency(tv) + ' total value' : 'active pipeline';
+    if (canViewDealAmounts) {
+      const tv = open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0);
+      subLine = tv > 0 ? formatCurrency(tv) + ' total value' : 'active pipeline';
+    } else {
+      subLine = 'active pipeline';
+    }
   } else if (metric === 'win_rate') {
     const closed = filteredDeals.filter((d) => d.status === 'won' || d.status === 'lost');
     const won = filteredDeals.filter((d) => d.status === 'won');
@@ -250,9 +269,14 @@ function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilt
     subLine = `${won.length} won / ${closed.length} closed`;
   } else if (metric === 'avg_deal_size') {
     const won = filteredDeals.filter((d) => d.status === 'won');
-    const total = won.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0);
-    value = won.length > 0 ? formatCurrency(total / won.length) : '—';
-    subLine = `across ${won.length} won prospects`;
+    if (canViewDealAmounts) {
+      const total = won.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0);
+      value = won.length > 0 ? formatCurrency(total / won.length) : '—';
+      subLine = `across ${won.length} won prospects`;
+    } else {
+      value = won.length;
+      subLine = 'won prospects';
+    }
   }
 
   return (
@@ -580,6 +604,7 @@ function ContactsPieChart({ widget }: { widget: Widget }) {
 function RevenueAreaChart({ widget, filter }: { widget: Widget; filter?: DashboardFilter }) {
   const source = getWidgetSource(widget);
   const accent = widget.color ?? '#6366f1';
+  const canViewDealAmounts = useCanViewDealAmounts();
   const { data: pipelines = [] } = trpc.pipelines.list.useQuery();
   const { data: dealsRaw } = trpc.deals.list.useQuery({ pagination: { limit: 500, cursor: undefined } });
   const deals = applyDealFilter(
@@ -596,6 +621,10 @@ function RevenueAreaChart({ widget, filter }: { widget: Widget; filter?: Dashboa
 
   const showLabels = Boolean(widget.config.showLabels);
   const isLine = (widget.config.chartType as string) === 'line';
+
+  if (!canViewDealAmounts) {
+    return <WidgetEmpty title={widget.title} message="Prospect values are restricted for your role." />;
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -662,6 +691,7 @@ function RevenueAreaChart({ widget, filter }: { widget: Widget; filter?: Dashboa
 // ─── DEAL FUNNEL (funnel_chart) ────────────────────────────────────
 function DealFunnelChart({ widget }: { widget: Widget }) {
   const source = getWidgetSource(widget);
+  const canViewDealAmounts = useCanViewDealAmounts();
   const { data: pipelines = [] } = trpc.pipelines.list.useQuery();
   const sourcePipeline = resolvePipelineForSource(pipelines as Array<Record<string, unknown>>, source);
   const pipelineId = sourcePipeline?.id as string | undefined;
@@ -723,7 +753,7 @@ function DealFunnelChart({ widget }: { widget: Widget }) {
                       {stage.deals} prospect{stage.deals !== 1 ? 's' : ''}
                     </span>
                   </div>
-                  {formatCurrency(stage.value) !== '₹0' && (
+                  {canViewDealAmounts && formatCurrency(stage.value) !== '₹0' && (
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">
                       {formatCurrency(stage.value)}
                     </span>

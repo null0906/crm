@@ -33,6 +33,8 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   const utils = trpc.useUtils();
   const { data: session } = useSession();
   const currentUserId = (session?.user as Record<string, unknown> | undefined)?.id as string | undefined;
+  const currentRoleSlug = ((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug;
+  const canViewDealAmounts = currentRoleSlug !== 'sales_rep';
 
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
   const [contactSearch, setContactSearch] = React.useState('');
@@ -108,12 +110,13 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   }, [defaultStageId, form]);
 
   async function onSubmit(data: FormData) {
+    const payload = canViewDealAmounts ? data : { ...data, amount: undefined };
     if (mode === 'edit' && dealId) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await updateDeal.mutateAsync({ id: dealId, data: { ...data, customFields: customFieldValues } as any });
+      await updateDeal.mutateAsync({ id: dealId, data: { ...payload, customFields: customFieldValues } as any });
     } else {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await createDeal.mutateAsync({ ...data, customFields: customFieldValues } as any);
+      await createDeal.mutateAsync({ ...payload, customFields: customFieldValues } as any);
     }
   }
 
@@ -200,18 +203,20 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
         </select>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="amount">Prospect Value (₹)</Label>
-          <Input
-            id="amount"
-            type="number"
-            min={0}
-            step={0.01}
-            {...form.register('amount', { valueAsNumber: true })}
-            placeholder="500000"
-          />
-        </div>
+      <div className={`grid gap-4 ${canViewDealAmounts ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        {canViewDealAmounts && (
+          <div className="space-y-1.5">
+            <Label htmlFor="amount">Prospect Value (₹)</Label>
+            <Input
+              id="amount"
+              type="number"
+              min={0}
+              step={0.01}
+              {...form.register('amount', { valueAsNumber: true })}
+              placeholder="500000"
+            />
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label htmlFor="probability">Probability (%)</Label>
           <Input

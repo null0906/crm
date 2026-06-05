@@ -393,7 +393,7 @@ export function ReportPage({ userId }: { userId: string }) {
           {(activeTab === 'summary' || typeof window === 'undefined') && (
             <ActivitySummarySection summary={data.summary} previous={data.comparisonToPrevious.summary} />
           )}
-          {activeTab === 'pipeline' && <PipelineSection pipeline={data.pipeline} topDeals={data.topDeals} />}
+          {activeTab === 'pipeline' && <PipelineSection pipeline={data.pipeline} topDeals={data.topDeals} monetaryValuesHidden={Boolean(data.monetaryValuesHidden)} />}
           {activeTab === 'demos' && <DemoSection demo={data.demoAnalysis} />}
           {activeTab === 'weekly' && <WeeklyBreakdown weeks={data.weeklyBreakdown} />}
           {activeTab === 'feed' && (

@@ -12,6 +12,7 @@ import {
   type VisibilityState,
 } from '@tanstack/react-table';
 import { ChevronUp, ChevronDown, ChevronsUpDown, Trash2, ExternalLink } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { trpc } from '@/lib/trpc';
 import { formatCurrency, formatDate, formatRelative } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
@@ -81,6 +82,9 @@ function EmptyCell() {
 
 export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSelection, onRowSelectionChange }: DealTableProps) {
   const utils = trpc.useUtils();
+  const { data: session } = useSession();
+  const currentRoleSlug = ((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug;
+  const canViewDealAmounts = currentRoleSlug !== 'sales_rep';
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [cursor, setCursor] = useState<string | undefined>();
@@ -160,14 +164,16 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
         );
       },
     }),
-    columnHelper.accessor('amount', {
-      header: 'Value',
-      cell: (info) => (
-        <span className="font-mono text-base font-semibold text-[var(--color-text-1)]">
-          {formatCurrency(info.getValue(), info.row.original.currency)}
-        </span>
-      ),
-    }),
+    ...(canViewDealAmounts ? [
+      columnHelper.accessor('amount', {
+        header: 'Value',
+        cell: (info) => (
+          <span className="font-mono text-base font-semibold text-[var(--color-text-1)]">
+            {formatCurrency(info.getValue(), info.row.original.currency)}
+          </span>
+        ),
+      }),
+    ] : []),
     columnHelper.accessor('status', {
       header: 'Status',
       cell: (info) => {

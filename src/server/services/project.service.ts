@@ -49,6 +49,26 @@ function normalizeProjectData(data: Partial<ProjectCreateInput>) {
   };
 }
 
+function canViewProjectValues(user?: SessionUser) {
+  return user?.role.slug !== 'sales_rep';
+}
+
+function maskProjectValueForUser<T extends Record<string, unknown>>(user: SessionUser | undefined, row: T): T {
+  if (canViewProjectValues(user)) return row;
+  const masked: Record<string, unknown> = { ...row, contractValue: null };
+  if (masked.deal && typeof masked.deal === 'object') {
+    masked.deal = { ...(masked.deal as Record<string, unknown>), amount: null };
+  }
+  return masked as T;
+}
+
+function sanitizeProjectWriteDataForUser(user: SessionUser | undefined, data: Partial<ProjectCreateInput>) {
+  if (canViewProjectValues(user)) return data;
+  const sanitized = { ...data };
+  delete sanitized.contractValue;
+  return sanitized;
+}
+
 function statusForStage(stage: ProjectStage): ProjectStatus {
   if (stage === 'certified') return 'completed';
   if (stage === 'cancelled') return 'cancelled';
@@ -108,7 +128,7 @@ async function attachProjectDetails(rows: Array<Record<string, unknown>>) {
 }
 
 export const projectService = {
-  async getById(id: string, _userId: string) {
+  async getById(id: string, user: SessionUser) {
     const [project] = await db
       .select({
         id: projects.id,
@@ -213,14 +233,14 @@ export const projectService = {
       .orderBy(desc(projectStageHistory.enteredAt))
       .limit(20);
 
-    return {
+    return maskProjectValueForUser(user, {
       ...details,
       tasks,
       stageHistory,
-    };
+    });
   },
 
-  async list(filters: ProjectListFilters = {}) {
+  async list(filters: ProjectListFilters = {}, user?: SessionUser) {
     const rows = await db
       .select({
         id: projects.id,
@@ -270,24 +290,26 @@ export const projectService = {
       ))
       .orderBy(asc(projects.endDate), desc(projects.createdAt));
 
-    return attachProjectDetails(rows as Array<Record<string, unknown>>);
+    const detailedRows = await attachProjectDetails(rows as Array<Record<string, unknown>>);
+    return detailedRows.map((row) => maskProjectValueForUser(user, row));
   },
 
-  async create(data: ProjectCreateInput, createdBy: string) {
+  async create(data: ProjectCreateInput, createdBy: string, user?: SessionUser) {
+    const writeData = sanitizeProjectWriteDataForUser(user, data) as ProjectCreateInput;
     const stage = data.stage ?? 'kickoff';
     const [project] = await db
       .insert(projects)
       .values({
-        name: data.name,
-        description: data.description,
-        dealId: data.dealId,
-        companyId: data.companyId,
-        primaryContactId: data.primaryContactId,
-        serviceType: data.serviceType,
-        startDate: data.startDate,
-        endDate: data.endDate,
-        contractValue: data.contractValue !== undefined && data.contractValue !== null ? data.contractValue.toString() : data.contractValue,
-        ownerId: data.ownerId,
+        name: writeData.name,
+        description: writeData.description,
+        dealId: writeData.dealId,
+        companyId: writeData.companyId,
+        primaryContactId: writeData.primaryContactId,
+        serviceType: writeData.serviceType,
+        startDate: writeData.startDate,
+        endDate: writeData.endDate,
+        contractValue: writeData.contractValue !== undefined && writeData.contractValue !== null ? writeData.contractValue.toString() : writeData.contractValue,
+        ownerId: writeData.ownerId,
         stage,
         progressPercent: getProjectStageProgress(stage),
         status: statusForStage(stage),
@@ -319,11 +341,11 @@ export const projectService = {
       createdBy,
     });
 
-    return project;
+    return maskProjectValueForUser(user, project);
   },
 
-  async update(id: string, data: Partial<ProjectCreateInput>) {
-    const payload = normalizeProjectData(data) as Record<string, unknown>;
+  async update(id: string, data: Partial<ProjectCreateInput>, user?: SessionUser) {
+    const payload = normalizeProjectData(sanitizeProjectWriteDataForUser(user, data)) as Record<string, unknown>;
     if (payload.stage === null) delete payload.stage;
     if (payload.serviceType === null) payload.serviceType = null;
     const [updated] = await db
@@ -332,13 +354,13 @@ export const projectService = {
       .where(and(eq(projects.id, id), isNull(projects.deletedAt)))
       .returning();
     if (updated?.dealId) await syncProjectFieldsToDeal(id);
-    return updated;
+    return updated ? maskProjectValueForUser(user, updated as Record<string, unknown>) : updated;
   },
 
-  async moveStage(projectId: string, newStage: ProjectStage, movedBy: string, notes?: string) {
+  async moveStage(projectId: string, newStage: ProjectStage, movedBy: string, notes?: string, user?: SessionUser) {
     const [project] = await db.select().from(projects).where(and(eq(projects.id, projectId), isNull(projects.deletedAt))).limit(1);
     if (!project) throw new Error('Project not found');
-    if (project.stage === newStage) return project;
+    if (project.stage === newStage) return maskProjectValueForUser(user, project as Record<string, unknown>);
 
     await db
       .update(projectStageHistory)
@@ -377,7 +399,7 @@ export const projectService = {
       movedBy,
     });
 
-    return updated;
+    return updated ? maskProjectValueForUser(user, updated as Record<string, unknown>) : updated;
   },
 
   async updateProgress(
@@ -386,7 +408,8 @@ export const projectService = {
     updatedBy: string,
     isDelayed?: boolean,
     delayReason?: string | null,
-    revisedEndDate?: string | Date | null
+    revisedEndDate?: string | Date | null,
+    user?: SessionUser
   ) {
     const [updated] = await db
       .update(projects)
@@ -415,7 +438,7 @@ export const projectService = {
       metadata: { projectId, progressPercent },
     });
 
-    return updated;
+    return maskProjectValueForUser(user, updated as Record<string, unknown>);
   },
 
   async softDelete(projectId: string, _deletedBy: string) {

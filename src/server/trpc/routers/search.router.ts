@@ -7,7 +7,8 @@ import { and, isNull, ilike, or, sql } from 'drizzle-orm';
 export const searchRouter = router({
   global: protectedProcedure
     .input(z.object({ query: z.string().min(1).max(200) }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const canViewDealAmounts = ctx.user.role.slug !== 'sales_rep';
       const searchTokens = input.query
         .trim()
         .split(/\s+/)
@@ -118,7 +119,9 @@ export const searchRouter = router({
       return {
         contacts: contactResults,
         companies: companyResults,
-        deals: dealResults,
+        deals: canViewDealAmounts
+          ? dealResults
+          : dealResults.map((deal) => ({ ...deal, meta: null })),
         total: contactResults.length + companyResults.length + dealResults.length,
       };
     }),

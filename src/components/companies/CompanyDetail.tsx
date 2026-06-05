@@ -200,7 +200,7 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted, fullPage }:
         {metrics && (
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <CompanyMetricCard label="Contacts" value={String(metrics.contactCount ?? 0)} />
-            <CompanyMetricCard label="Pipeline" value={formatCurrency(metrics.pipelineValue ?? 0)} />
+            {metrics.pipelineValue != null && <CompanyMetricCard label="Pipeline" value={formatCurrency(metrics.pipelineValue)} />}
             <CompanyMetricCard label="Open Prospects" value={String(metrics.openDeals ?? 0)} />
             <CompanyMetricCard label="Active Projects" value={String(metrics.activeProjects ?? 0)} />
           </div>
@@ -655,9 +655,11 @@ function CompanyProjects({ companyId }: { companyId: string }) {
                   {p.isDelayed ? ' · Delayed' : ''}
                 </p>
               </div>
-              <span className="font-mono text-[12px] font-bold text-slate-700">
-                ₹{Number(p.contractValue ?? 0).toLocaleString('en-IN')}
-              </span>
+              {p.contractValue != null && (
+                <span className="font-mono text-[12px] font-bold text-slate-700">
+                  ₹{Number(p.contractValue).toLocaleString('en-IN')}
+                </span>
+              )}
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
               <div

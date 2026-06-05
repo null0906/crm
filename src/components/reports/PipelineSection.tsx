@@ -27,7 +27,7 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`rounded border px-2 py-0.5 text-xs font-bold ${cfg}`}>{status}</span>;
 }
 
-export function PipelineSection({ pipeline, topDeals }: { pipeline: Pipeline; topDeals: Deal[] }) {
+export function PipelineSection({ pipeline, topDeals, monetaryValuesHidden = false }: { pipeline: Pipeline; topDeals: Deal[]; monetaryValuesHidden?: boolean }) {
   return (
     <section className="rounded-2xl border border-[var(--border-subtle)] bg-white p-5 shadow-sm">
       <div className="mb-4">
@@ -37,12 +37,12 @@ export function PipelineSection({ pipeline, topDeals }: { pipeline: Pipeline; to
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric icon={Target} label="Leads added" value={formatNumber(pipeline.leadsAdded)} />
-        <Metric icon={TrendingUp} label="Prospects created" value={formatNumber(pipeline.dealsCreated)} detail={formatINR(pipeline.dealsCreatedValue)} />
-        <Metric icon={Trophy} label="Revenue won" value={formatINR(pipeline.revenueWon)} detail={`${pipeline.dealsWon} prospects won`} />
-        <Metric icon={IndianRupee} label="Open pipeline" value={formatINR(pipeline.openPipelineValue)} detail={`${pipeline.openDeals} open prospects`} />
-        <Metric icon={TrendingUp} label="Weighted pipeline" value={formatINR(pipeline.weightedPipeline)} />
+        <Metric icon={TrendingUp} label="Prospects created" value={formatNumber(pipeline.dealsCreated)} />
+        {!monetaryValuesHidden && <Metric icon={Trophy} label="Revenue won" value={formatINR(pipeline.revenueWon)} detail={`${pipeline.dealsWon} prospects won`} />}
+        {!monetaryValuesHidden && <Metric icon={IndianRupee} label="Open pipeline" value={formatINR(pipeline.openPipelineValue)} detail={`${pipeline.openDeals} open prospects`} />}
+        {!monetaryValuesHidden && <Metric icon={TrendingUp} label="Weighted pipeline" value={formatINR(pipeline.weightedPipeline)} />}
         <Metric icon={Target} label="Win rate" value={`${pipeline.winRate}%`} />
-        <Metric icon={Target} label="Prospects lost" value={formatNumber(pipeline.dealsLost)} detail={formatINR(pipeline.revenueLost)} />
+        <Metric icon={Target} label="Prospects lost" value={formatNumber(pipeline.dealsLost)} />
       </div>
 
       <div className="mt-5 overflow-hidden rounded-xl border border-[var(--border-subtle)]">
@@ -54,14 +54,14 @@ export function PipelineSection({ pipeline, topDeals }: { pipeline: Pipeline; to
             <div className="p-5 text-sm text-[var(--text-tertiary)]">No prospects found for this rep in this period.</div>
           ) : (
             topDeals.map((deal) => (
-              <Link key={deal.id} href={`/deals/${deal.id}`} className="grid gap-2 px-4 py-3 text-sm hover:bg-[var(--accent-light)] md:grid-cols-[1fr_120px_90px_140px] md:items-center">
+              <Link key={deal.id} href={`/deals/${deal.id}`} className={`grid gap-2 px-4 py-3 text-sm hover:bg-[var(--accent-light)] ${monetaryValuesHidden ? 'md:grid-cols-[1fr_120px_90px]' : 'md:grid-cols-[1fr_120px_90px_140px]'} md:items-center`}>
                 <div>
                   <div className="font-bold text-[var(--text-primary)]">{deal.title}</div>
                   <div className="text-xs text-[var(--text-tertiary)]">{deal.companyName ?? 'No company'} · {deal.contactName ?? 'No contact'}</div>
                 </div>
                 <span className="text-[var(--text-secondary)]">{deal.stageName ?? 'No stage'}</span>
                 <StatusBadge status={deal.status} />
-                <span className="font-mono font-black text-[var(--text-primary)] md:text-right">{formatINR(deal.amount)}</span>
+                {!monetaryValuesHidden && <span className="font-mono font-black text-[var(--text-primary)] md:text-right">{formatINR(deal.amount)}</span>}
               </Link>
             ))
           )}

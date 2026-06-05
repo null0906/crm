@@ -52,6 +52,7 @@ export interface RepReportParams {
   requestedBy: string;
   activityLimit?: number;
   filters?: ReportFilters;
+  suppressDealAmounts?: boolean;
   db?: DbClient;
 }
 
@@ -69,6 +70,7 @@ export interface RepReportData {
   comparisonToPrevious: PeriodComparison;
   highlights: string[];
   appliedFilters: string[];
+  monetaryValuesHidden?: boolean;
 }
 
 export interface ReportFilters {
@@ -207,6 +209,28 @@ function hasFilters(filters: ReportFilters | undefined): filters is ReportFilter
       filters?.location?.trim() ||
       filters?.search?.trim()
   );
+}
+
+function maskPipelineAmounts(pipeline: PipelineContribution): PipelineContribution {
+  return {
+    ...pipeline,
+    dealsCreatedValue: 0,
+    revenueWon: 0,
+    revenueLost: 0,
+    openPipelineValue: 0,
+    weightedPipeline: 0,
+  };
+}
+
+function maskDealSnapshotAmounts(deals: DealSnapshot[]): DealSnapshot[] {
+  return deals.map((deal) => ({ ...deal, amount: 0 }));
+}
+
+function maskComparisonAmounts(comparison: PeriodComparison): PeriodComparison {
+  return {
+    ...comparison,
+    pipeline: maskPipelineAmounts(comparison.pipeline),
+  };
 }
 
 function inList(column: SQL, values: string[] | undefined): SQL | null {
@@ -361,22 +385,29 @@ export async function buildRepReport(params: RepReportParams): Promise<RepReport
     getPreviousPeriodData(params.userId, dateFrom, dateTo, filters, db),
   ]);
 
-  const highlights = generateHighlights(activitySummary, pipeline, conversion, previousPeriod, demoAnalysis);
+  const reportPipeline = params.suppressDealAmounts ? maskPipelineAmounts(pipeline) : pipeline;
+  const reportTopDeals = params.suppressDealAmounts ? maskDealSnapshotAmounts(topDeals) : topDeals;
+  const reportPreviousPeriod = params.suppressDealAmounts ? maskComparisonAmounts(previousPeriod) : previousPeriod;
+  const highlights = params.suppressDealAmounts
+    ? generateHighlights(activitySummary, reportPipeline, conversion, reportPreviousPeriod, demoAnalysis)
+        .filter((highlight) => !/[₹$]|revenue|pipeline|value/i.test(highlight))
+    : generateHighlights(activitySummary, pipeline, conversion, previousPeriod, demoAnalysis);
 
   return {
     rep,
     period: { dateFrom, dateTo },
     summary: activitySummary,
-    pipeline,
+    pipeline: reportPipeline,
     conversion,
     velocity,
-    topDeals,
+    topDeals: reportTopDeals,
     demoAnalysis,
     activityFeed,
     weeklyBreakdown,
-    comparisonToPrevious: previousPeriod,
+    comparisonToPrevious: reportPreviousPeriod,
     highlights,
     appliedFilters: describeReportFilters(filters),
+    monetaryValuesHidden: Boolean(params.suppressDealAmounts),
   };
 }
 

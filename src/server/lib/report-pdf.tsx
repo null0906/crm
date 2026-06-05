@@ -152,6 +152,7 @@ function SummaryPage({ data }: { data: RepReportData }) {
 }
 
 function PipelinePage({ data }: { data: RepReportData }) {
+  const hideMoney = Boolean(data.monetaryValuesHidden);
   return (
     <Page size="A4" style={styles.page}>
       <Header data={data} />
@@ -160,32 +161,32 @@ function PipelinePage({ data }: { data: RepReportData }) {
       <View style={styles.row}>
         <Metric label="Leads added" value={data.pipeline.leadsAdded} />
         <Metric label="Prospects created" value={data.pipeline.dealsCreated} />
-        <Metric label="Created value" value={formatIndianCurrency(data.pipeline.dealsCreatedValue)} />
+        {!hideMoney && <Metric label="Created value" value={formatIndianCurrency(data.pipeline.dealsCreatedValue)} />}
       </View>
       <View style={styles.row}>
         <Metric label="Prospects won" value={data.pipeline.dealsWon} />
-        <Metric label="Revenue won" value={formatIndianCurrency(data.pipeline.revenueWon)} />
+        {!hideMoney && <Metric label="Revenue won" value={formatIndianCurrency(data.pipeline.revenueWon)} />}
         <Metric label="Win rate" value={`${data.pipeline.winRate}%`} />
       </View>
       <View style={styles.row}>
         <Metric label="Open prospects" value={data.pipeline.openDeals} />
-        <Metric label="Open pipeline" value={formatIndianCurrency(data.pipeline.openPipelineValue)} />
-        <Metric label="Weighted pipeline" value={formatIndianCurrency(data.pipeline.weightedPipeline)} />
+        {!hideMoney && <Metric label="Open pipeline" value={formatIndianCurrency(data.pipeline.openPipelineValue)} />}
+        {!hideMoney && <Metric label="Weighted pipeline" value={formatIndianCurrency(data.pipeline.weightedPipeline)} />}
       </View>
       <Text style={styles.sectionTitle}>Top Prospects</Text>
       <View style={styles.table}>
         <View style={styles.tableHeader}>
-          <Text style={[styles.th, { width: '42%' }]}>Prospect</Text>
-          <Text style={[styles.th, { width: '20%' }]}>Stage</Text>
+          <Text style={[styles.th, { width: hideMoney ? '58%' : '42%' }]}>Prospect</Text>
+          <Text style={[styles.th, { width: '24%' }]}>Stage</Text>
           <Text style={[styles.th, { width: '18%' }]}>Status</Text>
-          <Text style={[styles.th, { width: '20%' }]}>Amount</Text>
+          {!hideMoney && <Text style={[styles.th, { width: '16%' }]}>Amount</Text>}
         </View>
         {data.topDeals.map((deal) => (
           <View key={deal.id} style={styles.tableRow}>
-            <Text style={[styles.td, { width: '42%' }]}>{deal.title}</Text>
-            <Text style={[styles.td, { width: '20%' }]}>{deal.stageName ?? '-'}</Text>
+            <Text style={[styles.td, { width: hideMoney ? '58%' : '42%' }]}>{deal.title}</Text>
+            <Text style={[styles.td, { width: '24%' }]}>{deal.stageName ?? '-'}</Text>
             <Text style={[styles.td, { width: '18%' }]}>{deal.status}</Text>
-            <Text style={[styles.td, { width: '20%' }]}>{formatIndianCurrency(deal.amount)}</Text>
+            {!hideMoney && <Text style={[styles.td, { width: '16%' }]}>{formatIndianCurrency(deal.amount)}</Text>}
           </View>
         ))}
       </View>

@@ -31,6 +31,7 @@ function getSyncedStageLabel(stages: ProjectStageOption[], stage: string | null 
 }
 
 function formatINR(value: unknown) {
+  if (value === null || value === undefined) return '—';
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value ?? 0));
 }
 
@@ -465,7 +466,7 @@ export default function ProjectDetailPage() {
               <div>
                 <h2 className="text-sm font-bold text-[var(--text-primary)]">Linked Prospect</h2>
                 <p className="mt-2 text-lg font-bold text-[var(--text-primary)]">{record.deal.title}</p>
-                <p className="mt-1 font-mono text-xl font-black text-[var(--text-primary)]">{formatINR(record.deal.amount)}</p>
+                {record.deal.amount != null && <p className="mt-1 font-mono text-xl font-black text-[var(--text-primary)]">{formatINR(record.deal.amount)}</p>}
                 <Link href={`/deals/${record.deal.id}`} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent)]">
                   View in pipeline
                   <Link2 className="h-4 w-4" />

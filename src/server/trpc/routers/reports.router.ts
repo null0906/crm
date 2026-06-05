@@ -208,6 +208,7 @@ export const reportsRouter = router({
         dateTo,
         requestedBy: ctx.user.id,
         filters: input.filters,
+        suppressDealAmounts: ctx.user.role.slug === 'sales_rep',
       });
     }),
 
@@ -283,6 +284,7 @@ export const reportsRouter = router({
         requestedBy: ctx.user.id,
         activityLimit: 500,
         filters: input.filters,
+        suppressDealAmounts: ctx.user.role.slug === 'sales_rep',
       });
 
       const pdfBuffer = await generateReportPDF(reportData);

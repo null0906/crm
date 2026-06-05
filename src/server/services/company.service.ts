@@ -22,6 +22,10 @@ function latestCompanyContactedAtSql() {
   `;
 }
 
+function canViewDealAmounts(user: SessionUser) {
+  return user.role.slug !== 'sales_rep';
+}
+
 export async function listCompanies(
   user: SessionUser,
   opts: {
@@ -227,7 +231,7 @@ export async function getCompanyById(
     tags: companyTagRows.map((r) => r.tag),
     metrics: {
       contactCount: metrics?.contactCount ?? 0,
-      pipelineValue: metrics?.pipelineValue ?? '0',
+      pipelineValue: canViewDealAmounts(user) ? metrics?.pipelineValue ?? '0' : null,
       openDeals: metrics?.openDeals ?? 0,
       activeProjects: metrics?.activeProjects ?? 0,
       lastActivityAt: metrics?.lastActivityAt ?? company.lastContactedAt ?? null,
