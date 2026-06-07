@@ -4,7 +4,6 @@ import React from 'react';
 import { Plus } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { DealCard } from './DealCard';
-import { formatCurrency } from '@/lib/formatters';
 
 interface Stage {
   id: string;
@@ -39,7 +38,6 @@ function DealCardSkeleton() {
 }
 
 function KanbanColumn({ stage, deals, onAddDeal, onDealClick }: KanbanColumnProps) {
-  const totalValue = deals.reduce((sum, d) => sum + (parseFloat(d.amount as string) || 0), 0);
   const stageColor = getStageColor(stage);
 
   return (
@@ -61,15 +59,10 @@ function KanbanColumn({ stage, deals, onAddDeal, onDealClick }: KanbanColumnProp
             {deals.length}
           </span>
         </div>
-        {totalValue > 0 && (
-          <span className="ml-auto font-mono text-[12px] font-bold tracking-[-0.02em] text-[var(--text-secondary)]">
-            {formatCurrency(totalValue)}
-          </span>
-        )}
         <button
           type="button"
           onClick={() => onAddDeal(stage.id)}
-          className={`${totalValue > 0 ? '' : 'ml-auto'} flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border-default)] bg-white/80 text-[var(--text-tertiary)] shadow-sm transition-[border-color,color,background,box-shadow] duration-150 hover:border-[var(--accent-medium)] hover:bg-[var(--accent-light)] hover:text-[var(--accent)] hover:shadow-[0_2px_8px_rgba(45,91,227,0.12)]`}
+          className="ml-auto flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-[var(--border-default)] bg-white/80 text-[var(--text-tertiary)] shadow-sm transition-[border-color,color,background,box-shadow] duration-150 hover:border-[var(--accent-medium)] hover:bg-[var(--accent-light)] hover:text-[var(--accent)] hover:shadow-[0_2px_8px_rgba(45,91,227,0.12)]"
           title={`Add prospect to ${stage.name}`}
           aria-label={`Add prospect to ${stage.name}`}
         >

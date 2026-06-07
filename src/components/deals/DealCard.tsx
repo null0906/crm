@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Calendar, CheckSquare, Clock, User, Building2, Briefcase, Users } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/formatters';
+import { formatDate } from '@/lib/formatters';
 import { isDeliveryPipeline } from '@/lib/pipeline-utils';
 
 interface DealCardProps {
@@ -28,28 +28,6 @@ function getStageColor(deal: Record<string, unknown>, explicitStageColor?: strin
   if (typeof deal.stageColor === 'string' && deal.stageColor) return deal.stageColor;
   const stageName = String(deal.stageName ?? '').toLowerCase();
   return STAGE_COLORS[stageName] ?? 'var(--color-stage-neutral)';
-}
-
-function getProbabilityTone(probability: number) {
-  if (probability >= 70) {
-    return {
-      color: 'var(--color-success)',
-      background: 'var(--color-success-bg)',
-      borderColor: 'var(--color-status-contacted-border)',
-    };
-  }
-  if (probability >= 40) {
-    return {
-      color: 'var(--color-warning)',
-      background: 'var(--color-warning-bg)',
-      borderColor: 'var(--color-status-nurturing-border)',
-    };
-  }
-  return {
-    color: 'var(--color-neutral)',
-    background: 'var(--color-neutral-bg)',
-    borderColor: 'var(--color-border)',
-  };
 }
 
 function getProgressColor(deal: Record<string, unknown>): string {
@@ -99,9 +77,6 @@ export function DealCard({ deal, onClick, stageColor }: DealCardProps) {
     borderLeftColor: getStageColor(deal, stageColor),
   } as React.CSSProperties & Record<'--stage-color', string>;
 
-  const amount = deal.amount as number | string | null | undefined;
-  const currency = String(deal.currency ?? 'INR');
-  const probability = deal.probability as number | null | undefined;
   const expectedCloseDate = deal.expectedCloseDate as string | null | undefined;
   const primaryContactName = deal.primaryContactName as string | null | undefined;
   const companyName = deal.companyName as string | null | undefined;
@@ -152,22 +127,6 @@ export function DealCard({ deal, onClick, stageColor }: DealCardProps) {
           )}
         </div>
       )}
-
-      <div className="mb-[11px] flex items-baseline justify-between gap-3">
-        {amount !== null && amount !== undefined && (
-          <span className="break-all font-mono text-[17px] font-extrabold leading-none tracking-[-0.03em] text-[var(--text-primary)]">
-            {formatCurrency(amount, currency)}
-          </span>
-        )}
-        {probability !== null && probability !== undefined && (
-          <span
-            style={getProbabilityTone(probability)}
-            className="ml-auto rounded-md border px-2 py-0.5 text-xs font-bold"
-          >
-            {probability}%
-          </span>
-        )}
-      </div>
 
       <div className="mb-[9px] h-px bg-[var(--border-subtle)] opacity-70" />
 

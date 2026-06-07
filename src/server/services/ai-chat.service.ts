@@ -92,21 +92,20 @@ async function answerPipelineValueQuestion(query: string, db: DbClient, userCont
   const onlyOpenDeals = /\bopen\b/.test(normalized) || /\bpipeline value\b/.test(normalized);
   const salesPipelineOnly = /\bsales\b/.test(normalized);
 
-  const rows = await db
-    .select({
-      currency: sql<string>`COALESCE(${deals.currency}, 'INR')`,
-      dealCount: sql<number>`COUNT(*)::int`,
-      totalValue: sql<string>`COALESCE(SUM(COALESCE(${deals.amount}, 0)::numeric), 0)::text`,
-    })
-    .from(deals)
-    .leftJoin(pipelines, eq(deals.pipelineId, pipelines.id))
-    .where(and(
-      sql`${deals.deletedAt} IS NULL`,
-      onlyOpenDeals ? eq(deals.status, 'open') : undefined,
-      salesPipelineOnly ? ilike(pipelines.name, '%sales%') : undefined
-    ))
-    .groupBy(sql`COALESCE(${deals.currency}, 'INR')`)
-    .orderBy(sql`COALESCE(${deals.currency}, 'INR')`);
+  const result = await db.execute(sql`
+    SELECT COALESCE(dv.engagement_currency, dv.currency, 'INR') AS currency,
+      COUNT(*)::int AS deal_count,
+      COALESCE(SUM(dv.effective_value), 0)::text AS total_value
+    FROM deals_with_value dv
+    JOIN pipelines p ON p.id = dv.pipeline_id
+    WHERE dv.deleted_at IS NULL
+      ${onlyOpenDeals ? sql`AND dv.status = 'open'` : sql``}
+      ${salesPipelineOnly ? sql`AND p.name ILIKE '%sales%'` : sql``}
+    GROUP BY COALESCE(dv.engagement_currency, dv.currency, 'INR')
+  `);
+  const rawRows = Array.isArray(result) ? result : ((result as unknown as { rows?: unknown[] }).rows ?? []);
+  const rows = (rawRows as Array<{ currency: string; deal_count: number; total_value: string }>)
+    .map((row) => ({ currency: row.currency, dealCount: row.deal_count, totalValue: row.total_value }));
 
   const dealCount = rows.reduce((sum, row) => sum + Number(row.dealCount ?? 0), 0);
   const totals = rows.map((row) => {
@@ -510,6 +509,9 @@ id, deal_id, from_stage_id, to_stage_id, entered_at, exited_at, moved_by, create
 ### pipeline_benchmarks
 id, pipeline_id, stage_id, avg_days_in_stage, sample_size, calculated_at
 
+### deals_with_value
+Use this view for every revenue, pipeline value, or prospect value query. effective_value coalesces onboardings.engagement_amount with deals.amount. It also exposes engagement_amount, engagement_currency, and has_engagement_amount.
+
 ## Current User Context
 Name: ${userContext.userName}
 Role: ${userContext.role}
@@ -518,13 +520,14 @@ Permissions JSON: ${JSON.stringify(userContext.permissions)}
 
 ## RBAC Rules for SQL Generation
 - Always add WHERE deleted_at IS NULL to contacts, companies, activities, and deals queries when those tables are used
-- Never guess currency. Prospect values are stored in deals.amount and deals.currency. When aggregating prospect amount, include deals.currency in SELECT and GROUP BY unless the user explicitly asks for a single-currency conversion.
+- Never use deals.amount directly for value aggregation. Use deals_with_value.effective_value and its engagement currency fallback.
 - Format INR as INR/₹, USD as USD/$, and never use $ for prospect values unless deals.currency = 'USD'.
 - If user role is 'sales_rep', never SELECT, summarize, calculate, or reveal deals.amount, project contract values, pipeline value, revenue, weighted pipeline, average deal size, or any prospect/deal monetary amount.
-- Sales reps can see all prospects and deals; do not add a deals.owner_id filter just because the role is sales_rep.
+- Sales reps may only see prospects they own, created, or are assigned to through deal_team_members.
 - When a user asks for someone's "activity", default to human logged activity: activities.performed_by = that user's id, activities.is_automated = false, and exclude activity_type = 'task' unless they explicitly ask for tasks/reminders/automations.
 - Do not treat stale-prospect reminders such as "Prospect stuck..." as sales activity unless the user explicitly asks for automated tasks.
-- If permissions are own-scoped for a non-sales-rep role, add owner filters:
+- For sales reps, prospect queries must filter to: deals.owner_id = current user OR deals.created_by = current user OR membership in deal_team_members.
+- If permissions are own-scoped, add owner filters:
   - contacts.owner_id = '${userContext.userId}' for contacts
   - deals.owner_id = '${userContext.userId}' for deals
   - companies.owner_id = '${userContext.userId}' for companies
@@ -715,6 +718,14 @@ function formatRowsDeterministically(userMessage: string, rows: Array<Record<str
 function isJsonLikeInternalResponse(response: string): boolean {
   const trimmed = response.trim();
   return trimmed.startsWith('{') && /"phase"\s*:\s*"(query|clarify|answer)"/i.test(trimmed);
+}
+
+function applyProspectVisibilityToGeneratedSql(query: string, userContext: UserContext): string {
+  if (userContext.role !== 'sales_rep' || !/\b(from|join)\s+deals\b/i.test(query)) return query;
+  const filter = `(deals.owner_id = '${userContext.userId}' OR deals.created_by = '${userContext.userId}' OR deals.id IN (SELECT deal_id FROM deal_team_members WHERE user_id = '${userContext.userId}'))`;
+  if (/\bwhere\b/i.test(query)) return query.replace(/\bwhere\b/i, `WHERE ${filter} AND `);
+  const boundary = query.match(/\b(group by|order by|having|limit)\b/i);
+  return boundary ? query.replace(boundary[0], `WHERE ${filter} ${boundary[0]}`) : `${query} WHERE ${filter}`;
 }
 
 function formatClarification(question: string, options: ClarificationOption[] = []): string {
@@ -940,7 +951,8 @@ export async function handleMessage(
       throw new Error('AI returned a direct answer before querying CRM data');
     }
 
-    const validation = validateGeneratedSql(parsed.sql);
+    const scopedSql = applyProspectVisibilityToGeneratedSql(parsed.sql, userContext);
+    const validation = validateGeneratedSql(scopedSql);
     if (!validation.valid) {
       await writeAuditLog({
         userId,
@@ -950,7 +962,7 @@ export async function handleMessage(
         entityName: 'Rejected AI SQL',
         metadata: {
           reason: validation.reason,
-          sql: parsed.sql,
+          sql: scopedSql,
         },
       });
 
@@ -958,7 +970,7 @@ export async function handleMessage(
         db,
         sessionId,
         content: friendlyError,
-        sqlQuery: parsed.sql,
+        sqlQuery: scopedSql,
       });
 
       return {
@@ -972,7 +984,7 @@ export async function handleMessage(
       };
     }
 
-    const rows = await executeSafeQuery(db, parsed.sql);
+    const rows = await executeSafeQuery(db, scopedSql);
     const formatterPrompt = `
 The user asked: ${userMessage}
 
@@ -1005,7 +1017,7 @@ Lead with the direct answer, then include useful context or suggested next steps
       db,
       sessionId,
       content,
-      sqlQuery: parsed.sql,
+      sqlQuery: scopedSql,
       queryResultCount: rows.length,
     });
 

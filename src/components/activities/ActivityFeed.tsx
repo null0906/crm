@@ -128,6 +128,10 @@ export function ActivityFeed({ contactId, companyId, dealId }: ActivityFeedProps
                 const performerFirst = activity.performerFirstName as string | undefined;
                 const performerLast = activity.performerLastName as string | undefined;
                 const summary = buildActivitySummary(activity);
+                const fromContactHistory = Boolean(
+                  dealId && activity.occurredAt && activity.dealCreatedAt &&
+                  new Date(activity.occurredAt as string | Date).getTime() < new Date(activity.dealCreatedAt as string | Date).getTime()
+                );
 
                 return (
                   <button
@@ -148,6 +152,9 @@ export function ActivityFeed({ contactId, companyId, dealId }: ActivityFeedProps
                           </span>
                           {Boolean(activity.isAutomated) && (
                             <span className="ml-2 text-xs text-slate-400">(automated)</span>
+                          )}
+                          {fromContactHistory && (
+                            <Badge variant="outline" className="ml-2 text-[10px] text-slate-500">From contact history</Badge>
                           )}
                         </div>
                         <span className="text-xs text-slate-400 ml-4 flex-shrink-0">

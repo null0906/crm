@@ -20,3 +20,4 @@ export * from './telegram-message-log';
 export * from './automation-settings';
 export * from './ai-chat';
 export * from './pipeline-benchmarks';
+export * from './onboardings';

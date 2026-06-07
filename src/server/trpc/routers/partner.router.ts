@@ -4,6 +4,7 @@ import { router, protectedProcedure } from '../router';
 import { db } from '@/server/db';
 import { companies, contacts, deals, pipelineStages, pipelines } from '@/server/db/schema';
 import { and, asc, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
+import { getProspectVisibilityFilter } from '@/server/lib/visibility-filters';
 
 const SALES_PIPELINE_KEYWORDS = ['sales'];
 
@@ -41,6 +42,7 @@ export const partnerRouter = router({
           isNull(deals.deletedAt),
           eq(deals.partnerCompanyId, input.partnerCompanyId),
           salesPipelineCondition(),
+          getProspectVisibilityFilter(ctx.user),
         ))
         .orderBy(desc(deals.createdAt));
       return maskDealAmountsForRole(ctx.user.role.slug, rows);
@@ -74,6 +76,7 @@ export const partnerRouter = router({
       const conditions = [
         isNull(deals.deletedAt),
         salesPipelineCondition(),
+        getProspectVisibilityFilter(ctx.user),
       ];
 
       if (input.search?.trim()) {
@@ -113,7 +116,7 @@ export const partnerRouter = router({
       partnerCompanyId: z.string().uuid(),
       dealId: z.string().uuid(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const [partnerCompany] = await db
         .select({
           id: companies.id,
@@ -141,7 +144,7 @@ export const partnerRouter = router({
         })
         .from(deals)
         .innerJoin(pipelines, eq(deals.pipelineId, pipelines.id))
-        .where(eq(deals.id, input.dealId))
+        .where(and(eq(deals.id, input.dealId), getProspectVisibilityFilter(ctx.user)))
         .limit(1);
 
       if (!dealRow || dealRow.deletedAt) {
@@ -210,6 +213,7 @@ export const partnerRouter = router({
         .where(and(
           isNull(deals.deletedAt),
           eq(deals.referredByPartnerId, input.partnerCompanyId),
+          getProspectVisibilityFilter(ctx.user),
         ))
         .orderBy(desc(deals.createdAt));
 
@@ -228,11 +232,16 @@ export const partnerRouter = router({
         ));
 
       const dealRows = await db
-        .select({ status: deals.status, amount: deals.amount, currency: deals.currency })
+        .select({
+          status: deals.status,
+          amount: sql<string>`COALESCE((SELECT o.engagement_amount FROM onboardings o WHERE o.deal_id = ${deals.id} AND o.status != 'cancelled' LIMIT 1), ${deals.amount}, 0)::text`,
+          currency: deals.currency,
+        })
         .from(deals)
         .where(and(
           isNull(deals.deletedAt),
           eq(deals.referredByPartnerId, input.partnerCompanyId),
+          getProspectVisibilityFilter(ctx.user),
         ));
 
       const openDeals  = dealRows.filter((d) => d.status === 'open');

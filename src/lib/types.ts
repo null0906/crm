@@ -19,6 +19,12 @@ export type ProjectServiceType = 'soc2_type1' | 'soc2_type2' | 'iso27001' | 'dpd
 export type ProjectMemberRole = 'lead' | 'member' | 'reviewer' | 'consultant';
 export type ProjectTaskStatus = 'pending' | 'in_progress' | 'completed' | 'blocked' | 'not_applicable';
 export type ProjectTaskCategory = 'documentation' | 'evidence_collection' | 'gap_remediation' | 'audit_prep' | 'policy' | 'training' | 'review' | 'other';
+export type OnboardingStage =
+  | 'documents_pending' | 'documents_sent' | 'documents_signed'
+  | 'payment_pending' | 'payment_received' | 'kickoff_scheduled'
+  | 'completed' | 'cancelled';
+export type OnboardingStatus = 'active' | 'completed' | 'cancelled';
+export type OnboardingDocumentStatus = 'not_required' | 'pending' | 'sent' | 'signed';
 
 export type ActivityType =
   | 'call' | 'email_sent' | 'email_received' | 'meeting' | 'note'
@@ -59,7 +65,8 @@ export type DealContactRole = 'primary' | 'decision_maker' | 'champion' | 'influ
 export type WidgetType =
   | 'metric_card' | 'bar_chart' | 'line_chart' | 'pie_chart' | 'funnel_chart'
   | 'table' | 'pipeline_summary' | 'activity_feed' | 'leaderboard'
-  | 'goal_tracker' | 'conversion_rate' | 'time_in_stage' | 'forecast' | 'custom_query';
+  | 'goal_tracker' | 'conversion_rate' | 'time_in_stage' | 'forecast' | 'custom_query'
+  | 'onboarding_stats';
 
 // Filter engine types
 export type FilterOperator =

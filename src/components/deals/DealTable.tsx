@@ -84,9 +84,9 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
   const utils = trpc.useUtils();
   const { data: session } = useSession();
   const currentRoleSlug = ((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug;
-  const canViewDealAmounts = currentRoleSlug !== 'sales_rep';
+  const canViewDealAmounts = currentRoleSlug === 'super_admin' || currentRoleSlug === 'sales_manager';
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({ amount: false });
   const [cursor, setCursor] = useState<string | undefined>();
   const limit = 25;
 

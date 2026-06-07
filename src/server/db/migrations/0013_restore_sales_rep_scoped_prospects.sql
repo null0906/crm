@@ -5,5 +5,4 @@ SET permissions = jsonb_set(
   '"own"'::jsonb,
   true
 )
-WHERE slug = 'sales_rep'
-  AND permissions #>> '{deals,read}' = 'all';
+WHERE slug = 'sales_rep';

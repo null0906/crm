@@ -138,11 +138,15 @@ function buildMonthly(deals: Array<Record<string, unknown>>) {
     const slice = deals.filter((d) => { const at = new Date(d.createdAt as string); return at >= start && at <= end; });
     return {
       month: start.toLocaleString('default', { month: 'short' }),
-      revenue: slice.filter((d) => d.status === 'won').reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0),
-      pipeline: slice.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0),
+      revenue: slice.filter((d) => d.status === 'won').reduce((s, d) => s + getDealValue(d), 0),
+      pipeline: slice.reduce((s, d) => s + getDealValue(d), 0),
       count: slice.length,
     };
   });
+}
+
+function getDealValue(deal: Record<string, unknown>) {
+  return parseFloat(String(deal.effectiveValue ?? deal.amount ?? '0')) || 0;
 }
 
 // ─── Custom dark tooltip ───────────────────────────────────────────
@@ -238,8 +242,8 @@ function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilt
   } else if (metric === 'pipeline_value') {
     const open = filteredDeals.filter((d) => d.status === 'open');
     if (canViewDealAmounts) {
-      const total = open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0);
-      const wt = open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0) * ((d.probability as number || 0) / 100), 0);
+      const total = open.reduce((s, d) => s + getDealValue(d), 0);
+      const wt = open.reduce((s, d) => s + getDealValue(d) * ((d.probability as number || 0) / 100), 0);
       value = formatCurrency(total);
       subLine = `${formatCurrency(wt)} weighted · ${open.length} prospects`;
     } else {
@@ -249,14 +253,14 @@ function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilt
   } else if (metric === 'won_value') {
     const won = filteredDeals.filter((d) => d.status === 'won');
     value = canViewDealAmounts
-      ? formatCurrency(won.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0))
+      ? formatCurrency(won.reduce((s, d) => s + getDealValue(d), 0))
       : won.length;
     subLine = `${won.length} prospect${won.length !== 1 ? 's' : ''} closed won`;
   } else if (metric === 'open_deals') {
     const open = filteredDeals.filter((d) => d.status === 'open');
     value = open.length;
     if (canViewDealAmounts) {
-      const tv = open.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0);
+      const tv = open.reduce((s, d) => s + getDealValue(d), 0);
       subLine = tv > 0 ? formatCurrency(tv) + ' total value' : 'active pipeline';
     } else {
       subLine = 'active pipeline';
@@ -270,7 +274,7 @@ function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilt
   } else if (metric === 'avg_deal_size') {
     const won = filteredDeals.filter((d) => d.status === 'won');
     if (canViewDealAmounts) {
-      const total = won.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0);
+      const total = won.reduce((s, d) => s + getDealValue(d), 0);
       value = won.length > 0 ? formatCurrency(total / won.length) : '—';
       subLine = `across ${won.length} won prospects`;
     } else {
@@ -360,7 +364,7 @@ function PipelineSummary({ widget, filter }: { widget: Widget; filter?: Dashboar
           return {
             name: stageNameMap[sid] ?? 'Unknown',
             deals: filtered.length,
-            value: filtered.reduce((s, d) => s + (parseFloat(d.amount as string) || 0), 0),
+            value: filtered.reduce((s, d) => s + getDealValue(d), 0),
             fill: stageColorMap[sid] ?? CHART_COLORS[i % CHART_COLORS.length]!,
             gradId: `sg_${widget.id}_${i}`,
           };
@@ -715,7 +719,7 @@ function DealFunnelChart({ widget }: { widget: Widget }) {
     return {
       name: s.name,
       deals: stageDeals.length,
-      value: stageDeals.reduce((sum, d) => sum + (parseFloat(d.amount as string) || 0), 0),
+      value: stageDeals.reduce((sum, d) => sum + getDealValue(d), 0),
       color: s.color ?? CHART_COLORS[i % CHART_COLORS.length]!,
     };
   }).filter((s) => s.deals > 0);
@@ -827,6 +831,29 @@ function ActivityFeedWidget({ widget }: { widget: Widget }) {
   );
 }
 
+function OnboardingStatsWidget({ widget }: { widget: Widget }) {
+  const { data: session } = useSession();
+  const role = (((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug);
+  const { data: rows = [] } = trpc.onboarding.list.useQuery(undefined, { enabled: role === 'super_admin' });
+  if (role !== 'super_admin') return <WidgetEmpty title={widget.title} message="Restricted to super admins." />;
+  const items = rows as Array<Record<string, unknown>>;
+  const now = Date.now();
+  const active = items.filter((row) => row.status === 'active');
+  const completed30 = items.filter((row) => row.status === 'completed' && now - new Date(row.stageEnteredAt as string).getTime() <= 30 * 86400000);
+  const stale = active.filter((row) => now - new Date(row.stageEnteredAt as string).getTime() > 7 * 86400000);
+  return <div className="h-full">
+    <p className="mb-4 text-[13px] font-semibold text-slate-800">{widget.title}</p>
+    <div className="grid grid-cols-3 gap-3">
+      {[['Active', active.length, '#3b82f6'], ['Completed 30d', completed30.length, '#10b981'], ['Stale', stale.length, '#f59e0b']].map(([label, value, color]) => (
+        <div key={String(label)} className="border-l-2 pl-3" style={{ borderColor: String(color) }}><p className="text-2xl font-bold text-slate-800">{String(value)}</p><p className="text-[10px] uppercase text-slate-400">{String(label)}</p></div>
+      ))}
+    </div>
+    <div className="mt-5 space-y-1.5">{STAGE_WIDGET_ORDER.map((stage) => { const count = items.filter((row) => row.stage === stage).length; return count ? <div key={stage} className="flex justify-between text-xs text-slate-500"><span>{stage.replace(/_/g, ' ')}</span><b>{count}</b></div> : null; })}</div>
+  </div>;
+}
+
+const STAGE_WIDGET_ORDER = ['documents_pending','documents_sent','documents_signed','payment_pending','payment_received','kickoff_scheduled'];
+
 // ─── DISPATCHER ───────────────────────────────────────────────────
 export function WidgetRenderer({ widget, filter }: { widget: Widget; filter?: DashboardFilter }) {
   switch (widget.widgetType as WidgetType) {
@@ -837,6 +864,7 @@ export function WidgetRenderer({ widget, filter }: { widget: Widget; filter?: Da
     case 'pie_chart':       return <ContactsPieChart widget={widget} />;
     case 'line_chart':      return <RevenueAreaChart widget={widget} filter={filter} />;
     case 'funnel_chart':    return <DealFunnelChart widget={widget} />;
+    case 'onboarding_stats': return <OnboardingStatsWidget widget={widget} />;
     default:
       return (
         <div className="flex items-center justify-center h-full text-xs text-slate-400">

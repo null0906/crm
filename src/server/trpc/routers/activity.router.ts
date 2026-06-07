@@ -59,6 +59,7 @@ export const activityRouter = router({
           contactLastName: contacts.lastName,
           companyName: companies.name,
           dealTitle: deals.title,
+          dealCreatedAt: deals.createdAt,
           isAutomated: activities.isAutomated,
           attachments: activities.attachments,
           metadata: activities.metadata,

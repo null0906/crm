@@ -174,7 +174,7 @@ export const dashboardRouter = router({
   addWidget: protectedProcedure
     .input(z.object({
       dashboardId: z.string().uuid(),
-      widgetType: z.enum(['metric_card', 'bar_chart', 'line_chart', 'pie_chart', 'funnel_chart', 'table', 'pipeline_summary', 'activity_feed', 'leaderboard', 'goal_tracker', 'conversion_rate', 'time_in_stage', 'forecast', 'custom_query']),
+      widgetType: z.enum(['metric_card', 'bar_chart', 'line_chart', 'pie_chart', 'funnel_chart', 'table', 'pipeline_summary', 'activity_feed', 'leaderboard', 'goal_tracker', 'conversion_rate', 'time_in_stage', 'forecast', 'custom_query', 'onboarding_stats']),
       title: z.string().min(1).max(150),
       subtitle: z.string().optional(),
       color: z.string().optional(),

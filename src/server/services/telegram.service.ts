@@ -495,14 +495,14 @@ async function handleToday(): Promise<{ text: string }> {
   const [openPipeline] = await db
     .select({
       dealCount: count(),
-      totalValue: sql<string>`COALESCE(SUM(CAST(amount AS NUMERIC)), 0)`,
+      totalValue: sql<string>`(SELECT COALESCE(SUM(effective_value), 0)::text FROM deals_with_value WHERE status = 'open' AND deleted_at IS NULL)`,
     })
     .from(deals)
     .where(and(eq(deals.status, 'open'), isNull(deals.deletedAt)));
 
   // Won this month
   const [wonMonth] = await db
-    .select({ count: count(), total: sql<string>`COALESCE(SUM(CAST(amount AS NUMERIC)), 0)` })
+    .select({ count: count(), total: sql<string>`(SELECT COALESCE(SUM(effective_value), 0)::text FROM deals_with_value WHERE status = 'won' AND deleted_at IS NULL AND actual_close_date >= ${startOfMonth.toISOString().split('T')[0]!})` })
     .from(deals)
     .where(and(eq(deals.status, 'won'), isNull(deals.deletedAt), gte(deals.actualCloseDate, startOfMonth.toISOString().split('T')[0]!)));
 

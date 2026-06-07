@@ -531,16 +531,16 @@ export async function getPipelineContribution(
   const result = await db.execute(sql`
     SELECT
       COUNT(*) FILTER (WHERE created_at >= ${dateFrom} AND created_at <= ${dateTo})::int AS deals_created,
-      COALESCE(SUM(amount::numeric) FILTER (WHERE created_at >= ${dateFrom} AND created_at <= ${dateTo}), 0)::text AS deals_created_value,
+      COALESCE(SUM(effective_value::numeric) FILTER (WHERE created_at >= ${dateFrom} AND created_at <= ${dateTo}), 0)::text AS deals_created_value,
       COUNT(*) FILTER (WHERE status = 'won' AND actual_close_date >= ${dateFrom.toISOString().slice(0, 10)} AND actual_close_date <= ${dateTo.toISOString().slice(0, 10)})::int AS deals_won,
-      COALESCE(SUM(amount::numeric) FILTER (WHERE status = 'won' AND actual_close_date >= ${dateFrom.toISOString().slice(0, 10)} AND actual_close_date <= ${dateTo.toISOString().slice(0, 10)}), 0)::text AS revenue_won,
+      COALESCE(SUM(effective_value::numeric) FILTER (WHERE status = 'won' AND actual_close_date >= ${dateFrom.toISOString().slice(0, 10)} AND actual_close_date <= ${dateTo.toISOString().slice(0, 10)}), 0)::text AS revenue_won,
       COUNT(*) FILTER (WHERE status = 'lost' AND updated_at >= ${dateFrom} AND updated_at <= ${dateTo})::int AS deals_lost,
-      COALESCE(SUM(amount::numeric) FILTER (WHERE status = 'lost' AND updated_at >= ${dateFrom} AND updated_at <= ${dateTo}), 0)::text AS revenue_lost,
+      COALESCE(SUM(effective_value::numeric) FILTER (WHERE status = 'lost' AND updated_at >= ${dateFrom} AND updated_at <= ${dateTo}), 0)::text AS revenue_lost,
       COUNT(*) FILTER (WHERE status = 'open')::int AS open_deals,
-      COALESCE(SUM(amount::numeric) FILTER (WHERE status = 'open'), 0)::text AS open_pipeline_value,
-      COALESCE(SUM((amount::numeric * COALESCE(probability, 0)) / 100.0) FILTER (WHERE status = 'open'), 0)::text AS weighted_pipeline
-    FROM deals
-    WHERE owner_id = ${userId}
+      COALESCE(SUM(effective_value::numeric) FILTER (WHERE status = 'open'), 0)::text AS open_pipeline_value,
+      COALESCE(SUM((effective_value::numeric * COALESCE(probability, 0)) / 100.0) FILTER (WHERE status = 'open'), 0)::text AS weighted_pipeline
+    FROM deals_with_value
+    WHERE (owner_id = ${userId} OR created_by = ${userId} OR id IN (SELECT deal_id FROM deal_team_members WHERE user_id = ${userId}))
       AND deleted_at IS NULL
   `);
 
@@ -587,7 +587,7 @@ export async function getConversionMetrics(
     FROM deal_stage_history dsh
     JOIN pipeline_stages ps ON ps.id = dsh.to_stage_id
     JOIN deals d ON d.id = dsh.deal_id
-    WHERE d.owner_id = ${userId}
+    WHERE (d.owner_id = ${userId} OR d.created_by = ${userId} OR d.id IN (SELECT deal_id FROM deal_team_members WHERE user_id = ${userId}))
       AND dsh.entered_at >= ${dateFrom}
       AND dsh.entered_at <= ${dateTo}
   `);
@@ -622,7 +622,7 @@ export async function getVelocityMetrics(
     FROM deal_stage_history dsh
     JOIN pipeline_stages ps ON ps.id = dsh.to_stage_id
     JOIN deals d ON d.id = dsh.deal_id
-    WHERE d.owner_id = ${userId}
+    WHERE (d.owner_id = ${userId} OR d.created_by = ${userId} OR d.id IN (SELECT deal_id FROM deal_team_members WHERE user_id = ${userId}))
       AND dsh.entered_at >= ${dateFrom}
       AND dsh.entered_at <= ${dateTo}
       AND dsh.exited_at IS NOT NULL
@@ -667,7 +667,8 @@ export async function getTopDeals(
 ): Promise<DealSnapshot[]> {
   const result = await db.execute(sql`
     SELECT
-      d.id, d.title, COALESCE(d.amount::numeric, 0)::text AS amount, d.status,
+      d.id, d.title, COALESCE(d.effective_value::numeric, 0)::text AS amount, d.status,
+      d.has_engagement_amount,
       COALESCE(d.probability, 0)::int AS probability,
       d.expected_close_date,
       ps.name AS stage_name,
@@ -675,22 +676,22 @@ export async function getTopDeals(
       NULLIF(concat_ws(' ', c.first_name, c.last_name), '') AS contact_name,
       COUNT(a.id)::int AS activity_count,
       MAX(a.occurred_at) AS last_activity_at
-    FROM deals d
+    FROM deals_with_value d
     LEFT JOIN pipeline_stages ps ON ps.id = d.stage_id
     LEFT JOIN companies co ON co.id = d.company_id
     LEFT JOIN contacts c ON c.id = d.primary_contact_id
     LEFT JOIN activities a ON a.deal_id = d.id
       AND a.deleted_at IS NULL
       AND COALESCE(a.is_automated, false) = false
-    WHERE d.owner_id = ${userId}
+    WHERE (d.owner_id = ${userId} OR d.created_by = ${userId} OR d.id IN (SELECT deal_id FROM deal_team_members WHERE user_id = ${userId}))
       AND d.deleted_at IS NULL
       AND (
         d.status = 'open'
         OR (d.status = 'won' AND d.actual_close_date >= ${dateFrom.toISOString().slice(0, 10)})
         OR (d.status = 'lost' AND d.updated_at >= ${dateFrom})
       )
-    GROUP BY d.id, d.title, d.amount, d.status, d.probability, d.expected_close_date, ps.name, co.name, c.first_name, c.last_name
-    ORDER BY COALESCE(d.amount::numeric, 0) DESC NULLS LAST
+    GROUP BY d.id, d.title, d.effective_value, d.has_engagement_amount, d.status, d.probability, d.expected_close_date, ps.name, co.name, c.first_name, c.last_name
+    ORDER BY COALESCE(d.effective_value::numeric, 0) DESC NULLS LAST
     LIMIT 10
   `);
 

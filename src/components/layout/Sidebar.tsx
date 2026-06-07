@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Users, Building2, TrendingUp, Activity, LayoutDashboard,
-  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban, BarChart3, Gauge, ShieldCheck,
+  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban, BarChart3, Gauge, ShieldCheck, ClipboardCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -55,6 +55,10 @@ export function Sidebar() {
   const firstName = user?.firstName as string | undefined;
   const lastName  = user?.lastName  as string | undefined;
   const email     = user?.email     as string | undefined;
+  const roleSlug = (user?.role as Record<string, unknown> | undefined)?.slug as string | undefined;
+  const visibleMainNav = roleSlug === 'super_admin'
+    ? [...mainNav.slice(0, 3), { href: '/onboarding', label: 'Onboarding', icon: ClipboardCheck }, ...mainNav.slice(3)]
+    : mainNav;
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -85,7 +89,7 @@ export function Sidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-3 space-y-4">
-          <NavSection title=""           items={mainNav}        collapsed={collapsed} pathname={pathname} />
+          <NavSection title=""           items={visibleMainNav} collapsed={collapsed} pathname={pathname} />
           <NavSection title="Compliance" items={complianceNav}  collapsed={collapsed} pathname={pathname} />
           <NavSection title="Insights"   items={insightsNav}    collapsed={collapsed} pathname={pathname} />
           <NavSection title="Admin"      items={adminNav}       collapsed={collapsed} pathname={pathname} />

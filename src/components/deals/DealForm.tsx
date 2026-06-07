@@ -34,7 +34,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   const { data: session } = useSession();
   const currentUserId = (session?.user as Record<string, unknown> | undefined)?.id as string | undefined;
   const currentRoleSlug = ((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug;
-  const canViewDealAmounts = currentRoleSlug !== 'sales_rep';
+  const canViewDealAmounts = currentRoleSlug === 'super_admin' || currentRoleSlug === 'sales_manager';
 
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
   const [contactSearch, setContactSearch] = React.useState('');

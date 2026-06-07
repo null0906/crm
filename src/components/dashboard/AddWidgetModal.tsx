@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { TrendingUp, Activity, BarChart2, PieChart, TrendingDown, Filter } from 'lucide-react';
+import { TrendingUp, Activity, BarChart2, PieChart, TrendingDown, Filter, ClipboardCheck } from 'lucide-react';
 import type { DashboardDataSource } from '@/lib/types';
 
 interface AddWidgetModalProps {
@@ -15,6 +15,13 @@ interface AddWidgetModalProps {
 }
 
 const WIDGET_TYPES = [
+  {
+    type: 'onboarding_stats',
+    label: 'Onboarding Stats',
+    description: 'Active, completed, and stale onboardings',
+    icon: ClipboardCheck,
+    configs: [{ label: 'Onboarding Overview' }],
+  },
   {
     type: 'metric_card',
     label: 'Metric Card',
@@ -118,7 +125,7 @@ export function AddWidgetModal({ dashboardId, sourceContext, onClose, onAdded }:
     const resolvedChartType = chartType || (chartTypeOptions[0]?.value ?? '');
     addWidget.mutate({
       dashboardId,
-      widgetType: selectedType.type as 'metric_card' | 'bar_chart' | 'line_chart' | 'pie_chart' | 'funnel_chart' | 'pipeline_summary' | 'activity_feed' | 'leaderboard' | 'goal_tracker' | 'conversion_rate' | 'time_in_stage' | 'forecast' | 'table' | 'custom_query',
+      widgetType: selectedType.type as 'metric_card' | 'bar_chart' | 'line_chart' | 'pie_chart' | 'funnel_chart' | 'pipeline_summary' | 'activity_feed' | 'leaderboard' | 'goal_tracker' | 'conversion_rate' | 'time_in_stage' | 'forecast' | 'table' | 'custom_query' | 'onboarding_stats',
       title: widgetTitle,
       color,
       config: {

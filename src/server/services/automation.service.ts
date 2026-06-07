@@ -726,7 +726,7 @@ export async function sendWeeklySummary(db: DbClient = defaultDb): Promise<{ sen
   const statsResult = await db.execute(sql`
     SELECT
       (SELECT COUNT(*)::int FROM deals WHERE status = 'won' AND actual_close_date >= ${todayDateString(since)} AND actual_close_date < ${todayDateString(until)}) AS won_count,
-      (SELECT COALESCE(SUM(amount::numeric), 0)::text FROM deals WHERE status = 'won' AND actual_close_date >= ${todayDateString(since)} AND actual_close_date < ${todayDateString(until)}) AS won_value,
+      (SELECT COALESCE(SUM(effective_value), 0)::text FROM deals_with_value WHERE status = 'won' AND actual_close_date >= ${todayDateString(since)} AND actual_close_date < ${todayDateString(until)}) AS won_value,
       (SELECT COUNT(*)::int FROM deals WHERE status IN ('lost', 'abandoned') AND actual_close_date >= ${todayDateString(since)} AND actual_close_date < ${todayDateString(until)}) AS lost_count,
       (SELECT COUNT(*)::int FROM contacts WHERE created_at >= ${since} AND created_at < ${until} AND deleted_at IS NULL) AS new_leads,
       (SELECT COUNT(*)::int FROM activities WHERE occurred_at >= ${since} AND occurred_at < ${until} AND deleted_at IS NULL) AS activities_logged
@@ -771,13 +771,13 @@ export async function sendWeeklySummary(db: DbClient = defaultDb): Promise<{ sen
     deal_stats AS (
       SELECT
         owner_id AS user_id,
-        COALESCE(SUM(amount::numeric) FILTER (WHERE updated_at >= ${since} AND updated_at < ${until}), 0)::text AS pipeline_moved,
+        COALESCE(SUM(effective_value::numeric) FILTER (WHERE updated_at >= ${since} AND updated_at < ${until}), 0)::text AS pipeline_moved,
         COUNT(*) FILTER (
           WHERE status = 'won'
             AND actual_close_date >= ${todayDateString(since)}
             AND actual_close_date < ${todayDateString(until)}
         )::int AS deals_won
-      FROM deals
+      FROM deals_with_value
       WHERE deleted_at IS NULL
       GROUP BY owner_id
     )

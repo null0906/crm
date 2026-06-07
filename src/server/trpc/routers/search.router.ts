@@ -3,6 +3,7 @@ import { router, protectedProcedure } from '../router';
 import { db } from '@/server/db';
 import { contacts, companies, deals, activities } from '@/server/db/schema';
 import { and, isNull, ilike, or, sql } from 'drizzle-orm';
+import { getProspectVisibilityFilter } from '@/server/lib/visibility-filters';
 
 export const searchRouter = router({
   global: protectedProcedure
@@ -108,6 +109,7 @@ export const searchRouter = router({
           .where(
             and(
               isNull(deals.deletedAt),
+              getProspectVisibilityFilter(ctx.user),
               ...(dealTokenConditions.length > 0
                 ? [and(...dealTokenConditions)!]
                 : [ilike(deals.title, q)])

@@ -23,7 +23,7 @@ async function fetchMetricData(config: Record<string, unknown>): Promise<{ value
 
   if (metric === 'open_deals_count' || metric === 'pipeline_value') {
     const [row] = await db
-      .select({ count: count(), total: sql<string>`COALESCE(SUM(CAST(amount AS NUMERIC)),0)` })
+      .select({ count: count(), total: sql<string>`(SELECT COALESCE(SUM(effective_value),0)::text FROM deals_with_value WHERE status = 'open' AND deleted_at IS NULL)` })
       .from(deals)
       .where(and(eq(deals.status, 'open'), isNull(deals.deletedAt)));
     if (metric === 'open_deals_count') return { value: row?.count ?? 0, label: 'Open Prospects' };

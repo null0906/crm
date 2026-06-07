@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Calendar, DollarSign, Pencil, Trash2, BellRing, AlertTriangle, CheckSquare, Users, ShieldCheck, ChevronDown } from 'lucide-react';
+import { X, Calendar, Pencil, Trash2, BellRing, AlertTriangle, CheckSquare, Users, ShieldCheck, ChevronDown } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -14,7 +14,7 @@ import { EntityTasksPanel } from '@/components/activities/EntityTasksPanel';
 import { EntityDemosPanel } from '@/components/activities/EntityDemosPanel';
 import { DealForm } from './DealForm';
 import { DealReminderDialog } from './DealReminderDialog';
-import { formatDate, formatRelative, formatCurrency } from '@/lib/formatters';
+import { formatDate, formatRelative } from '@/lib/formatters';
 import { isDeliveryPipeline } from '@/lib/pipeline-utils';
 import { toast } from 'sonner';
 
@@ -201,9 +201,6 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                         {status.charAt(0).toUpperCase() + status.slice(1)}
                       </Badge>
                     )}
-                    {probability !== null && probability !== undefined && probability > 0 && (
-                      <Badge variant="outline">{probability}% probability</Badge>
-                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
@@ -232,15 +229,6 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
               </div>
 
               <div className="grid grid-cols-2 gap-4 mt-4">
-                {amount !== null && amount !== undefined && (
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-slate-400" />
-                    <div>
-                      <p className="text-xs text-slate-400 uppercase tracking-wide">Value</p>
-                      <p className="text-sm font-semibold text-slate-900">{formatCurrency(amount)}</p>
-                    </div>
-                  </div>
-                )}
                 {expectedCloseDate && (
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-slate-400" />

@@ -195,11 +195,11 @@ export async function getCompanyById(
           AND ${contacts.deletedAt} IS NULL
       )`,
       pipelineValue: sql<string>`(
-        SELECT COALESCE(SUM(${deals.amount}), 0)
-        FROM ${deals}
-        WHERE ${deals.companyId} = ${id}
-          AND ${deals.status} = 'open'
-          AND ${deals.deletedAt} IS NULL
+        SELECT COALESCE(SUM(dv.effective_value), 0)
+        FROM deals_with_value dv
+        WHERE dv.company_id = ${id}
+          AND dv.status = 'open'
+          AND dv.deleted_at IS NULL
       )`,
       openDeals: sql<number>`(
         SELECT COUNT(*)::int

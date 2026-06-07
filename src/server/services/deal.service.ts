@@ -2,7 +2,7 @@ import { db } from '@/server/db';
 import { deals, dealTags, dealContacts, dealStageHistory, dealTeamMembers, dealTasks, tags, companies, contacts, users, pipelineStages, pipelines, activities, projects } from '@/server/db/schema';
 import { eq, and, isNull, or, ilike, sql, lt, desc, asc, inArray, SQL, type SQLWrapper } from 'drizzle-orm';
 import type { NewDeal } from '@/server/db/schema';
-import type { DealStatus, FilterConfig, PaginatedResult, PermissionLevel, SessionUser, StageType } from '@/lib/types';
+import type { DealStatus, FilterConfig, PaginatedResult, SessionUser, StageType } from '@/lib/types';
 import { writeAuditLog, buildChangeDiff } from './audit.service';
 import eventBus from '@/server/lib/event-bus';
 import { getPermissionLevel } from '@/server/lib/permissions';
@@ -14,6 +14,9 @@ import {
   syncDealTeamToProject,
   syncProgressToProject,
 } from './project-sync.service';
+import { syncContactActivitiesToDeal } from './activity-sync.service';
+import { createOnboardingFromDeal } from './onboarding.service';
+import { getProspectVisibilityFilter } from '@/server/lib/visibility-filters';
 
 interface StageContext {
   id: string;
@@ -23,12 +26,6 @@ interface StageContext {
 
 function canViewDealAmounts(user: SessionUser) {
   return user.role.slug !== 'sales_rep';
-}
-
-function getDealReadLevelForUser(user: SessionUser): PermissionLevel {
-  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
-  if (!readLevel) return readLevel;
-  return user.role.slug === 'sales_rep' ? 'all' : readLevel;
 }
 
 function maskDealAmountForUser<T extends Record<string, unknown>>(user: SessionUser, row: T): T {
@@ -288,14 +285,12 @@ export async function listDeals(
   const limit = Math.min(pagination.limit, 500);
   const contactsAlias = contacts;
 
-  const readLevel = getDealReadLevelForUser(user);
+  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
   if (!readLevel) return { items: [], nextCursor: null, hasMore: false };
 
   const conditions = [isNull(deals.deletedAt)];
-
-  if (readLevel === 'own') {
-    conditions.push(eq(deals.ownerId, user.id));
-  }
+  const visibilityFilter = getProspectVisibilityFilter(user);
+  if (visibilityFilter) conditions.push(visibilityFilter);
 
   if (pipelineId) {
     conditions.push(eq(deals.pipelineId, pipelineId));
@@ -347,6 +342,7 @@ export async function listDeals(
       id: deals.id,
       title: deals.title,
       amount: deals.amount,
+      effectiveValue: sql<string>`COALESCE((SELECT o.engagement_amount FROM onboardings o WHERE o.deal_id = ${deals.id} AND o.status != 'cancelled' LIMIT 1), ${deals.amount}, 0)::text`,
       currency: deals.currency,
       probability: deals.probability,
       status: getEffectiveDealStatusSql(pipelineStages.stageType),
@@ -421,11 +417,12 @@ export async function getDealsByStage(
     search?: string;
   }
 ): Promise<Record<string, unknown[]>> {
-  const readLevel = getDealReadLevelForUser(user);
+  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
   if (!readLevel) return {};
 
   const conditions = [isNull(deals.deletedAt), eq(deals.pipelineId, pipelineId)];
-  if (readLevel === 'own') conditions.push(eq(deals.ownerId, user.id));
+  const visibilityFilter = getProspectVisibilityFilter(user);
+  if (visibilityFilter) conditions.push(visibilityFilter);
   const pipelineStageRows = await db
     .select({
       id: pipelineStages.id,
@@ -471,6 +468,7 @@ export async function getDealsByStage(
       id: deals.id,
       title: deals.title,
       amount: deals.amount,
+      effectiveValue: sql<string>`COALESCE((SELECT o.engagement_amount FROM onboardings o WHERE o.deal_id = ${deals.id} AND o.status != 'cancelled' LIMIT 1), ${deals.amount}, 0)::text`,
       currency: deals.currency,
       probability: deals.probability,
       status: getEffectiveDealStatusSql(pipelineStages.stageType),
@@ -546,7 +544,7 @@ export async function getDealById(
   user: SessionUser,
   id: string
 ): Promise<Record<string, unknown> | null> {
-  const readLevel = getDealReadLevelForUser(user);
+  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
   if (!readLevel) return null;
 
   // Use aliases to avoid Drizzle column name conflicts
@@ -615,11 +613,10 @@ export async function getDealById(
     .leftJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
     .leftJoin(pipelines, eq(deals.pipelineId, pipelines.id))
     .leftJoin(primaryContacts, eq(deals.primaryContactId, primaryContacts.id))
-    .where(and(eq(deals.id, id), isNull(deals.deletedAt)))
+    .where(and(eq(deals.id, id), isNull(deals.deletedAt), getProspectVisibilityFilter(user)))
     .limit(1);
 
   if (!deal) return null;
-  if (readLevel === 'own' && deal.ownerId !== user.id) return null;
 
   const dealTagRows = await db
     .select({ tag: tags })
@@ -771,6 +768,12 @@ export async function createDeal(
   });
 
   await promoteCompanyToPartnerIfEligible(writeData.companyId, writeData.pipelineId, resolvedLifecycle.stageId);
+  if (deal!.primaryContactId) {
+    await syncContactActivitiesToDeal(deal!.id, deal!.primaryContactId, user.id);
+  }
+  if (resolvedLifecycle.status === 'won') {
+    await createOnboardingFromDeal(deal!.id, user.id);
+  }
   await createOrSyncProjectFromDeal(deal!.id, user.id);
 
   eventBus.emit('deal.created', { dealId: deal!.id, createdBy: user.id });
@@ -912,6 +915,7 @@ export async function updateDeal(
 
   if (isStatusChange && nextStatus === 'won') {
     eventBus.emit('deal.won', { dealId: id, amount: Number(existing.amount ?? 0), wonBy: user.id });
+    await createOnboardingFromDeal(id, user.id);
   } else if (isStatusChange && (nextStatus === 'lost' || nextStatus === 'abandoned')) {
     eventBus.emit('deal.lost', { dealId: id, reason: (writeData.lostReason as string | undefined) ?? '', lostBy: user.id });
   }
@@ -930,6 +934,9 @@ export async function updateDeal(
   });
 
   await syncDealFieldsToProject(id);
+  if (writeData.primaryContactId && writeData.primaryContactId !== existing.primaryContactId) {
+    await syncContactActivitiesToDeal(id, writeData.primaryContactId, user.id);
+  }
 
   return maskDealAmountForUser(user, updated as Record<string, unknown>);
 }
@@ -958,7 +965,7 @@ export async function getDealsByContact(
   user: SessionUser,
   contactId: string
 ): Promise<Record<string, unknown>[]> {
-  const readLevel = getDealReadLevelForUser(user);
+  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
   if (!readLevel) return [];
 
   // Deals linked via primaryContactId or via the dealContacts join table
@@ -982,7 +989,7 @@ export async function getDealsByContact(
     .where(and(
       isNull(deals.deletedAt),
       eq(deals.primaryContactId, contactId),
-      ...(readLevel === 'own' ? [eq(deals.ownerId, user.id)] : [])
+      ...(getProspectVisibilityFilter(user) ? [getProspectVisibilityFilter(user)!] : [])
     ));
 
   const linkedRows = await db
@@ -1006,7 +1013,7 @@ export async function getDealsByContact(
     .where(and(
       isNull(deals.deletedAt),
       eq(dealContacts.contactId, contactId),
-      ...(readLevel === 'own' ? [eq(deals.ownerId, user.id)] : [])
+      ...(getProspectVisibilityFilter(user) ? [getProspectVisibilityFilter(user)!] : [])
     ));
 
   // Deduplicate by id
@@ -1025,13 +1032,13 @@ export async function getDealsByCompany(
   user: SessionUser,
   companyId: string
 ): Promise<Record<string, unknown>[]> {
-  const readLevel = getDealReadLevelForUser(user);
+  const readLevel = getPermissionLevel(user.role.permissions, 'deals', 'read');
   if (!readLevel) return [];
 
   const conditions = [
     isNull(deals.deletedAt),
     eq(deals.companyId, companyId),
-    ...(readLevel === 'own' ? [eq(deals.ownerId, user.id)] : []),
+    ...(getProspectVisibilityFilter(user) ? [getProspectVisibilityFilter(user)!] : []),
   ];
 
   const rows = await db

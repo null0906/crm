@@ -65,7 +65,7 @@ async function seed() {
       permissions: {
         contacts: { create: true, read: 'all', update: 'own', delete: false, export: false },
         companies: { create: true, read: 'all', update: 'own', delete: false, export: false },
-        deals: { create: true, read: 'all', update: 'own', delete: false, export: false },
+        deals: { create: true, read: 'own', update: 'own', delete: false, export: false },
         activities: { create: true, read: 'own', update: 'own', delete: false },
         dashboards: { create: false, read: 'all', update: false, delete: false, publish: false },
         settings: { users: false, roles: false, custom_fields: false, tags: true, pipelines: false },
