@@ -11,11 +11,12 @@ const pipelineTypeSchema = z.enum(['sales', 'active_delivery', 'partner', 'compl
 
 export const pipelineRouter = router({
   list: protectedProcedure
-    .query(async () => {
+    .query(async ({ ctx }) => {
+      const includeInactive = ctx.user.role.slug === 'super_admin';
       const rows = await db
         .select()
         .from(pipelines)
-        .where(eq(pipelines.isActive, true))
+        .where(includeInactive ? undefined : eq(pipelines.isActive, true))
         .orderBy(
           sql`CASE
             WHEN lower(${pipelines.name}) = 'sales pipeline' THEN 0

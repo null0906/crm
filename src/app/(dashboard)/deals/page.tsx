@@ -27,6 +27,12 @@ interface Stage {
 
 type ViewMode = 'kanban' | 'table';
 
+function isVisibleProspectPipeline(pipeline: Record<string, unknown>) {
+  const name = String(pipeline.name ?? '').toLowerCase();
+  const pipelineType = String(pipeline.pipelineType ?? '');
+  return pipelineType !== 'compliance' || name.includes('sales');
+}
+
 export default function DealsPage() {
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
   const [viewMode, setViewMode] = useState<ViewMode>('kanban');
@@ -56,7 +62,7 @@ export default function DealsPage() {
   const debouncedSearch = useDebounce(search, 300);
 
   const { data: allPipelines = [], isLoading: pipelinesLoading } = trpc.pipelines.list.useQuery();
-  const pipelines = allPipelines.filter((p) => (p as Record<string, unknown>).pipelineType !== 'compliance');
+  const pipelines = allPipelines.filter((p) => isVisibleProspectPipeline(p as Record<string, unknown>));
   const { data: usersData } = trpc.users.list.useQuery();
   const { data: contactsData } = trpc.contacts.list.useQuery({ pagination: { limit: 200 } });
   const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 200 } });
@@ -98,7 +104,8 @@ export default function DealsPage() {
   // Auto-select first pipeline
   React.useEffect(() => {
     if (pipelines.length > 0 && !selectedPipelineId) {
-      setSelectedPipelineId(String(pipelines[0]!.id));
+      const salesPipeline = pipelines.find((pipeline) => String(pipeline.name ?? '').toLowerCase().includes('sales'));
+      setSelectedPipelineId(String((salesPipeline ?? pipelines[0]!).id));
     }
   }, [pipelines, selectedPipelineId]);
 
