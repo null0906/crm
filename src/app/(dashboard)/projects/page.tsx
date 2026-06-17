@@ -12,7 +12,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { CalendarDays, FolderKanban, LayoutGrid, List, Plus, Search } from 'lucide-react';
+import { CalendarDays, Filter, FolderKanban, LayoutGrid, List, Plus, RotateCcw, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import {
@@ -23,6 +23,7 @@ import {
   type ProjectStageOption,
 } from '@/lib/projects';
 import type { ProjectStage } from '@/lib/types';
+import { SavedViewsBar } from '@/components/saved-views/SavedViewsBar';
 
 type ProjectRecord = Record<string, any>;
 type ViewMode = 'board' | 'list' | 'timeline';
@@ -328,9 +329,17 @@ function TimelineView({ projects, stages }: { projects: ProjectRecord[]; stages:
 
 export default function ProjectsPage() {
   const [view, setView] = React.useState<ViewMode>('board');
+  const [showFilters, setShowFilters] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const [stage, setStage] = React.useState('');
+  const [status, setStatus] = React.useState('');
   const [serviceType, setServiceType] = React.useState('');
+  const [assignedUserId, setAssignedUserId] = React.useState('');
+  const [companyId, setCompanyId] = React.useState('');
+  const [dateFrom, setDateFrom] = React.useState('');
+  const [dateTo, setDateTo] = React.useState('');
+  const [isDelayed, setIsDelayed] = React.useState(false);
+  const [activeViewId, setActiveViewId] = React.useState('');
   const utils = trpc.useUtils();
   const createProject = trpc.projects.create.useMutation({
     onSuccess: (project) => {
@@ -341,6 +350,9 @@ export default function ProjectsPage() {
     onError: (err) => toast.error('Could not create project', { description: err.message }),
   });
   const { data: pipelines = [] } = trpc.pipelines.list.useQuery();
+  const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 500 } });
+  const companies = (companiesData?.items ?? []) as ProjectRecord[];
   const activePipelineId = React.useMemo(() => {
     const activePipeline = pipelines.find((pipeline) => String((pipeline as Record<string, unknown>).pipelineType ?? '') === 'active_delivery');
     return activePipeline ? String(activePipeline.id) : '';
@@ -358,9 +370,70 @@ export default function ProjectsPage() {
     search: search || undefined,
     stage: (stage as ProjectStage) || undefined,
     serviceType: (serviceType as any) || undefined,
+    status: (status as 'active' | 'completed' | 'on_hold' | 'cancelled') || undefined,
+    assignedUserId: assignedUserId || undefined,
+    companyId: companyId || undefined,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    isDelayed: isDelayed || undefined,
   });
 
   const projects = data as ProjectRecord[];
+  const activeFilters = [
+    search && { field: 'search', operator: 'contains', value: search },
+    stage && { field: 'stage', operator: 'eq', value: stage },
+    status && { field: 'status', operator: 'eq', value: status },
+    serviceType && { field: 'serviceType', operator: 'eq', value: serviceType },
+    assignedUserId && { field: 'assignedUserId', operator: 'eq', value: assignedUserId },
+    companyId && { field: 'companyId', operator: 'eq', value: companyId },
+    dateFrom && { field: 'dateFrom', operator: 'gte', value: dateFrom },
+    dateTo && { field: 'dateTo', operator: 'lte', value: dateTo },
+    isDelayed && { field: 'isDelayed', operator: 'eq', value: true },
+  ].filter(Boolean) as Array<{ field: string; operator: string; value: unknown }>;
+
+  function resetFilters() {
+    setSearch('');
+    setStage('');
+    setStatus('');
+    setServiceType('');
+    setAssignedUserId('');
+    setCompanyId('');
+    setDateFrom('');
+    setDateTo('');
+    setIsDelayed(false);
+    setActiveViewId('');
+  }
+
+  function loadSavedView(savedView: { id: string; filters: unknown }) {
+    resetFilters();
+    const conditions = ((savedView.filters as { conditions?: Array<{ field: string; value: unknown }> })?.conditions ?? []);
+    for (const condition of conditions) {
+      const value = String(condition.value ?? '');
+      if (condition.field === 'search') setSearch(value);
+      if (condition.field === 'stage') setStage(value);
+      if (condition.field === 'status') setStatus(value);
+      if (condition.field === 'serviceType') setServiceType(value);
+      if (condition.field === 'assignedUserId' || condition.field === 'ownerId') setAssignedUserId(value);
+      if (condition.field === 'companyId') setCompanyId(value);
+      if (condition.field === 'dateFrom') setDateFrom(value);
+      if (condition.field === 'dateTo') setDateTo(value);
+      if (condition.field === 'isDelayed') setIsDelayed(condition.value === true || value === 'true');
+    }
+    setActiveViewId(savedView.id);
+  }
+
+  function removeFilter(field: string) {
+    if (field === 'search') setSearch('');
+    if (field === 'stage') setStage('');
+    if (field === 'status') setStatus('');
+    if (field === 'serviceType') setServiceType('');
+    if (field === 'assignedUserId') setAssignedUserId('');
+    if (field === 'companyId') setCompanyId('');
+    if (field === 'dateFrom') setDateFrom('');
+    if (field === 'dateTo') setDateTo('');
+    if (field === 'isDelayed') setIsDelayed(false);
+    setActiveViewId('');
+  }
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-[var(--surface-page)]">
@@ -382,24 +455,14 @@ export default function ProjectsPage() {
               className="h-8 w-56 rounded-lg border border-[var(--border-default)] bg-[var(--surface-input)] pl-8 pr-3 text-sm outline-none focus:border-[var(--accent)]"
             />
           </div>
-          <select value={stage} onChange={(event) => setStage(event.target.value)} className="h-8 rounded-lg border border-[var(--border-default)] bg-white px-2 text-sm">
-            <option value="">All stages</option>
-            {projectStages.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
-          </select>
-          <select value={serviceType} onChange={(event) => setServiceType(event.target.value)} className="h-8 rounded-lg border border-[var(--border-default)] bg-white px-2 text-sm">
-            <option value="">All services</option>
-            {Object.entries({
-              soc2_type1: 'SOC 2 Type I',
-              soc2_type2: 'SOC 2 Type II',
-              iso27001: 'ISO 27001',
-              dpdp: 'DPDP',
-              vapt: 'VAPT',
-              cspm: 'CSPM',
-              ai_governance: 'AI Governance',
-              cert_in: 'CERT-IN',
-              custom: 'Custom',
-            }).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-          </select>
+          <button
+            type="button"
+            onClick={() => setShowFilters((current) => !current)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--border-default)] bg-white px-3 text-sm font-medium text-[var(--text-secondary)]"
+          >
+            <Filter className="h-3.5 w-3.5" />
+            Filters{activeFilters.length ? ` (${activeFilters.length})` : ''}
+          </button>
           <div className="flex items-center rounded-[9px] border border-[var(--border-default)] bg-[var(--surface-input)] p-[3px]">
             {[
               { key: 'board', icon: LayoutGrid, label: 'Board' },
@@ -435,6 +498,44 @@ export default function ProjectsPage() {
           </button>
         </div>
       </div>
+
+      {showFilters && (
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-page)] px-6 py-3">
+          <select value={stage} onChange={(event) => setStage(event.target.value)} className="h-8 rounded-lg border border-[var(--border-default)] bg-white px-2 text-sm">
+            <option value="">All stages</option>
+            {projectStages.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+          </select>
+          <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-8 rounded-lg border border-[var(--border-default)] bg-white px-2 text-sm">
+            <option value="">All statuses</option>
+            <option value="active">Active</option><option value="completed">Completed</option><option value="on_hold">On hold</option><option value="cancelled">Cancelled</option>
+          </select>
+          <select value={serviceType} onChange={(event) => setServiceType(event.target.value)} className="h-8 rounded-lg border border-[var(--border-default)] bg-white px-2 text-sm">
+            <option value="">All services</option>
+            {Object.entries({ soc2_type1: 'SOC 2 Type I', soc2_type2: 'SOC 2 Type II', iso27001: 'ISO 27001', dpdp: 'DPDP', vapt: 'VAPT', cspm: 'CSPM', ai_governance: 'AI Governance', cert_in: 'CERT-IN', custom: 'Custom' }).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+          <select value={assignedUserId} onChange={(event) => setAssignedUserId(event.target.value)} className="h-8 rounded-lg border border-[var(--border-default)] bg-white px-2 text-sm">
+            <option value="">All assigned users</option>
+            {users.map((user) => <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>)}
+          </select>
+          <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} className="h-8 max-w-48 rounded-lg border border-[var(--border-default)] bg-white px-2 text-sm">
+            <option value="">All companies</option>
+            {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+          </select>
+          <input type="date" title="Project start from" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="h-8 rounded-lg border border-[var(--border-default)] bg-white px-2 text-sm" />
+          <input type="date" title="Project end to" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="h-8 rounded-lg border border-[var(--border-default)] bg-white px-2 text-sm" />
+          <label className={`inline-flex h-8 items-center gap-2 rounded-lg border px-2.5 text-sm ${isDelayed ? 'border-red-300 bg-red-50 text-red-700' : 'border-[var(--border-default)] bg-white text-[var(--text-secondary)]'}`}>
+            <input type="checkbox" checked={isDelayed} onChange={(event) => setIsDelayed(event.target.checked)} />Delayed only
+          </label>
+          <button type="button" onClick={resetFilters} disabled={!activeFilters.length} className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--border-default)] px-2.5 text-sm text-[var(--text-secondary)] disabled:opacity-40"><RotateCcw className="h-3.5 w-3.5" />Reset</button>
+          <SavedViewsBar entityType="project" activeFilters={{ conditions: activeFilters, logic: 'AND' }} activeViewId={activeViewId} onLoadView={loadSavedView} />
+          {activeFilters.length > 0 && (
+            <div className="basis-full flex flex-wrap items-center gap-1.5 border-t border-[var(--border-subtle)] pt-2 text-xs text-[var(--text-tertiary)]">
+              {activeFilters.map((filter) => <button type="button" onClick={() => removeFilter(filter.field)} key={filter.field} className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-light)] px-2 py-1 text-[var(--accent)]">{filter.field}: {String(filter.value)}<X className="h-3 w-3" /></button>)}
+              <span className="ml-1 font-semibold">{projects.length} projects match</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex gap-4 p-4">

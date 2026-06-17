@@ -38,6 +38,7 @@ export function PipelineSection({ pipeline, topDeals, monetaryValuesHidden = fal
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric icon={Target} label="Leads added" value={formatNumber(pipeline.leadsAdded)} />
         <Metric icon={TrendingUp} label="Prospects created" value={formatNumber(pipeline.dealsCreated)} />
+        <Metric icon={Target} label="Team member on" value={formatNumber(pipeline.teamMemberOn)} />
         {!monetaryValuesHidden && <Metric icon={Trophy} label="Revenue won" value={formatINR(pipeline.revenueWon)} detail={`${pipeline.dealsWon} prospects won`} />}
         {!monetaryValuesHidden && <Metric icon={IndianRupee} label="Open pipeline" value={formatINR(pipeline.openPipelineValue)} detail={`${pipeline.openDeals} open prospects`} />}
         {!monetaryValuesHidden && <Metric icon={TrendingUp} label="Weighted pipeline" value={formatINR(pipeline.weightedPipeline)} />}

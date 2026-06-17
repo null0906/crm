@@ -18,7 +18,7 @@ const WIDGET_TYPES = [
   {
     type: 'onboarding_stats',
     label: 'Onboarding Stats',
-    description: 'Active, completed, and stale onboardings',
+    description: 'Active, onboarding-complete, and stale handoffs',
     icon: ClipboardCheck,
     configs: [{ label: 'Onboarding Overview' }],
   },

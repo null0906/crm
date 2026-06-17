@@ -55,6 +55,7 @@ export default function DealsPage() {
   const [filterTags, setFilterTags] = useState<{ id: string; name: string; color: string }[]>([]);
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
+  const [delayedOnly, setDelayedOnly] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [bulkOwnerId, setBulkOwnerId] = useState('');
   const [bulkStatus, setBulkStatus] = useState('');
@@ -72,6 +73,11 @@ export default function DealsPage() {
   const partnerCompanies = companies.filter((company) => String(company.companyType ?? '') === 'partner');
   const utils = trpc.useUtils();
   const selectedDealIds = Object.keys(rowSelection).filter((k) => rowSelection[k]);
+  const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery(
+    { id: selectedPipelineId },
+    { enabled: !!selectedPipelineId }
+  );
+  const isActivePipeline = String(pipelineData?.pipelineType ?? '') === 'active_delivery';
 
   const bulkUpdateDeals = trpc.deals.bulkUpdate.useMutation({
     onSuccess: ({ updated }) => {
@@ -88,18 +94,19 @@ export default function DealsPage() {
 
   type FilterOp = 'eq' | 'gte' | 'lte' | 'contains' | 'contains_any';
   const dealFilterConditions: Array<{ field: string; operator: FilterOp; value: unknown }> = [];
-  if (ownerFilter) dealFilterConditions.push({ field: 'ownerId', operator: 'eq', value: ownerFilter });
+  if (ownerFilter) dealFilterConditions.push({ field: 'assignedUserId', operator: 'eq', value: ownerFilter });
   if (statusFilter) dealFilterConditions.push({ field: 'status', operator: 'eq', value: statusFilter });
   if (stageFilter) dealFilterConditions.push({ field: 'stageId', operator: 'eq', value: stageFilter });
   if (companyFilter) dealFilterConditions.push({ field: 'companyId', operator: 'eq', value: companyFilter });
   if (contactFilter) dealFilterConditions.push({ field: 'primaryContactId', operator: 'eq', value: contactFilter });
-  if (partnerFilter) dealFilterConditions.push({ field: 'partnerCompanyId', operator: 'eq', value: partnerFilter });
+  if (partnerFilter) dealFilterConditions.push({ field: 'referredByPartnerId', operator: 'eq', value: partnerFilter });
   if (serviceFilter) dealFilterConditions.push({ field: 'services', operator: 'contains', value: serviceFilter });
   if (filterTags.length > 0) dealFilterConditions.push({ field: 'tags', operator: 'contains_any', value: filterTags.map((tag) => tag.id) });
   if (dateFrom) dealFilterConditions.push({ field: 'createdAt', operator: 'gte', value: dateFrom });
   if (dateTo) dealFilterConditions.push({ field: 'createdAt', operator: 'lte', value: dateTo });
-  if (expectedCloseFrom) dealFilterConditions.push({ field: 'expectedCloseDate', operator: 'gte', value: expectedCloseFrom });
-  if (expectedCloseTo) dealFilterConditions.push({ field: 'expectedCloseDate', operator: 'lte', value: expectedCloseTo });
+  if (expectedCloseFrom) dealFilterConditions.push({ field: isActivePipeline ? 'projectStartDate' : 'expectedCloseDate', operator: 'gte', value: expectedCloseFrom });
+  if (expectedCloseTo) dealFilterConditions.push({ field: isActivePipeline ? 'projectEndDate' : 'expectedCloseDate', operator: 'lte', value: expectedCloseTo });
+  if (delayedOnly) dealFilterConditions.push({ field: 'isDelayed', operator: 'eq', value: true });
 
   // Auto-select first pipeline
   React.useEffect(() => {
@@ -112,11 +119,6 @@ export default function DealsPage() {
   React.useEffect(() => {
     setRowSelection({});
   }, [selectedPipelineId, viewMode]);
-
-  const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery(
-    { id: selectedPipelineId },
-    { enabled: !!selectedPipelineId }
-  );
 
   const stages: Stage[] = ((pipelineData?.stages as Stage[]) ?? []).sort((a, b) => a.position - b.position);
 
@@ -196,7 +198,7 @@ export default function DealsPage() {
 
           <Button size="sm" variant="outline" onClick={() => setShowFilters(!showFilters)}>
             <Filter className="w-4 h-4" />
-            {(debouncedSearch || ownerFilter || statusFilter || stageFilter || companyFilter || contactFilter || partnerFilter || serviceFilter || filterTags.length > 0 || expectedCloseFrom || expectedCloseTo || dateFrom || dateTo) ? 'Filters •' : 'Filters'}
+            {(debouncedSearch || ownerFilter || statusFilter || stageFilter || companyFilter || contactFilter || partnerFilter || serviceFilter || filterTags.length > 0 || expectedCloseFrom || expectedCloseTo || dateFrom || dateTo || delayedOnly) ? 'Filters •' : 'Filters'}
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
           </Button>
           <Button size="sm" variant="outline" onClick={() => setBackfillOpen(true)} title="Re-link contacts & companies from a previous import CSV">
@@ -231,7 +233,7 @@ export default function DealsPage() {
             onChange={(e) => setOwnerFilter(e.target.value)}
             className="h-7 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm text-[var(--color-text-2)]"
           >
-            <option value="">All owners</option>
+            <option value="">All assigned users</option>
             {users.map((u) => (
               <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
             ))}
@@ -335,7 +337,13 @@ export default function DealsPage() {
               title="Expected close to"
             />
           </div>
-          {(search || ownerFilter || statusFilter || stageFilter || companyFilter || contactFilter || partnerFilter || serviceFilter || filterTags.length > 0 || dateFrom || dateTo || expectedCloseFrom || expectedCloseTo) && (
+          {isActivePipeline && (
+            <label className={`inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-sm ${delayedOnly ? 'border-red-300 bg-red-50 text-red-700' : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-2)]'}`}>
+              <input type="checkbox" checked={delayedOnly} onChange={(event) => setDelayedOnly(event.target.checked)} />
+              Delayed only
+            </label>
+          )}
+          {(search || ownerFilter || statusFilter || stageFilter || companyFilter || contactFilter || partnerFilter || serviceFilter || filterTags.length > 0 || dateFrom || dateTo || expectedCloseFrom || expectedCloseTo || delayedOnly) && (
             <button
               onClick={() => {
                 setSearch('');
@@ -351,6 +359,7 @@ export default function DealsPage() {
                 setDateTo('');
                 setExpectedCloseFrom('');
                 setExpectedCloseTo('');
+                setDelayedOnly(false);
               }}
               className="text-sm text-[var(--color-text-3)] hover:text-[var(--color-text-2)]"
             >

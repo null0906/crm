@@ -85,7 +85,7 @@ function isPipelineValueQuestion(query: string): boolean {
 async function answerPipelineValueQuestion(query: string, db: DbClient, userContext: UserContext): Promise<string | null> {
   if (!isPipelineValueQuestion(query)) return null;
   if (userContext.role === 'sales_rep') {
-    return 'Prospect values are restricted for your role, so I cannot show deal amounts, pipeline value, or revenue totals.';
+    return 'Prospect values are restricted for your Analyst role, so I cannot show prospect amounts, pipeline value, or revenue totals.';
   }
 
   const normalized = query.toLowerCase();
@@ -470,6 +470,20 @@ probability (0-100), services (jsonb text array), service_other, status (open/wo
 expected_close_date, actual_close_date, primary_contact_id (-> contacts.id), company_id (-> companies.id),
 partner_company_id (-> companies.id), owner_id (-> users.id), stage_entered_at, is_velocity_slow, created_at, deleted_at
 
+### deal_team_members
+deal_id (-> deals.id), user_id (-> users.id), role. These are additional assigned users who may not be the owner.
+
+### projects
+id, name, description, company_id, primary_contact_id, service_type, stage, start_date, end_date, is_delayed,
+owner_id (-> users.id), created_by (-> users.id), status, deleted_at
+
+### project_members
+project_id (-> projects.id), user_id (-> users.id), role. These are additional assigned users who may not be the owner.
+
+ASSIGNED USER SEMANTICS:
+When asked what a person is working on, or for that person's prospects/projects, include records where the person is
+the owner, the creator, OR a member through deal_team_members/project_members. Never filter only by owner_id.
+
 NOTE: Users will refer to these as "prospects" in natural language queries.
 When a user asks about "prospects", query the deals table.
 When responding, always use the word "prospect/prospects" not "deal/deals".
@@ -498,7 +512,18 @@ id (uuid), first_name, last_name, email, role_id, status
 id (uuid), name, slug, permissions
 
 ### pipelines
-id (uuid), name
+id (uuid), name, pipeline_type, is_sales_pipeline
+
+is_sales_pipeline is the independent source of truth for automatic onboarding. A won prospect enters onboarding
+automatically only when its pipeline has is_sales_pipeline = true. Pipeline type and pipeline name do not imply this.
+
+### onboardings
+id (uuid), deal_id (-> deals.id), stage, status, engagement_amount, engagement_currency, owner_id, created_at
+
+Onboarding normally contains won prospects from sales-onboarding-enabled pipelines. Super admins can manually add an
+exceptional won prospect from another pipeline, so do not assume every onboarding row's pipeline is flagged.
+The onboarding stage value "completed" must be described as "Onboarding Complete". It means the sales-to-delivery
+handoff is complete and delivery is beginning; it does not mean the project itself has been delivered or certified.
 
 ### pipeline_stages
 id (uuid), pipeline_id, name, position, stage_type (active/won/lost), default_probability
@@ -522,11 +547,11 @@ Permissions JSON: ${JSON.stringify(userContext.permissions)}
 - Always add WHERE deleted_at IS NULL to contacts, companies, activities, and deals queries when those tables are used
 - Never use deals.amount directly for value aggregation. Use deals_with_value.effective_value and its engagement currency fallback.
 - Format INR as INR/₹, USD as USD/$, and never use $ for prospect values unless deals.currency = 'USD'.
-- If user role is 'sales_rep', never SELECT, summarize, calculate, or reveal deals.amount, project contract values, pipeline value, revenue, weighted pipeline, average deal size, or any prospect/deal monetary amount.
-- Sales reps may only see prospects they own, created, or are assigned to through deal_team_members.
+- If user role is 'sales_rep', treat them as an Analyst and never SELECT, summarize, calculate, or reveal deals.amount, project contract values, pipeline value, revenue, weighted pipeline, average deal size, or any prospect/deal monetary amount.
+- Analysts may only see prospects they own, created, or are assigned to through deal_team_members.
 - When a user asks for someone's "activity", default to human logged activity: activities.performed_by = that user's id, activities.is_automated = false, and exclude activity_type = 'task' unless they explicitly ask for tasks/reminders/automations.
 - Do not treat stale-prospect reminders such as "Prospect stuck..." as sales activity unless the user explicitly asks for automated tasks.
-- For sales reps, prospect queries must filter to: deals.owner_id = current user OR deals.created_by = current user OR membership in deal_team_members.
+- For Analysts (role slug 'sales_rep'), prospect queries must filter to: deals.owner_id = current user OR deals.created_by = current user OR membership in deal_team_members.
 - If permissions are own-scoped, add owner filters:
   - contacts.owner_id = '${userContext.userId}' for contacts
   - deals.owner_id = '${userContext.userId}' for deals
@@ -540,6 +565,7 @@ IMPORTANT TERMINOLOGY:
 - The database table is called "deals" but users call them "Prospects"
 - Always use "Prospect/Prospects" in your responses, never "Deal/Deals"
 - Example: "You have 8 open prospects worth ₹24,00,000" NOT "8 open deals"
+- The database role slug "sales_rep" is displayed to users as "Analyst"; if a user asks about Analysts, use role slug/name "sales_rep" in SQL and say "Analyst" in the response.
 - Pipeline stages, pipeline names, and all other terms remain unchanged
 
 ## How to Handle Ambiguous Queries

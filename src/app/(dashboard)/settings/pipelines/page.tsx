@@ -18,6 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { ChevronLeft, Plus, LayoutGrid, Pencil, Trash2, ChevronDown, ChevronUp, GripVertical, Check, X } from 'lucide-react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,12 +43,14 @@ export default function PipelinesSettingsPage() {
   const utils = trpc.useUtils();
   const { data: pipelines = [], isLoading } = trpc.pipelines.list.useQuery();
   const [newPipelineName, setNewPipelineName] = useState('');
+  const [newPipelineCreatesOnboarding, setNewPipelineCreatesOnboarding] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const createPipeline = trpc.pipelines.create.useMutation({
     onSuccess: () => {
       toast.success('Pipeline created');
       setNewPipelineName('');
+      setNewPipelineCreatesOnboarding(false);
       setCreating(false);
       void utils.pipelines.list.invalidate();
     },
@@ -58,6 +61,7 @@ export default function PipelinesSettingsPage() {
     if (!newPipelineName.trim()) return;
     createPipeline.mutate({
       name: newPipelineName.trim(),
+      isSalesPipeline: newPipelineCreatesOnboarding,
       stages: [
         { name: 'Lead', stageType: 'active', defaultProbability: 10 },
         { name: 'Proposal', stageType: 'active', defaultProbability: 40 },
@@ -106,6 +110,15 @@ export default function PipelinesSettingsPage() {
             </Button>
             <Button size="sm" variant="outline" onClick={() => setCreating(false)}>Cancel</Button>
           </div>
+          <label className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={newPipelineCreatesOnboarding}
+              onChange={(event) => setNewPipelineCreatesOnboarding(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Automatically create onboarding when a prospect is won
+          </label>
           <p className="text-xs text-slate-400 mt-2">Default stages will be created automatically.</p>
         </div>
       )}
@@ -129,6 +142,8 @@ export default function PipelinesSettingsPage() {
 }
 
 function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
+  const { data: session } = useSession();
+  const role = (((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug);
   const utils = trpc.useUtils();
   const [expanded, setExpanded] = useState(false);
   const [addingStage, setAddingStage] = useState(false);
@@ -143,6 +158,7 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
   const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery({ id: pipelineId });
   const stages = (pipelineData?.stages as Array<Record<string, unknown>>) ?? [];
   const pipelineType = String(pipelineData?.pipelineType ?? pipeline.pipelineType ?? 'sales');
+  const isSalesPipeline = Boolean(pipelineData?.isSalesPipeline ?? pipeline.isSalesPipeline);
   const [draftStages, setDraftStages] = useState<Array<Record<string, unknown>>>([]);
 
   React.useEffect(() => {
@@ -203,13 +219,13 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
 
   const updatePipeline = trpc.pipelines.update.useMutation({
     onSuccess: () => {
-      toast.success('Pipeline type updated');
+      toast.success('Pipeline updated');
       void utils.pipelines.getWithStages.invalidate({ id: pipelineId });
       void utils.pipelines.list.invalidate();
       void utils.deals.byStage.invalidate();
       void utils.deals.list.invalidate();
     },
-    onError: (err) => toast.error('Failed to update pipeline type', { description: err.message }),
+    onError: (err) => toast.error('Failed to update pipeline', { description: err.message }),
   });
 
   function handleAddStage() {
@@ -268,6 +284,9 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Badge variant={isSalesPipeline ? 'success' : 'secondary'} className="text-xs">
+              {isSalesPipeline ? 'Creates onboarding' : 'No onboarding'}
+            </Badge>
             <Badge variant={pipeline.isActive ? 'success' : 'secondary'} className="text-xs">
               {pipeline.isActive ? 'Active' : 'Inactive'}
             </Badge>
@@ -314,6 +333,25 @@ function PipelineCard({ pipeline }: { pipeline: Record<string, unknown> }) {
               <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
                 This controls which features are available for prospects in this pipeline. Active Delivery and Compliance pipelines show project fields, timeline, and team members.
               </p>
+            </div>
+
+            <div className="mb-4 flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div>
+                <p className="text-xs font-semibold text-slate-700">Create onboarding from won prospects</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Won prospects in this pipeline automatically enter Onboarding. Changing this does not backfill older prospects.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isSalesPipeline}
+                disabled={role !== 'super_admin' || updatePipeline.isPending}
+                onClick={() => updatePipeline.mutate({ id: pipelineId, isSalesPipeline: !isSalesPipeline })}
+                className={`relative h-6 w-11 flex-shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${isSalesPipeline ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${isSalesPipeline ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
             </div>
 
             <div className="flex items-center justify-between gap-3 mb-3">

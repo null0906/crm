@@ -11,12 +11,16 @@ const pipelineTypeSchema = z.enum(['sales', 'active_delivery', 'partner', 'compl
 
 export const pipelineRouter = router({
   list: protectedProcedure
-    .query(async ({ ctx }) => {
+    .input(z.object({ isSalesPipeline: z.boolean().optional() }).optional())
+    .query(async ({ ctx, input }) => {
       const includeInactive = ctx.user.role.slug === 'super_admin';
       const rows = await db
         .select()
         .from(pipelines)
-        .where(includeInactive ? undefined : eq(pipelines.isActive, true))
+        .where(and(
+          includeInactive ? undefined : eq(pipelines.isActive, true),
+          input?.isSalesPipeline === undefined ? undefined : eq(pipelines.isSalesPipeline, input.isSalesPipeline)
+        ))
         .orderBy(
           sql`CASE
             WHEN lower(${pipelines.name}) = 'sales pipeline' THEN 0
@@ -55,6 +59,7 @@ export const pipelineRouter = router({
       name: z.string().min(1).max(100),
       description: z.string().optional(),
       pipelineType: pipelineTypeSchema.optional(),
+      isSalesPipeline: z.boolean().optional(),
       stages: z.array(z.object({
         name: z.string().min(1),
         color: z.string().optional(),
@@ -64,12 +69,16 @@ export const pipelineRouter = router({
       })),
     }))
     .mutation(async ({ ctx, input }) => {
+      if (input.isSalesPipeline && ctx.user!.role.slug !== 'super_admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only super admins can enable sales onboarding for a pipeline.' });
+      }
       const [pipeline] = await db
         .insert(pipelines)
         .values({
           name: input.name,
           description: input.description,
           pipelineType: input.pipelineType ?? 'sales',
+          isSalesPipeline: input.isSalesPipeline ?? false,
           createdBy: ctx.user!.id,
         })
         .returning();
@@ -108,8 +117,12 @@ export const pipelineRouter = router({
       description: z.string().optional(),
       isActive: z.boolean().optional(),
       pipelineType: pipelineTypeSchema.optional(),
+      isSalesPipeline: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      if (input.isSalesPipeline !== undefined && ctx.user!.role.slug !== 'super_admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Only super admins can change sales onboarding behavior.' });
+      }
       const { id, ...data } = input;
       const [updated] = await db
         .update(pipelines)

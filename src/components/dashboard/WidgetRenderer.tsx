@@ -13,6 +13,7 @@ import {
   Target, DollarSign, Award, BarChart2, Calendar, CheckCircle,
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import { getOnboardingStageLabel } from '@/lib/onboarding';
 import type { DashboardDataSource, WidgetType } from '@/lib/types';
 
 export interface DashboardFilter {
@@ -843,16 +844,17 @@ function OnboardingStatsWidget({ widget }: { widget: Widget }) {
   const stale = active.filter((row) => now - new Date(row.stageEnteredAt as string).getTime() > 7 * 86400000);
   return <div className="h-full">
     <p className="mb-4 text-[13px] font-semibold text-slate-800">{widget.title}</p>
+    <p className="-mt-3 mb-4 text-[10px] text-slate-400">Sales-onboarding pipelines and manual exceptions only.</p>
     <div className="grid grid-cols-3 gap-3">
-      {[['Active', active.length, '#3b82f6'], ['Completed 30d', completed30.length, '#10b981'], ['Stale', stale.length, '#f59e0b']].map(([label, value, color]) => (
+      {[['Active', active.length, '#3b82f6'], ['Onboarding Complete 30d', completed30.length, '#10b981'], ['Stale', stale.length, '#f59e0b']].map(([label, value, color]) => (
         <div key={String(label)} className="border-l-2 pl-3" style={{ borderColor: String(color) }}><p className="text-2xl font-bold text-slate-800">{String(value)}</p><p className="text-[10px] uppercase text-slate-400">{String(label)}</p></div>
       ))}
     </div>
-    <div className="mt-5 space-y-1.5">{STAGE_WIDGET_ORDER.map((stage) => { const count = items.filter((row) => row.stage === stage).length; return count ? <div key={stage} className="flex justify-between text-xs text-slate-500"><span>{stage.replace(/_/g, ' ')}</span><b>{count}</b></div> : null; })}</div>
+    <div className="mt-5 space-y-1.5">{STAGE_WIDGET_ORDER.map((stage) => { const count = items.filter((row) => row.stage === stage).length; return count ? <div key={stage} className="flex justify-between text-xs text-slate-500"><span>{getOnboardingStageLabel(stage)}</span><b>{count}</b></div> : null; })}</div>
   </div>;
 }
 
-const STAGE_WIDGET_ORDER = ['documents_pending','documents_sent','documents_signed','payment_pending','payment_received','kickoff_scheduled'];
+const STAGE_WIDGET_ORDER = ['documents_pending','documents_sent','documents_signed','payment_pending','payment_received','kickoff_scheduled','completed','cancelled'];
 
 // ─── DISPATCHER ───────────────────────────────────────────────────
 export function WidgetRenderer({ widget, filter }: { widget: Widget; filter?: DashboardFilter }) {

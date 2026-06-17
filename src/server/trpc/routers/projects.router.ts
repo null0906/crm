@@ -6,6 +6,7 @@ import { db } from '@/server/db';
 import { projectMembers, projects, projectTasks, users } from '@/server/db/schema';
 import { projectService } from '@/server/services/project.service';
 import { syncProjectTasksToDeal, syncProjectTeamToDeal } from '@/server/services/project-sync.service';
+import { getProjectVisibilityFilter } from '@/server/lib/visibility-filters';
 
 const serviceTypeSchema = z.enum([
   'soc2_type1',
@@ -94,8 +95,12 @@ export const projectsRouter = router({
       stage: projectStageSchema.optional(),
       status: z.enum(['active', 'completed', 'on_hold', 'cancelled']).optional(),
       serviceType: serviceTypeSchema.optional(),
+      assignedUserId: z.string().uuid().optional(),
       ownerId: z.string().uuid().optional(),
       search: z.string().optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+      isDelayed: z.boolean().optional(),
     }).optional())
     .query(async ({ ctx, input }) => {
       return projectService.list(input ?? {}, ctx.user);
@@ -209,7 +214,7 @@ export const projectsRouter = router({
 
   tasksByCompany: protectedProcedure
     .input(z.object({ companyId: z.string().uuid() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       return db
         .select({
           id: projectTasks.id,
@@ -230,6 +235,7 @@ export const projectsRouter = router({
         .where(and(
           eq(projects.companyId, input.companyId),
           isNull(projects.deletedAt),
+          getProjectVisibilityFilter(ctx.user),
           sql`${projectTasks.status} <> 'completed'`
         ))
         .orderBy(
@@ -249,12 +255,15 @@ export const projectsRouter = router({
       projectId: z.string().uuid(),
       status: taskStatusSchema.optional(),
     }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const [visibleProject] = await db.select({ id: projects.id }).from(projects).where(and(
+        eq(projects.id, input.projectId),
+        isNull(projects.deletedAt),
+        getProjectVisibilityFilter(ctx.user)
+      )).limit(1);
+      if (!visibleProject) throw new TRPCError({ code: 'FORBIDDEN', message: 'You do not have access to this project.' });
       return db.query.projectTasks.findMany({
-        where: and(
-          eq(projectTasks.projectId, input.projectId),
-          input.status ? eq(projectTasks.status, input.status) : undefined
-        ),
+        where: and(eq(projectTasks.projectId, input.projectId), input.status ? eq(projectTasks.status, input.status) : undefined),
         orderBy: [asc(projectTasks.position), asc(projectTasks.createdAt)],
       });
     }),

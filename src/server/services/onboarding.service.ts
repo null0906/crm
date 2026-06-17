@@ -10,11 +10,38 @@ import eventBus from '@/server/lib/event-bus';
 import type { NewOnboarding } from '@/server/db/schema';
 import type { OnboardingStage } from '@/lib/types';
 
-export async function createOnboardingFromDeal(dealId: string, triggeredBy: string) {
+type CreateOnboardingOptions = {
+  manualReason?: string;
+};
+
+export async function createOnboardingFromDeal(dealId: string, triggeredBy: string, options: CreateOnboardingOptions = {}) {
   const [existing] = await db.select().from(onboardings).where(eq(onboardings.dealId, dealId)).limit(1);
   if (existing) return existing;
-  const [deal] = await db.select().from(deals).where(and(eq(deals.id, dealId), isNull(deals.deletedAt))).limit(1);
+  const [deal] = await db.select({
+    id: deals.id,
+    title: deals.title,
+    companyId: deals.companyId,
+    primaryContactId: deals.primaryContactId,
+    ownerId: deals.ownerId,
+    amount: deals.amount,
+    currency: deals.currency,
+    status: deals.status,
+    pipelineName: pipelines.name,
+    isSalesPipeline: pipelines.isSalesPipeline,
+    stageType: pipelineStages.stageType,
+  }).from(deals)
+    .innerJoin(pipelines, eq(deals.pipelineId, pipelines.id))
+    .innerJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
+    .where(and(eq(deals.id, dealId), isNull(deals.deletedAt)))
+    .limit(1);
   if (!deal) return null;
+  if (deal.stageType !== 'won' && deal.status !== 'won') {
+    throw new Error('Only won prospects can be added to onboarding.');
+  }
+  if (!options.manualReason && !deal.isSalesPipeline) {
+    console.info(`Skipping onboarding for "${deal.title}": pipeline "${deal.pipelineName}" is not marked for sales onboarding.`);
+    return null;
+  }
   const [onboarding] = await db.insert(onboardings).values({
     dealId, companyId: deal.companyId, primaryContactId: deal.primaryContactId,
     ownerId: deal.ownerId, createdBy: triggeredBy,
@@ -23,13 +50,23 @@ export async function createOnboardingFromDeal(dealId: string, triggeredBy: stri
   if (!onboarding) return null;
   await db.insert(onboardingStageHistory).values({
     onboardingId: onboarding.id, toStage: 'documents_pending', movedBy: triggeredBy,
-    notes: `Onboarding auto-created when prospect "${deal.title}" was marked Won`,
+    notes: options.manualReason
+      ? `Onboarding manually created. Reason: ${options.manualReason}`
+      : `Onboarding auto-created when prospect "${deal.title}" was marked Won`,
   });
   await db.insert(activities).values({
-    activityType: 'note', subject: `Onboarding started for "${deal.title}"`,
+    activityType: 'note',
+    subject: options.manualReason
+      ? `Onboarding manually started for "${deal.title}"`
+      : `Onboarding started for "${deal.title}"`,
     dealId, companyId: deal.companyId, contactId: deal.primaryContactId,
-    performedBy: triggeredBy, isAutomated: true,
-    metadata: { onboardingId: onboarding.id, trigger: 'closed_won' },
+    performedBy: triggeredBy, isAutomated: !options.manualReason,
+    metadata: {
+      onboardingId: onboarding.id,
+      trigger: options.manualReason ? 'manual_creation' : 'closed_won',
+      manualReason: options.manualReason,
+      sourcePipeline: deal.pipelineName,
+    },
   });
   const admins = await db.select({ id: users.id }).from(users)
     .innerJoin(roles, eq(users.roleId, roles.id))
@@ -40,6 +77,31 @@ export async function createOnboardingFromDeal(dealId: string, triggeredBy: stri
     metadata: { onboardingId: onboarding.id },
   })));
   return onboarding;
+}
+
+export async function listEligibleManualDeals() {
+  return db.select({
+    id: deals.id,
+    title: deals.title,
+    companyName: companies.name,
+    pipelineName: pipelines.name,
+    amount: deals.amount,
+    currency: deals.currency,
+  }).from(deals)
+    .innerJoin(pipelines, eq(deals.pipelineId, pipelines.id))
+    .innerJoin(pipelineStages, eq(deals.stageId, pipelineStages.id))
+    .leftJoin(companies, eq(deals.companyId, companies.id))
+    .leftJoin(onboardings, eq(onboardings.dealId, deals.id))
+    .where(and(
+      isNull(deals.deletedAt),
+      eq(pipelineStages.stageType, 'won'),
+      isNull(onboardings.id)
+    ))
+    .orderBy(asc(pipelines.name), asc(deals.title));
+}
+
+export function createManualOnboarding(dealId: string, userId: string, reason: string) {
+  return createOnboardingFromDeal(dealId, userId, { manualReason: reason.trim() });
 }
 
 export async function listOnboardings() {
@@ -92,20 +154,35 @@ export async function updateOnboarding(id: string, data: Partial<NewOnboarding>,
 export async function moveOnboardingStage(id: string, stage: OnboardingStage, userId: string, notes?: string) {
   const [existing] = await db.select().from(onboardings).where(eq(onboardings.id, id)).limit(1);
   if (!existing) throw new Error('Onboarding not found');
-  if (existing.stage === stage) return existing;
-  await db.update(onboardingStageHistory).set({ exitedAt: new Date() })
-    .where(and(eq(onboardingStageHistory.onboardingId, id), isNull(onboardingStageHistory.exitedAt)));
-  await db.insert(onboardingStageHistory).values({ onboardingId: id, fromStage: existing.stage, toStage: stage, movedBy: userId, notes });
-  const status = stage === 'completed' ? 'completed' : stage === 'cancelled' ? 'cancelled' : 'active';
-  const [updated] = await db.update(onboardings).set({
-    stage, status, stageEnteredAt: new Date(), completedAt: stage === 'completed' ? new Date() : null, updatedAt: new Date(),
-  }).where(eq(onboardings.id, id)).returning();
+  if (existing.stage === stage && stage !== 'completed') return existing;
+
+  let updated = existing;
+  if (existing.stage !== stage) {
+    await db.update(onboardingStageHistory).set({ exitedAt: new Date() })
+      .where(and(eq(onboardingStageHistory.onboardingId, id), isNull(onboardingStageHistory.exitedAt)));
+    await db.insert(onboardingStageHistory).values({ onboardingId: id, fromStage: existing.stage, toStage: stage, movedBy: userId, notes });
+    const status = stage === 'completed' ? 'completed' : stage === 'cancelled' ? 'cancelled' : 'active';
+    const [stageUpdate] = await db.update(onboardings).set({
+      stage, status, stageEnteredAt: new Date(), completedAt: stage === 'completed' ? new Date() : null, updatedAt: new Date(),
+    }).where(eq(onboardings.id, id)).returning();
+    updated = stageUpdate ?? existing;
+  }
 
   if (stage === 'completed') {
     const [activePipeline] = await db.select().from(pipelines).where(eq(pipelines.pipelineType, 'active_delivery')).limit(1);
-    if (!activePipeline) throw new Error('Active Pipeline not found');
+    if (!activePipeline) {
+      console.error('[Onboarding] No Active Pipeline found - cannot move prospect after onboarding completion.');
+      return updated;
+    }
     const [firstStage] = await db.select().from(pipelineStages).where(eq(pipelineStages.pipelineId, activePipeline.id)).orderBy(asc(pipelineStages.position)).limit(1);
-    if (!firstStage) throw new Error('Active Pipeline has no stages');
+    if (!firstStage) {
+      console.error('[Onboarding] Active Pipeline has no stages - cannot move prospect after onboarding completion.');
+      return updated;
+    }
+    const kickoffKeywords = ['kickstarted', 'kickoff', 'onboarding', 'initiated'];
+    if (!kickoffKeywords.some((keyword) => firstStage.name.toLowerCase().includes(keyword))) {
+      console.warn(`[Onboarding] First Active Pipeline stage is "${firstStage.name}" - expected a kickoff-style stage. Continuing anyway.`);
+    }
     const [deal] = await db.select({ stageId: deals.stageId }).from(deals).where(eq(deals.id, existing.dealId)).limit(1);
     await db.update(deals).set({ pipelineId: activePipeline.id, stageId: firstStage.id, stageEnteredAt: new Date(), status: 'open', updatedAt: new Date() }).where(eq(deals.id, existing.dealId));
     eventBus.emit('deal.stage_changed', { dealId: existing.dealId, fromStageId: deal?.stageId ?? null, toStageId: firstStage.id, movedBy: userId });
@@ -116,6 +193,23 @@ export async function moveOnboardingStage(id: string, stage: OnboardingStage, us
         await db.insert(projectMembers).values(existing.deliveryTeamAssigned.map((memberId) => ({ projectId, userId: memberId, role: 'member' as const }))).onConflictDoNothing();
       }
     }
+    await db.insert(activities).values({
+      activityType: 'note',
+      subject: `Onboarding complete → moved to Active Delivery: "${firstStage.name}"`,
+      dealId: existing.dealId,
+      companyId: existing.companyId,
+      contactId: existing.primaryContactId,
+      performedBy: userId,
+      isAutomated: true,
+      metadata: {
+        onboardingId: id,
+        trigger: 'onboarding_completed',
+        newPipeline: activePipeline.name,
+        newStage: firstStage.name,
+        fromStageName: 'Onboarding Complete',
+        toStageName: firstStage.name,
+      },
+    });
   }
-  return updated!;
+  return updated;
 }

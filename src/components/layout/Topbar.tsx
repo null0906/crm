@@ -119,6 +119,8 @@ export function Topbar() {
 }
 
 function getPageTitle(pathname: string): string {
+  if (pathname.startsWith('/reports/tasks')) return 'Task Reports';
+
   const segment = pathname.split('/').filter(Boolean)[0] ?? 'dashboard';
   const titles: Record<string, string> = {
     contacts: 'Contacts',
@@ -128,6 +130,8 @@ function getPageTitle(pathname: string): string {
     partners: 'Partners',
     'ai-chat': 'AI Assistant',
     activities: 'Activities',
+    tasks: 'My Tasks',
+    reports: 'Reports',
     dashboard: 'Dashboard',
     settings: 'Settings',
   };
@@ -135,6 +139,8 @@ function getPageTitle(pathname: string): string {
 }
 
 function getPageSubtext(pathname: string): string {
+  if (pathname.startsWith('/reports/tasks')) return 'Team time tracking';
+
   const segment = pathname.split('/').filter(Boolean)[0] ?? 'dashboard';
   const subtexts: Record<string, string> = {
     contacts: 'Manage leads and relationships',
@@ -144,6 +150,8 @@ function getPageSubtext(pathname: string): string {
     partners: 'Partner-sourced opportunities',
     'ai-chat': 'Ask questions across CRM data',
     activities: 'Calls, notes, tasks, and changes',
+    tasks: 'Personal task tracking',
+    reports: 'Analyst performance reports',
     dashboard: 'Business performance overview',
     settings: 'Workspace configuration',
   };

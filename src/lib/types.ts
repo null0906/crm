@@ -24,6 +24,7 @@ export type OnboardingStage =
   | 'payment_pending' | 'payment_received' | 'kickoff_scheduled'
   | 'completed' | 'cancelled';
 export type OnboardingStatus = 'active' | 'completed' | 'cancelled';
+export type PersonalTaskStatus = 'in_progress' | 'completed' | 'cancelled';
 export type OnboardingDocumentStatus = 'not_required' | 'pending' | 'sent' | 'signed';
 
 export type ActivityType =
@@ -40,7 +41,7 @@ export type FieldType =
   | 'select' | 'multi_select' | 'checkbox' | 'email' | 'phone' | 'url'
   | 'user' | 'contact' | 'company' | 'rating' | 'percentage';
 
-export type EntityType = 'contact' | 'company' | 'deal' | 'activity';
+export type EntityType = 'contact' | 'company' | 'deal' | 'project' | 'activity';
 
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'invited';
 

@@ -133,6 +133,7 @@ export interface PipelineContribution {
   openDeals: number;
   openPipelineValue: number;
   weightedPipeline: number;
+  teamMemberOn: number;
   leadsAdded: number;
   winRate: number;
 }
@@ -539,6 +540,7 @@ export async function getPipelineContribution(
       COUNT(*) FILTER (WHERE status = 'open')::int AS open_deals,
       COALESCE(SUM(effective_value::numeric) FILTER (WHERE status = 'open'), 0)::text AS open_pipeline_value,
       COALESCE(SUM((effective_value::numeric * COALESCE(probability, 0)) / 100.0) FILTER (WHERE status = 'open'), 0)::text AS weighted_pipeline
+      ,COUNT(*) FILTER (WHERE owner_id IS DISTINCT FROM ${userId} AND id IN (SELECT deal_id FROM deal_team_members WHERE user_id = ${userId}))::int AS team_member_on
     FROM deals_with_value
     WHERE (owner_id = ${userId} OR created_by = ${userId} OR id IN (SELECT deal_id FROM deal_team_members WHERE user_id = ${userId}))
       AND deleted_at IS NULL
@@ -567,6 +569,7 @@ export async function getPipelineContribution(
     openDeals: toNumber(r.open_deals),
     openPipelineValue: toNumber(r.open_pipeline_value),
     weightedPipeline: toNumber(r.weighted_pipeline),
+    teamMemberOn: toNumber(r.team_member_on),
     leadsAdded: toNumber(asRows<{ count: number }>(leadsResult)[0]?.count),
     winRate: dealsWon + dealsLost > 0 ? Math.round((dealsWon / (dealsWon + dealsLost)) * 100) : 0,
   };

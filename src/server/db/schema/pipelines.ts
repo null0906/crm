@@ -9,6 +9,7 @@ export const pipelines = pgTable('pipelines', {
   isDefault: boolean('is_default').default(false),
   isActive: boolean('is_active').default(true),
   pipelineType: varchar('pipeline_type', { length: 20 }).$type<PipelineType>().default('sales'),
+  isSalesPipeline: boolean('is_sales_pipeline').notNull().default(false),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   position: integer('position').default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

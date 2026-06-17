@@ -7,7 +7,7 @@ import type { EntityType, SavedViewVisibility } from '@/lib/types';
 
 const savedViewInput = z.object({
   name: z.string().min(1).max(100),
-  entityType: z.enum(['contact', 'company', 'deal', 'activity']),
+  entityType: z.enum(['contact', 'company', 'deal', 'project', 'activity']),
   filters: z.record(z.string(), z.unknown()).default({}),
   columns: z.array(z.string()).optional(),
   sortConfig: z.object({ field: z.string(), direction: z.enum(['asc', 'desc']) }).optional(),
@@ -19,7 +19,7 @@ const savedViewInput = z.object({
 export const savedViewRouter = router({
   list: protectedProcedure
     .input(z.object({
-      entityType: z.enum(['contact', 'company', 'deal', 'activity']).optional(),
+      entityType: z.enum(['contact', 'company', 'deal', 'project', 'activity']).optional(),
     }))
     .query(async ({ ctx, input }) => {
       const userId = ctx.user!.id;

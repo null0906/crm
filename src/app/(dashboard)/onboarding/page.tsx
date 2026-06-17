@@ -2,7 +2,8 @@
 
 import React from 'react';
 import { useSession } from 'next-auth/react';
-import { ClipboardCheck, Clock, IndianRupee, Search } from 'lucide-react';
+import Link from 'next/link';
+import { ClipboardCheck, Clock, IndianRupee, Info, Plus, Search, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { Input } from '@/components/ui/input';
@@ -11,16 +12,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { formatCurrency, formatDate } from '@/lib/formatters';
+import { getOnboardingStageLabel, ONBOARDING_STAGE_LABELS } from '@/lib/onboarding';
 
 const STAGES = [
-  ['documents_pending', 'Documents Pending', '#6366f1'],
-  ['documents_sent', 'Documents Sent', '#3b82f6'],
-  ['documents_signed', 'Documents Signed', '#14b8a6'],
-  ['payment_pending', 'Payment Pending', '#f59e0b'],
-  ['payment_received', 'Payment Received', '#10b981'],
-  ['kickoff_scheduled', 'Kickoff Scheduled', '#8b5cf6'],
-  ['completed', 'Completed', '#16a34a'],
-  ['cancelled', 'Cancelled', '#94a3b8'],
+  ['documents_pending', ONBOARDING_STAGE_LABELS.documents_pending, '#6366f1'],
+  ['documents_sent', ONBOARDING_STAGE_LABELS.documents_sent, '#3b82f6'],
+  ['documents_signed', ONBOARDING_STAGE_LABELS.documents_signed, '#14b8a6'],
+  ['payment_pending', ONBOARDING_STAGE_LABELS.payment_pending, '#f59e0b'],
+  ['payment_received', ONBOARDING_STAGE_LABELS.payment_received, '#10b981'],
+  ['kickoff_scheduled', ONBOARDING_STAGE_LABELS.kickoff_scheduled, '#8b5cf6'],
+  ['completed', ONBOARDING_STAGE_LABELS.completed, '#16a34a'],
+  ['cancelled', ONBOARDING_STAGE_LABELS.cancelled, '#94a3b8'],
 ] as const;
 
 export default function OnboardingPage() {
@@ -28,7 +30,12 @@ export default function OnboardingPage() {
   const role = (((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug);
   const [search, setSearch] = React.useState('');
   const [selectedId, setSelectedId] = React.useState('');
+  const [manualOpen, setManualOpen] = React.useState(false);
   const { data: rows = [], isLoading } = trpc.onboarding.list.useQuery(undefined, { enabled: role === 'super_admin' });
+  const { data: salesPipelines = [] } = trpc.pipelines.list.useQuery(
+    { isSalesPipeline: true },
+    { enabled: role === 'super_admin' }
+  );
 
   if (role && role !== 'super_admin') {
     return <div className="flex h-full items-center justify-center text-sm text-slate-500">Onboarding is restricted to super admins.</div>;
@@ -45,8 +52,22 @@ export default function OnboardingPage() {
           <ClipboardCheck className="h-5 w-5 text-[var(--accent)]" />
           <div><h1 className="text-lg font-bold text-[var(--text-primary)]">Onboarding</h1><p className="text-xs text-[var(--text-tertiary)]">Closed-won handoff to delivery</p></div>
         </div>
-        <div className="relative w-64"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search onboarding..." className="pl-9" /></div>
+        <div className="flex items-center gap-2">
+          <div className="relative w-64"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search onboarding..." className="pl-9" /></div>
+          <Button onClick={() => setManualOpen(true)}><Plus className="h-4 w-4" />Add manually</Button>
+        </div>
       </header>
+      <div className="flex items-center justify-between gap-4 border-b border-blue-100 bg-blue-50 px-6 py-2.5 text-xs text-blue-900">
+        <div className="flex items-center gap-2">
+          <Info className="h-4 w-4 flex-shrink-0" />
+          <span>
+            Automatic onboarding is created only from: <b>{salesPipelines.length ? salesPipelines.map((pipeline) => pipeline.name).join(', ') : 'No pipelines enabled'}</b>
+          </span>
+        </div>
+        <Link href="/settings/pipelines" className="flex items-center gap-1 font-semibold hover:text-blue-700">
+          <Settings className="h-3.5 w-3.5" />Configure
+        </Link>
+      </div>
       <div className="flex flex-1 gap-3 overflow-x-auto p-4">
         {STAGES.map(([key, label, color]) => {
           const stageRows = filtered.filter((row) => row.stage === key);
@@ -73,8 +94,63 @@ export default function OnboardingPage() {
         })}
       </div>
       <OnboardingPanel id={selectedId} open={Boolean(selectedId)} onClose={() => setSelectedId('')} />
+      <ManualOnboardingPanel open={manualOpen} onClose={() => setManualOpen(false)} />
     </div>
   );
+}
+
+function ManualOnboardingPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const utils = trpc.useUtils();
+  const [dealId, setDealId] = React.useState('');
+  const [reason, setReason] = React.useState('');
+  const { data: deals = [], isLoading } = trpc.onboarding.eligibleManualDeals.useQuery(undefined, { enabled: open });
+  const create = trpc.onboarding.createManual.useMutation({
+    onSuccess: async () => {
+      toast.success('Onboarding created');
+      setDealId('');
+      setReason('');
+      onClose();
+      await utils.onboarding.invalidate();
+    },
+    onError: (error) => toast.error('Could not create onboarding', { description: error.message }),
+  });
+
+  return <SlideOverPanel open={open} onClose={onClose} width="md" title="Add won prospect to onboarding">
+    <div className="space-y-5 p-5">
+      <div>
+        <Label>Won prospect</Label>
+        <select
+          value={dealId}
+          onChange={(event) => setDealId(event.target.value)}
+          className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+        >
+          <option value="">{isLoading ? 'Loading...' : 'Select a won prospect'}</option>
+          {deals.map((deal) => (
+            <option key={deal.id} value={deal.id}>
+              {deal.title} - {deal.companyName ?? 'No company'} ({deal.pipelineName})
+            </option>
+          ))}
+        </select>
+        {!isLoading && deals.length === 0 && <p className="mt-2 text-xs text-slate-500">Every won prospect already has onboarding.</p>}
+      </div>
+      <div>
+        <Label>Reason</Label>
+        <Textarea
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder="Why should this prospect enter onboarding?"
+          className="mt-1"
+        />
+      </div>
+      <Button
+        className="w-full"
+        disabled={!dealId || reason.trim().length < 3 || create.isPending}
+        onClick={() => create.mutate({ dealId, reason })}
+      >
+        {create.isPending ? 'Creating...' : 'Create onboarding'}
+      </Button>
+    </div>
+  </SlideOverPanel>;
 }
 
 function OnboardingPanel({ id, open, onClose }: { id: string; open: boolean; onClose: () => void }) {
@@ -109,7 +185,7 @@ function OnboardingPanel({ id, open, onClose }: { id: string; open: boolean; onC
       <Label>Kickoff notes<Textarea value={form.kickoffNotes} onChange={(e) => set('kickoffNotes', e.target.value)} className="mt-1" /></Label>
       <Label>Notes<Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} className="mt-1" /></Label>
       <div className="flex gap-2"><select value={String(record.stage)} onChange={(e) => move.mutate({ id, stage: e.target.value as typeof STAGES[number][0] })} className="h-9 flex-1 rounded-md border border-slate-200 bg-white px-3 text-sm">{STAGES.map(([key,label]) => <option key={key} value={key}>{label}</option>)}</select><Button onClick={save}>Save</Button></div>
-      <div><h3 className="mb-2 text-xs font-bold uppercase text-slate-500">Stage history</h3>{((record.history as Array<Record<string, unknown>>) ?? []).map((item) => <div key={String(item.id)} className="border-l-2 border-slate-200 py-2 pl-3 text-xs"><b>{String(item.fromStage ?? 'Created')}</b> → <b>{String(item.toStage)}</b><p className="text-slate-400">{formatDate(item.enteredAt as string)} {String(item.notes ?? '')}</p></div>)}</div>
+      <div><h3 className="mb-2 text-xs font-bold uppercase text-slate-500">Stage history</h3>{((record.history as Array<Record<string, unknown>>) ?? []).map((item) => <div key={String(item.id)} className="border-l-2 border-slate-200 py-2 pl-3 text-xs"><b>{item.fromStage ? getOnboardingStageLabel(item.fromStage) : 'Created'}</b> → <b>{getOnboardingStageLabel(item.toStage)}</b><p className="text-slate-400">{formatDate(item.enteredAt as string)} {String(item.notes ?? '')}</p></div>)}</div>
     </div>}
   </SlideOverPanel>;
 }

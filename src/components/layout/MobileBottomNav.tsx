@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, Building2, FolderKanban, Sparkles, TrendingUp, Users } from 'lucide-react';
+import { Activity, Building2, CheckSquare, FolderKanban, Sparkles, TrendingUp, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const mobileNav = [
@@ -12,6 +12,7 @@ const mobileNav = [
   { href: '/projects', label: 'Projects', icon: FolderKanban },
   { href: '/ai-chat', label: 'AI', icon: Sparkles },
   { href: '/activities', label: 'Activity', icon: Activity },
+  { href: '/tasks', label: 'Tasks', icon: CheckSquare },
 ];
 
 export function MobileBottomNav() {

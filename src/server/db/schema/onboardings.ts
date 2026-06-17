@@ -11,6 +11,7 @@ export const onboardings = pgTable('onboardings', {
   dealId: uuid('deal_id').notNull().unique().references(() => deals.id, { onDelete: 'cascade' }),
   companyId: uuid('company_id').references(() => companies.id, { onDelete: 'set null' }),
   primaryContactId: uuid('primary_contact_id').references(() => contacts.id, { onDelete: 'set null' }),
+  // "completed" means the onboarding handoff is complete and delivery can begin.
   stage: varchar('stage', { length: 50 }).$type<OnboardingStage>().notNull().default('documents_pending'),
   stageEnteredAt: timestamp('stage_entered_at', { withTimezone: true }).notNull().defaultNow(),
   msaStatus: varchar('msa_status', { length: 20 }).$type<OnboardingDocumentStatus>().default('pending'),

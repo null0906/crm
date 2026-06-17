@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDate, getInitials } from '@/lib/formatters';
+import { getRoleDisplayName } from '@/lib/roles';
 import { toast } from 'sonner';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -238,7 +239,7 @@ export default function UsersSettingsPage() {
                 <p className="text-sm font-medium text-slate-900">{user.firstName} {user.lastName}</p>
                 <p className="text-xs text-slate-500 font-mono">{user.email}</p>
               </div>
-              <Badge variant="secondary" className="text-xs">{user.role.name}</Badge>
+              <Badge variant="secondary" className="text-xs">{getRoleDisplayName(user.role.name)}</Badge>
               <span className="text-xs text-slate-400">{formatDate(user.createdAt)}</span>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                 <Link
@@ -336,7 +337,7 @@ export default function UsersSettingsPage() {
                 className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 {roles.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                  <option key={r.id} value={r.id}>{getRoleDisplayName(r.name)}</option>
                 ))}
               </select>
             </div>
@@ -407,7 +408,7 @@ export default function UsersSettingsPage() {
                 className="flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               >
                 {roles.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                  <option key={r.id} value={r.id}>{getRoleDisplayName(r.name)}</option>
                 ))}
               </select>
             </div>
@@ -509,7 +510,7 @@ function RolePermissionEditor({ role }: { role: Record<string, unknown> }) {
 
   const updateRole = trpc.users.updateRole.useMutation({
     onSuccess: () => {
-      toast.success(`${role.name as string} permissions saved`);
+      toast.success(`${getRoleDisplayName(role.name as string)} permissions saved`);
       setDirty(false);
       void utils.users.listRoles.invalidate();
     },
@@ -542,7 +543,7 @@ function RolePermissionEditor({ role }: { role: Record<string, unknown> }) {
       >
         <div className="flex items-center gap-2">
           <Shield className="w-4 h-4 text-slate-400" />
-          <span className="text-sm font-semibold text-slate-800">{role.name as string}</span>
+          <span className="text-sm font-semibold text-slate-800">{getRoleDisplayName(role.name as string)}</span>
           {isSystem && <Badge variant="secondary" className="text-xs">System</Badge>}
           {dirty && <Badge variant="default" className="text-xs bg-amber-500">Unsaved changes</Badge>}
         </div>

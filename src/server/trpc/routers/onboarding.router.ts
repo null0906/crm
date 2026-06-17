@@ -12,6 +12,11 @@ const admin = protectedProcedure.use(({ ctx, next }) => {
 
 export const onboardingRouter = router({
   list: admin.query(() => service.listOnboardings()),
+  eligibleManualDeals: admin.query(() => service.listEligibleManualDeals()),
+  createManual: admin.input(z.object({
+    dealId: z.string().uuid(),
+    reason: z.string().trim().min(3, 'Please explain why this prospect should enter onboarding.'),
+  })).mutation(({ ctx, input }) => service.createManualOnboarding(input.dealId, ctx.user.id, input.reason)),
   getById: admin.input(z.object({ id: z.string().uuid() })).query(({ input }) => service.getOnboarding(input.id)),
   update: admin.input(z.object({ id: z.string().uuid(), data: z.object({
     engagementAmount: z.number().nullable().optional(), engagementCurrency: z.string().max(3).optional(),

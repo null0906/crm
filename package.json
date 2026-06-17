@@ -13,6 +13,7 @@
     "db:seed": "tsx src/server/db/seed.ts",
     "backfill:projects": "tsx src/scripts/backfill-projects.ts",
     "backfill:activities": "tsx src/scripts/backfill-activity-sync.ts",
+    "backfill:onboardings": "tsx src/scripts/backfill-onboardings.ts",
     "reset:projects": "tsx src/scripts/reset-projects-from-active-pipeline.ts",
     "test:reminder-email": "tsx src/scripts/test-reminder-digest.ts",
     "docker:up": "docker-compose up -d",

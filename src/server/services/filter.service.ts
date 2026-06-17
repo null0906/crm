@@ -60,10 +60,14 @@ function getColumn(entity: string, field: string): SQL | null {
       companyId: sql`deals.company_id`,
       primaryContactId: sql`deals.primary_contact_id`,
       partnerCompanyId: sql`deals.partner_company_id`,
+      referredByPartnerId: sql`deals.referred_by_partner_id`,
       amount: sql`deals.amount`,
       currency: sql`deals.currency`,
       probability: sql`deals.probability`,
       expectedCloseDate: sql`deals.expected_close_date`,
+      projectStartDate: sql`deals.project_start_date`,
+      projectEndDate: sql`deals.project_end_date`,
+      isDelayed: sql`deals.is_delayed`,
       createdAt: sql`deals.created_at`,
       services: sql`deals.services::text`,
     },
@@ -116,6 +120,15 @@ function buildTagRelation(entity: string): SQL {
 
 function buildCondition(entity: string, condition: FilterCondition, userId?: string): SQL | null {
   const { field, operator, value } = condition;
+  const resolvedValue = operator === 'current_user' ? userId : value;
+
+  if (entity === 'deal' && (field === 'assignedUserId' || field === 'ownerId') && (operator === 'eq' || operator === 'current_user')) {
+    return sql`(
+      deals.owner_id = ${resolvedValue}
+      OR deals.created_by = ${resolvedValue}
+      OR deals.id IN (SELECT deal_id FROM deal_team_members WHERE user_id = ${resolvedValue})
+    )`;
+  }
 
   // Handle tags filter specially
   if (field === 'tags') {
@@ -144,8 +157,6 @@ function buildCondition(entity: string, condition: FilterCondition, userId?: str
 
   const col = getColumn(entity, field);
   if (!col) return null;
-
-  const resolvedValue = operator === 'current_user' ? userId : value;
 
   switch (operator) {
     case 'eq':

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '@/server/db';
 import {
   activities,
@@ -16,14 +16,19 @@ import eventBus from '@/server/lib/event-bus';
 import { PROJECT_STAGES, getProjectStageProgress } from '@/lib/projects';
 import type { ProjectMemberRole, ProjectServiceType, ProjectStage, ProjectStatus, ProjectTaskStatus, SessionUser } from '@/lib/types';
 import { createOrSyncDealFromProject, syncProjectFieldsToDeal } from './project-sync.service';
+import { getProjectVisibilityFilter } from '@/server/lib/visibility-filters';
 
 export interface ProjectListFilters {
   companyId?: string;
   stage?: string;
   status?: string;
   serviceType?: string;
+  assignedUserId?: string;
   ownerId?: string;
   search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  isDelayed?: boolean;
 }
 
 export interface ProjectCreateInput {
@@ -186,7 +191,7 @@ export const projectService = {
       .leftJoin(contacts, eq(projects.primaryContactId, contacts.id))
       .leftJoin(deals, eq(projects.dealId, deals.id))
       .leftJoin(users, eq(projects.ownerId, users.id))
-      .where(and(eq(projects.id, id), isNull(projects.deletedAt)))
+      .where(and(eq(projects.id, id), isNull(projects.deletedAt), getProjectVisibilityFilter(user)))
       .limit(1);
 
     if (!project) return null;
@@ -241,6 +246,18 @@ export const projectService = {
   },
 
   async list(filters: ProjectListFilters = {}, user?: SessionUser) {
+    const assignedUserId = filters.assignedUserId ?? filters.ownerId;
+    let assignedUserFilter: SQL | undefined;
+    if (assignedUserId) {
+      const memberProjects = db.select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .where(eq(projectMembers.userId, assignedUserId));
+      assignedUserFilter = or(
+        eq(projects.ownerId, assignedUserId),
+        eq(projects.createdBy, assignedUserId),
+        inArray(projects.id, memberProjects)
+      );
+    }
     const rows = await db
       .select({
         id: projects.id,
@@ -278,6 +295,7 @@ export const projectService = {
       })
       .from(projects)
       .leftJoin(companies, eq(projects.companyId, companies.id))
+      .leftJoin(contacts, eq(projects.primaryContactId, contacts.id))
       .leftJoin(users, eq(projects.ownerId, users.id))
       .where(and(
         isNull(projects.deletedAt),
@@ -285,8 +303,18 @@ export const projectService = {
         filters.stage ? eq(projects.stage, filters.stage as ProjectStage) : undefined,
         filters.status ? eq(projects.status, filters.status as ProjectStatus) : undefined,
         filters.serviceType ? eq(projects.serviceType, filters.serviceType as ProjectServiceType) : undefined,
-        filters.ownerId ? eq(projects.ownerId, filters.ownerId) : undefined,
-        filters.search ? ilike(projects.name, `%${filters.search}%`) : undefined,
+        assignedUserFilter,
+        filters.isDelayed !== undefined ? eq(projects.isDelayed, filters.isDelayed) : undefined,
+        filters.dateFrom ? gte(projects.startDate, filters.dateFrom) : undefined,
+        filters.dateTo ? lte(projects.endDate, filters.dateTo) : undefined,
+        filters.search ? or(
+          ilike(projects.name, `%${filters.search}%`),
+          ilike(projects.description, `%${filters.search}%`),
+          ilike(companies.name, `%${filters.search}%`),
+          ilike(sql<string>`concat(${contacts.firstName}, ' ', ${contacts.lastName})`, `%${filters.search}%`),
+          ilike(contacts.email, `%${filters.search}%`)
+        ) : undefined,
+        user ? getProjectVisibilityFilter(user) : undefined,
       ))
       .orderBy(asc(projects.endDate), desc(projects.createdAt));
 

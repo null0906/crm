@@ -18,13 +18,13 @@ async function runMigrations() {
   await migrate(db, { migrationsFolder: path.join(process.cwd(), 'src/server/db/migrations') });
   console.log('Migrations complete.');
 
-  const pipelines = await pool.query<{ id: string; name: string; pipeline_type: string | null }>(
-    'SELECT id, name, pipeline_type FROM pipelines ORDER BY name'
+  const pipelines = await pool.query<{ id: string; name: string; pipeline_type: string | null; is_sales_pipeline: boolean }>(
+    'SELECT id, name, pipeline_type, is_sales_pipeline FROM pipelines ORDER BY name'
   );
 
   console.log('=== PIPELINE TYPE VERIFICATION ===');
   pipelines.rows.forEach((p) => {
-    console.log(`  ${(p.pipeline_type ?? 'null').padEnd(20)} → ${p.name}`);
+    console.log(`  ${(p.pipeline_type ?? 'null').padEnd(20)} onboarding=${String(p.is_sales_pipeline).padEnd(5)} → ${p.name}`);
   });
 
   const hasActiveDelivery = pipelines.rows.some((p) => p.pipeline_type === 'active_delivery');

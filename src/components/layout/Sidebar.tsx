@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Users, Building2, TrendingUp, Activity, LayoutDashboard,
-  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban, BarChart3, Gauge, ShieldCheck, ClipboardCheck,
+  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban, BarChart3, Gauge, ShieldCheck, ClipboardCheck, CheckSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -29,6 +29,7 @@ const mainNav: NavItem[] = [
   { href: '/partners',   label: 'Partners',    icon: Handshake },
   { href: '/ai-chat',    label: 'AI Assistant', icon: Sparkles },
   { href: '/activities', label: 'Activities',  icon: Activity },
+  { href: '/tasks',      label: 'My Tasks',     icon: CheckSquare },
 ];
 
 const complianceNav: NavItem[] = [
@@ -40,6 +41,7 @@ const insightsNav: NavItem[] = [
   { href: '/command-center', label: 'Command Center', icon: Gauge },
   { href: '/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
   { href: '/reports',        label: 'Reports',        icon: BarChart3 },
+  { href: '/reports/tasks',  label: 'Task Reports',   icon: CheckSquare },
 ];
 
 const adminNav: NavItem[] = [
@@ -59,6 +61,9 @@ export function Sidebar() {
   const visibleMainNav = roleSlug === 'super_admin'
     ? [...mainNav.slice(0, 3), { href: '/onboarding', label: 'Onboarding', icon: ClipboardCheck }, ...mainNav.slice(3)]
     : mainNav;
+  const visibleInsightsNav = roleSlug === 'super_admin'
+    ? insightsNav
+    : insightsNav.filter((item) => item.href !== '/reports/tasks');
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -91,7 +96,7 @@ export function Sidebar() {
         <nav className="flex-1 overflow-y-auto py-3 space-y-4">
           <NavSection title=""           items={visibleMainNav} collapsed={collapsed} pathname={pathname} />
           <NavSection title="Compliance" items={complianceNav}  collapsed={collapsed} pathname={pathname} />
-          <NavSection title="Insights"   items={insightsNav}    collapsed={collapsed} pathname={pathname} />
+          <NavSection title="Insights"   items={visibleInsightsNav} collapsed={collapsed} pathname={pathname} />
           <NavSection title="Admin"      items={adminNav}       collapsed={collapsed} pathname={pathname} />
         </nav>
 
