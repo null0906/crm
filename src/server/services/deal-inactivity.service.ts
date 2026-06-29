@@ -60,14 +60,25 @@ async function getLatestActivityAt(args: {
     activityConditions.push(inArray(activities.contactId, contactIds));
   }
 
+  const meaningfulTouchpointAt = sql<Date>`
+    CASE
+      WHEN ${activities.activityType} = 'task' THEN ${activities.taskCompletedAt}
+      ELSE ${activities.occurredAt}
+    END
+  `;
+
   const [row] = await db
-    .select({ occurredAt: activities.occurredAt })
+    .select({ occurredAt: meaningfulTouchpointAt })
     .from(activities)
     .where(and(
       isNull(activities.deletedAt),
+      eq(activities.isAutomated, false),
+      // Creating a future task is a planned follow-up, not a completed touchpoint.
+      // Completed manual tasks use their completion time above.
+      sql`(${activities.activityType} <> 'task' OR ${activities.taskCompletedAt} IS NOT NULL)`,
       or(...activityConditions),
     ))
-    .orderBy(desc(activities.occurredAt))
+    .orderBy(desc(meaningfulTouchpointAt))
     .limit(1);
 
   const latestActivityAt = row?.occurredAt ?? null;
@@ -85,6 +96,51 @@ async function getLatestActivityAt(args: {
   if (!companyLastContactedAt) return latestActivityAt;
 
   return latestActivityAt > companyLastContactedAt ? latestActivityAt : companyLastContactedAt;
+}
+
+async function hasOpenManualFollowUp(args: {
+  dealId: string;
+  companyId?: string | null;
+  primaryContactId?: string | null;
+  linkedContactIds: string[];
+}): Promise<boolean> {
+  const contactIds = Array.from(
+    new Set(
+      [args.primaryContactId, ...args.linkedContactIds]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    )
+  );
+
+  const associationConditions = [eq(activities.dealId, args.dealId)];
+
+  if (args.companyId) {
+    associationConditions.push(eq(activities.companyId, args.companyId));
+    associationConditions.push(sql`EXISTS (
+      SELECT 1
+      FROM ${contacts}
+      WHERE ${contacts.id} = ${activities.contactId}
+        AND ${contacts.companyId} = ${args.companyId}
+        AND ${contacts.deletedAt} IS NULL
+    )`);
+  }
+
+  if (contactIds.length > 0) {
+    associationConditions.push(inArray(activities.contactId, contactIds));
+  }
+
+  const [task] = await db
+    .select({ id: activities.id })
+    .from(activities)
+    .where(and(
+      eq(activities.activityType, 'task'),
+      eq(activities.isAutomated, false),
+      isNull(activities.deletedAt),
+      isNull(activities.taskCompletedAt),
+      or(...associationConditions),
+    ))
+    .limit(1);
+
+  return Boolean(task);
 }
 
 function getWholeDaysBetween(from: Date, to: Date): number {
@@ -163,6 +219,18 @@ export async function collectDealInactivityReminderGroups(now = new Date()): Pro
     const linkedContactIds = linkedContacts.map((row) => row.contactId);
     const hasAnyContact = Boolean(deal.primaryContactId) || linkedContactIds.length > 0;
     if (!hasAnyContact) continue;
+
+    // A user has explicitly scheduled a follow-up. Its own due-reminder flow is
+    // authoritative until it is completed or removed, so do not add a duplicate
+    // inactivity email for the same prospect/client.
+    if (await hasOpenManualFollowUp({
+      dealId: deal.id,
+      companyId: deal.companyId,
+      primaryContactId: deal.primaryContactId,
+      linkedContactIds,
+    })) {
+      continue;
+    }
 
     const latestActivityAt = await getLatestActivityAt({
       dealId: deal.id,

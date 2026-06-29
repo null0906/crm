@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { CheckSquare, Clock, Plus, Timer, X } from 'lucide-react';
+import { CheckSquare, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
@@ -12,8 +12,11 @@ import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 type TaskRow = Record<string, any>;
 type LinkType = 'project' | 'deal' | 'internal';
 
-function dateInput(date: Date) {
-  return date.toISOString().slice(0, 10);
+function dateTimeInput(value: unknown) {
+  const date = value ? new Date(String(value)) : new Date();
+  if (Number.isNaN(date.getTime())) return '';
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
 function formatDateTime(value: unknown) {
@@ -57,6 +60,10 @@ export default function MyTasksPage() {
   const cancelTask = trpc.personalTasks.cancel.useMutation({
     onSuccess: async () => { toast.success('Task cancelled'); await utils.personalTasks.invalidate(); },
     onError: (error) => toast.error('Could not cancel task', { description: error.message }),
+  });
+  const deleteTask = trpc.personalTasks.delete.useMutation({
+    onSuccess: async () => { toast.success('Task deleted'); await utils.personalTasks.invalidate(); },
+    onError: (error) => toast.error('Could not delete task', { description: error.message }),
   });
 
   const totalHours = Number((stats as Record<string, unknown>).total_hours ?? 0);
@@ -105,7 +112,18 @@ export default function MyTasksPage() {
 
         {isLoading ? <div className="text-sm text-slate-400">Loading...</div> : (
           <div className="space-y-2">
-            {(tasks as TaskRow[]).map((task) => <TaskCard key={task.id} task={task} onComplete={() => setCompleteTask(task)} onCancel={() => cancelTask.mutate({ id: task.id })} />)}
+            {(tasks as TaskRow[]).map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                onComplete={() => setCompleteTask(task)}
+                onCancel={() => cancelTask.mutate({ id: task.id })}
+                onDelete={() => {
+                  if (window.confirm('Delete this task permanently?')) deleteTask.mutate({ id: task.id });
+                }}
+                deleting={deleteTask.isPending}
+              />
+            ))}
             {(tasks as TaskRow[]).length === 0 && <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-400">No personal tasks found.</div>}
           </div>
         )}
@@ -120,13 +138,18 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 'gr
   return <div className="rounded-xl border border-[var(--border-subtle)] bg-white p-4 shadow-sm"><p className={`text-2xl font-black ${tone === 'green' ? 'text-emerald-600' : 'text-[var(--text-primary)]'}`}>{value}</p><p className="text-xs font-bold uppercase tracking-[0.06em] text-[var(--text-tertiary)]">{label}</p></div>;
 }
 
-function TaskCard({ task, onComplete, onCancel }: { task: TaskRow; onComplete: () => void; onCancel: () => void }) {
+function TaskCard({ task, onComplete, onCancel, onDelete, deleting }: { task: TaskRow; onComplete: () => void; onCancel: () => void; onDelete: () => void; deleting: boolean }) {
   const active = task.status === 'in_progress';
   return (
     <div className={`rounded-xl border border-l-[3px] bg-white p-4 shadow-sm ${active ? 'border-l-amber-500' : task.status === 'completed' ? 'border-l-emerald-500' : 'border-l-slate-300'}`}>
-      <div className="mb-1 flex items-center justify-between gap-3 text-[10.5px] font-black uppercase tracking-[0.06em]">
-        <span className={active ? 'text-amber-600' : task.status === 'completed' ? 'text-emerald-600' : 'text-slate-400'}>{active ? 'In Progress' : task.status}</span>
-        <span className="text-slate-400">{active ? `Started ${formatDateTime(task.startedAt)}` : `${formatDateTime(task.completedAt)} · ${hours(task.hoursSpent)}`}</span>
+      <div className="mb-1 flex items-start justify-between gap-3">
+        <div className="min-w-0 text-[10.5px] font-black uppercase tracking-[0.06em]">
+          <span className={active ? 'text-amber-600' : task.status === 'completed' ? 'text-emerald-600' : 'text-slate-400'}>{active ? 'In Progress' : task.status}</span>
+          <span className="ml-2 text-slate-400">{active ? `Started ${formatDateTime(task.startedAt)}` : `${formatDateTime(task.completedAt)} · ${hours(task.hoursSpent)}`}</span>
+        </div>
+        <Button size="icon" variant="ghost" onClick={onDelete} disabled={deleting} title="Delete task" className="h-7 w-7 shrink-0 text-slate-400 hover:text-red-600">
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
       <p className="text-sm font-bold text-slate-900">{task.taskName}</p>
       {task.description && <p className="mt-1 text-xs text-slate-500">{task.description}</p>}
@@ -173,20 +196,32 @@ function AddTaskPanel({ open, onClose }: { open: boolean; onClose: () => void })
 function CompleteTaskPanel({ task, onClose }: { task: TaskRow | null; onClose: () => void }) {
   const utils = trpc.useUtils();
   const [hoursSpent, setHoursSpent] = React.useState('1');
+  const [startedAt, setStartedAt] = React.useState('');
   const [completedAt, setCompletedAt] = React.useState('');
-  React.useEffect(() => { if (task) { setHoursSpent('1'); setCompletedAt(new Date().toISOString().slice(0, 16)); } }, [task]);
+  React.useEffect(() => {
+    if (task) {
+      setHoursSpent('1');
+      setStartedAt(dateTimeInput(task.startedAt));
+      setCompletedAt(dateTimeInput(new Date()));
+    }
+  }, [task]);
   const complete = trpc.personalTasks.complete.useMutation({
     onSuccess: async () => { toast.success('Task completed'); onClose(); await utils.personalTasks.invalidate(); },
     onError: (error) => toast.error('Could not complete task', { description: error.message }),
   });
+  const startTime = startedAt ? new Date(startedAt) : null;
+  const completionTime = completedAt ? new Date(completedAt) : null;
+  const invalidRange = Boolean(startTime && completionTime && startTime > completionTime);
+  const invalidHours = !Number.isFinite(Number(hoursSpent)) || Number(hoursSpent) < 0.1 || Number(hoursSpent) > 24;
   return <SlideOverPanel open={Boolean(task)} onClose={onClose} title="Complete Task" width="md">
     {task && <div className="space-y-5 p-5">
       <div><p className="text-sm font-bold text-slate-900">{task.taskName}</p><p className="text-xs text-slate-500">Started {formatDateTime(task.startedAt)}</p></div>
       <div><label className="text-xs font-bold uppercase text-slate-500">Hours spent</label><Input type="number" min="0.1" max="24" step="0.1" value={hoursSpent} onChange={(e) => setHoursSpent(e.target.value)} /></div>
       <div className="flex flex-wrap gap-1.5">{[0.5, 1, 2, 3, 4, 5, 6, 8].map((h) => <button key={h} onClick={() => setHoursSpent(String(h))} className="rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">{h}</button>)}</div>
+      <div><label className="text-xs font-bold uppercase text-slate-500">Started at</label><Input type="datetime-local" value={startedAt} onChange={(e) => setStartedAt(e.target.value)} /></div>
       <div><label className="text-xs font-bold uppercase text-slate-500">Completed at</label><Input type="datetime-local" value={completedAt} onChange={(e) => setCompletedAt(e.target.value)} /></div>
-      <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={complete.isPending} onClick={() => complete.mutate({ id: task.id, hoursSpent: Number(hoursSpent), completedAt: completedAt ? new Date(completedAt).toISOString() : undefined })}>Save & Complete</Button></div>
+      {invalidRange && <p className="text-xs font-semibold text-red-600">Started time cannot be after completed time.</p>}
+      <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={complete.isPending || invalidHours || invalidRange} onClick={() => complete.mutate({ id: task.id, hoursSpent: Number(hoursSpent), startedAt: startedAt ? new Date(startedAt).toISOString() : undefined, completedAt: completedAt ? new Date(completedAt).toISOString() : undefined })}>Save & Complete</Button></div>
     </div>}
   </SlideOverPanel>;
 }
-

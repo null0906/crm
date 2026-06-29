@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Users, Building2, TrendingUp, Activity, LayoutDashboard,
-  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban, BarChart3, Gauge, ShieldCheck, ClipboardCheck, CheckSquare,
+  Settings, ChevronLeft, ChevronRight, Handshake, Sparkles, FolderKanban, BarChart3, Gauge, ShieldCheck, ClipboardCheck, CheckSquare, BriefcaseBusiness,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -38,6 +38,7 @@ const complianceNav: NavItem[] = [
 ];
 
 const insightsNav: NavItem[] = [
+  { href: '/executive-overview', label: 'Executive Overview', icon: BriefcaseBusiness },
   { href: '/command-center', label: 'Command Center', icon: Gauge },
   { href: '/dashboard',      label: 'Dashboard',      icon: LayoutDashboard },
   { href: '/reports',        label: 'Reports',        icon: BarChart3 },
@@ -63,7 +64,7 @@ export function Sidebar() {
     : mainNav;
   const visibleInsightsNav = roleSlug === 'super_admin'
     ? insightsNav
-    : insightsNav.filter((item) => item.href !== '/reports/tasks');
+    : insightsNav.filter((item) => !['/reports/tasks', '/executive-overview'].includes(item.href));
 
   return (
     <TooltipProvider delayDuration={0}>

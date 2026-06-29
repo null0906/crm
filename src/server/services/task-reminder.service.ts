@@ -1,6 +1,6 @@
 import { db } from '@/server/db';
 import { activities, companies, contacts, deals, notifications, users } from '@/server/db/schema';
-import { and, desc, eq, isNull, lte } from 'drizzle-orm';
+import { and, desc, eq, isNull, lte, sql } from 'drizzle-orm';
 
 export type TaskReminderGroup = {
   ownerId: string;
@@ -70,6 +70,14 @@ export async function collectTaskDueReminderGroups(now = new Date()): Promise<{ 
       eq(activities.activityType, 'task'),
       isNull(activities.deletedAt),
       isNull(activities.taskCompletedAt),
+      // The stale-alert automation previously created a second no-activity
+      // reminder stream. Those legacy tasks are retired by the automation and
+      // must never be included in the user-set reminder digest.
+      sql`NOT (
+        ${activities.isAutomated} = true
+        AND ${activities.metadata}->>'automationKey' = 'stale_alerts'
+        AND ${activities.metadata}->>'staleType' IN ('deal_no_activity', 'contact_no_activity')
+      )`,
       lte(activities.taskDueDate, today),
     ));
 

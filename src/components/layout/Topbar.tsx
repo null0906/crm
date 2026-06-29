@@ -36,6 +36,15 @@ export function Topbar() {
     return () => document.removeEventListener('keydown', down);
   }, []);
 
+  async function handleSignOut() {
+    try {
+      // Let NextAuth clear its cookies without asking it to build an absolute redirect URL.
+      await signOut({ redirect: false });
+    } finally {
+      window.location.assign('/login');
+    }
+  }
+
   return (
     <>
       <header className="topbar sticky top-0 z-30 flex h-[52px] items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-card)] px-3 shadow-[0_1px_0_var(--border-subtle),_0_2px_6px_rgba(15,20,40,0.04)] sm:gap-3 md:px-6">
@@ -102,7 +111,7 @@ export function Topbar() {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={() => void handleSignOut()}
                 className="text-[var(--color-danger)] focus:text-[var(--color-danger)] focus:bg-[var(--color-danger-bg)] gap-2"
               >
                 <LogOut className="w-3.5 h-3.5" strokeWidth={1.75} />
@@ -120,6 +129,7 @@ export function Topbar() {
 
 function getPageTitle(pathname: string): string {
   if (pathname.startsWith('/reports/tasks')) return 'Task Reports';
+  if (pathname.startsWith('/executive-overview')) return 'Executive Overview';
 
   const segment = pathname.split('/').filter(Boolean)[0] ?? 'dashboard';
   const titles: Record<string, string> = {
@@ -140,6 +150,7 @@ function getPageTitle(pathname: string): string {
 
 function getPageSubtext(pathname: string): string {
   if (pathname.startsWith('/reports/tasks')) return 'Team time tracking';
+  if (pathname.startsWith('/executive-overview')) return 'Projects, prospects, and team workload';
 
   const segment = pathname.split('/').filter(Boolean)[0] ?? 'dashboard';
   const subtexts: Record<string, string> = {

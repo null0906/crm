@@ -32,7 +32,7 @@ export const automationDefinitions = [
   {
     key: 'stale_alerts',
     name: 'Stale Prospect Alerts',
-    description: 'Creates follow-up tasks for quiet prospects and contacts.',
+    description: 'Creates follow-up tasks when prospects remain stuck in a pipeline stage.',
     schedule: 'Daily 8:30 AM',
   },
   {
@@ -368,7 +368,26 @@ async function staleTaskExists(args: {
   return Boolean(existing);
 }
 
+async function retireLegacyNoActivityTasks(db: DbClient): Promise<number> {
+  const retired = await db
+    .update(activities)
+    .set({ taskCompletedAt: new Date(), updatedAt: new Date() })
+    .where(and(
+      eq(activities.activityType, 'task'),
+      eq(activities.isAutomated, true),
+      isNull(activities.deletedAt),
+      isNull(activities.taskCompletedAt),
+      sql`${activities.metadata}->>'automationKey' = 'stale_alerts'`,
+      sql`${activities.metadata}->>'staleType' IN ('deal_no_activity', 'contact_no_activity')`,
+    ))
+    .returning({ id: activities.id });
+
+  return retired.length;
+}
+
 export async function createStaleAlerts(db: DbClient = defaultDb): Promise<{ tasksCreated: number; notificationsSent: number }> {
+  const retiredLegacyTasks = await retireLegacyNoActivityTasks(db);
+
   if (!(await isAutomationEnabled('stale_alerts', db))) {
     return { tasksCreated: 0, notificationsSent: 0 };
   }
@@ -377,78 +396,6 @@ export async function createStaleAlerts(db: DbClient = defaultDb): Promise<{ tas
   const taskDueDate = todayDateString(tomorrow);
   let tasksCreated = 0;
   let notificationsSent = 0;
-
-  const staleDealsResult = await db.execute(sql`
-    SELECT
-      d.id,
-      d.title,
-      d.owner_id,
-      COALESCE(MAX(a.occurred_at), d.created_at) AS last_activity_at,
-      EXTRACT(DAY FROM NOW() - COALESCE(MAX(a.occurred_at), d.created_at))::int AS days_since_activity
-    FROM deals d
-    LEFT JOIN activities a ON a.deal_id = d.id AND a.deleted_at IS NULL
-    WHERE d.status = 'open'
-      AND d.deleted_at IS NULL
-      AND d.owner_id IS NOT NULL
-    GROUP BY d.id, d.title, d.owner_id, d.created_at
-    HAVING COALESCE(MAX(a.occurred_at), d.created_at) < NOW() - INTERVAL '14 days'
-  `);
-
-  for (const deal of asRows<{ id: string; title: string; owner_id: string; days_since_activity: number }>(staleDealsResult)) {
-    if (await staleTaskExists({ dealId: deal.id, staleType: 'deal_no_activity', db })) continue;
-
-    await createAutomatedActivity({
-      activityType: 'task',
-      subject: `Stale follow-up required - no activity in ${deal.days_since_activity} days`,
-      body: 'Automatically created because this open prospect has not had recent activity.',
-      dealId: deal.id,
-      performedBy: deal.owner_id,
-      taskDueDate,
-      taskPriority: deal.days_since_activity > 21 ? 'high' : 'medium',
-      metadata: { automationKey: 'stale_alerts', staleType: 'deal_no_activity' },
-    }, db);
-    tasksCreated += 1;
-    if (await notifyUser(deal.owner_id, `Stale prospect alert\n\n"${deal.title}" has had no activity for ${deal.days_since_activity} days.`)) {
-      notificationsSent += 1;
-    }
-  }
-
-  const staleContactsResult = await db.execute(sql`
-    SELECT
-      c.id,
-      c.first_name,
-      c.last_name,
-      c.owner_id,
-      COALESCE(MAX(a.occurred_at), c.created_at) AS last_activity_at,
-      EXTRACT(DAY FROM NOW() - COALESCE(MAX(a.occurred_at), c.created_at))::int AS days_since_activity
-    FROM contacts c
-    LEFT JOIN activities a ON a.contact_id = c.id AND a.deleted_at IS NULL
-    WHERE c.status IN ('contacted', 'qualified')
-      AND c.deleted_at IS NULL
-      AND c.owner_id IS NOT NULL
-    GROUP BY c.id, c.first_name, c.last_name, c.owner_id, c.created_at
-    HAVING COALESCE(MAX(a.occurred_at), c.created_at) < NOW() - INTERVAL '21 days'
-  `);
-
-  for (const contact of asRows<{ id: string; first_name: string; last_name: string; owner_id: string; days_since_activity: number }>(staleContactsResult)) {
-    if (await staleTaskExists({ contactId: contact.id, staleType: 'contact_no_activity', db })) continue;
-    const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ');
-
-    await createAutomatedActivity({
-      activityType: 'task',
-      subject: `Stale follow-up required - ${name}`,
-      body: `No activity has been logged in ${contact.days_since_activity} days.`,
-      contactId: contact.id,
-      performedBy: contact.owner_id,
-      taskDueDate,
-      taskPriority: contact.days_since_activity > 30 ? 'high' : 'medium',
-      metadata: { automationKey: 'stale_alerts', staleType: 'contact_no_activity' },
-    }, db);
-    tasksCreated += 1;
-    if (await notifyUser(contact.owner_id, `Stale contact alert\n\n${name} has had no activity for ${contact.days_since_activity} days.`)) {
-      notificationsSent += 1;
-    }
-  }
 
   const stuckDealsResult = await db.execute(sql`
     SELECT d.id, d.title, d.owner_id, ps.name AS stage_name,
@@ -477,7 +424,7 @@ export async function createStaleAlerts(db: DbClient = defaultDb): Promise<{ tas
     tasksCreated += 1;
   }
 
-  await recordAutomationRun('stale_alerts', `${tasksCreated} tasks created`, db);
+  await recordAutomationRun('stale_alerts', `${tasksCreated} stuck-stage tasks created; ${retiredLegacyTasks} legacy no-activity tasks retired`, db);
   return { tasksCreated, notificationsSent };
 }
 

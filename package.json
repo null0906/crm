@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:local": "DATABASE_URL=postgresql://crm_user:crm_password@127.0.0.1:5433/seccomply_crm DATABASE_POOL_MAX=10 NEXTAUTH_URL=http://localhost:3000 APP_URL=http://localhost:3000 next dev --hostname 127.0.0.1 --port 3000",
     "build": "next build",
     "start": "next start",
     "db:generate": "drizzle-kit generate",
@@ -11,6 +12,10 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/server/db/seed.ts",
+    "db:local:up": "docker compose up -d postgres",
+    "db:local:down": "docker compose down",
+    "db:local:setup": "bash src/scripts/setup-local-db.sh",
+    "db:local:clone": "bash src/scripts/clone-production-to-local.sh",
     "backfill:projects": "tsx src/scripts/backfill-projects.ts",
     "backfill:activities": "tsx src/scripts/backfill-activity-sync.ts",
     "backfill:onboardings": "tsx src/scripts/backfill-onboardings.ts",

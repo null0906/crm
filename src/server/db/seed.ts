@@ -120,8 +120,15 @@ async function seed() {
   ];
 
   console.log('Creating roles...');
-  const insertedRoles = await db.insert(schema.roles).values(roleData).returning();
-  const roleMap = Object.fromEntries(insertedRoles.map((r) => [r.slug, r.id]));
+  await db
+    .insert(schema.roles)
+    .values(roleData)
+    .onConflictDoNothing({ target: schema.roles.slug });
+
+  const persistedRoles = await db
+    .select({ id: schema.roles.id, slug: schema.roles.slug })
+    .from(schema.roles);
+  const roleMap = Object.fromEntries(persistedRoles.map((role) => [role.slug, role.id]));
 
   // 2. Create admin users
   const bcryptRounds = Number(process.env.BCRYPT_ROUNDS) || 12;

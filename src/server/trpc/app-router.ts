@@ -25,6 +25,7 @@ import { reportsRouter } from './routers/reports.router';
 import { complianceRouter } from './routers/compliance.router';
 import { onboardingRouter } from './routers/onboarding.router';
 import { personalTasksRouter } from './routers/personal-tasks.router';
+import { executiveOverviewRouter } from './routers/executive-overview.router';
 
 export const appRouter = router({
   contacts: contactRouter,
@@ -53,6 +54,7 @@ export const appRouter = router({
   compliance: complianceRouter,
   onboarding: onboardingRouter,
   personalTasks: personalTasksRouter,
+  executiveOverview: executiveOverviewRouter,
 });
 
 export type AppRouter = typeof appRouter;

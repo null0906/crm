@@ -72,12 +72,14 @@ export const personalTasksRouter = router({
     .input(z.object({
       id: z.string().uuid(),
       hoursSpent: z.number().min(0.1).max(24),
+      startedAt: z.string().optional(),
       completedAt: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       try {
         return await personalTaskService.complete(input.id, ctx.user!, {
           hoursSpent: input.hoursSpent,
+          startedAt: input.startedAt ? new Date(input.startedAt) : undefined,
           completedAt: input.completedAt ? new Date(input.completedAt) : undefined,
         });
       } catch (error) {
@@ -135,4 +137,3 @@ export const personalTasksRouter = router({
       return personalTaskService.getTeamSummary(ctx.user!, new Date(input.from), new Date(input.to));
     }),
 });
-

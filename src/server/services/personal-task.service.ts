@@ -15,6 +15,7 @@ export interface TaskCreateInput {
 
 export interface TaskCompleteInput {
   hoursSpent: number;
+  startedAt?: Date;
   completedAt?: Date;
 }
 
@@ -115,11 +116,15 @@ export const personalTaskService = {
     if (task.userId !== user.id) throw new Error('You can only complete your own tasks.');
     if (task.status === 'completed') throw new Error('Task is already completed.');
     if (input.hoursSpent < 0.1 || input.hoursSpent > 24) throw new Error('Hours spent must be between 0.1 and 24.');
+    const startedAt = input.startedAt ?? task.startedAt;
+    const completedAt = input.completedAt ?? new Date();
+    if (startedAt > completedAt) throw new Error('Started time cannot be after completed time.');
 
     const [updated] = await db.update(personalTasks).set({
       status: 'completed',
+      startedAt,
       hoursSpent: input.hoursSpent.toString(),
-      completedAt: input.completedAt ?? new Date(),
+      completedAt,
       updatedAt: new Date(),
     }).where(eq(personalTasks.id, taskId)).returning();
     return updated!;
