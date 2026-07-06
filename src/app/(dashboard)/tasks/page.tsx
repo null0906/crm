@@ -42,21 +42,35 @@ function thisWeekRange() {
   from.setHours(0, 0, 0, 0);
   const to = new Date(now);
   to.setHours(23, 59, 59, 999);
-  return { from, to };
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+}
+
+function endOfDayIso(date: string) {
+  return new Date(`${date}T23:59:59`).toISOString();
 }
 
 export default function MyTasksPage() {
   const utils = trpc.useUtils();
   const range = React.useMemo(thisWeekRange, []);
+  const [from, setFrom] = React.useState(range.from);
+  const [to, setTo] = React.useState(range.to);
   const [status, setStatus] = React.useState('');
   const [linkType, setLinkType] = React.useState('');
+  const [companyId, setCompanyId] = React.useState('');
   const [addOpen, setAddOpen] = React.useState(false);
   const [completeTask, setCompleteTask] = React.useState<TaskRow | null>(null);
-  const { data: tasks = [], isLoading } = trpc.personalTasks.listMy.useQuery({
+  const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 500 } });
+  const taskFilters = {
     status: (status as 'in_progress' | 'completed' | 'cancelled') || undefined,
     linkType: (linkType as 'project' | 'deal' | 'internal' | 'any') || undefined,
+    companyId: companyId || undefined,
+    from: new Date(from).toISOString(),
+    to: endOfDayIso(to),
+  };
+  const { data: tasks = [], isLoading } = trpc.personalTasks.listMy.useQuery({
+    ...taskFilters,
   });
-  const { data: stats = {} } = trpc.personalTasks.myStats.useQuery({ from: range.from.toISOString(), to: range.to.toISOString() });
+  const { data: stats = {} } = trpc.personalTasks.myStats.useQuery(taskFilters);
   const cancelTask = trpc.personalTasks.cancel.useMutation({
     onSuccess: async () => { toast.success('Task cancelled'); await utils.personalTasks.invalidate(); },
     onError: (error) => toast.error('Could not cancel task', { description: error.message }),
@@ -70,6 +84,8 @@ export default function MyTasksPage() {
   const projectHours = Number((stats as Record<string, unknown>).project_hours ?? 0);
   const prospectHours = Number((stats as Record<string, unknown>).prospect_hours ?? 0);
   const internalHours = Number((stats as Record<string, unknown>).internal_hours ?? 0);
+  const dayCount = Math.max(1, Math.ceil((new Date(endOfDayIso(to)).getTime() - new Date(from).getTime()) / 86_400_000));
+  const companies = (companiesData?.items ?? []) as Array<Record<string, unknown>>;
 
   return (
     <div className="flex h-full flex-col bg-[var(--surface-page)]">
@@ -88,7 +104,7 @@ export default function MyTasksPage() {
           <Stat label="Total tasks" value={String((stats as Record<string, unknown>).total_tasks ?? 0)} />
           <Stat label="Completed" value={String((stats as Record<string, unknown>).completed_tasks ?? 0)} tone="green" />
           <Stat label="Hours logged" value={hours(totalHours)} />
-          <Stat label="Avg / day" value={hours(totalHours / 5)} />
+          <Stat label="Avg / day" value={hours(totalHours / dayCount)} />
         </div>
         <div className="mb-5 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-white">
           <div className="flex h-3">
@@ -102,12 +118,21 @@ export default function MyTasksPage() {
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="h-9 rounded-lg border border-[var(--border-default)] bg-white px-3 text-sm" />
+          <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="h-9 rounded-lg border border-[var(--border-default)] bg-white px-3 text-sm" />
           <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-9 rounded-lg border border-[var(--border-default)] bg-white px-3 text-sm">
             <option value="">All statuses</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
           </select>
           <select value={linkType} onChange={(event) => setLinkType(event.target.value)} className="h-9 rounded-lg border border-[var(--border-default)] bg-white px-3 text-sm">
             <option value="">All links</option><option value="project">Projects</option><option value="deal">Prospects</option><option value="internal">Internal</option>
           </select>
+          <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} className="h-9 rounded-lg border border-[var(--border-default)] bg-white px-3 text-sm">
+            <option value="">All clients</option>
+            {companies.map((company) => <option key={String(company.id)} value={String(company.id)}>{String(company.name ?? 'Unnamed client')}</option>)}
+          </select>
+          {(status || linkType || companyId || from !== range.from || to !== range.to) && (
+            <Button variant="ghost" onClick={() => { setFrom(range.from); setTo(range.to); setStatus(''); setLinkType(''); setCompanyId(''); }}>Reset</Button>
+          )}
         </div>
 
         {isLoading ? <div className="text-sm text-slate-400">Loading...</div> : (

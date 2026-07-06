@@ -4,6 +4,14 @@ import { companies, dealTeamMembers, deals, personalTasks, projectMembers, proje
 import type { PersonalTaskStatus, SessionUser } from '@/lib/types';
 
 type LinkType = 'project' | 'deal' | 'internal' | 'any';
+type TaskFilters = {
+  userId?: string;
+  status?: PersonalTaskStatus;
+  from?: Date;
+  to?: Date;
+  linkType?: LinkType;
+  companyId?: string;
+};
 
 export interface TaskCreateInput {
   taskName: string;
@@ -44,6 +52,11 @@ function linkTypeFilter(linkType?: LinkType): SQL | undefined {
   if (linkType === 'deal') return sql`${personalTasks.linkedDealId} IS NOT NULL`;
   if (linkType === 'internal') return eq(personalTasks.isInternal, true);
   return undefined;
+}
+
+function companyFilter(companyId?: string): SQL | undefined {
+  if (!companyId) return undefined;
+  return or(eq(projects.companyId, companyId), eq(deals.companyId, companyId));
 }
 
 function taskSelect() {
@@ -157,67 +170,89 @@ export const personalTaskService = {
     await db.delete(personalTasks).where(eq(personalTasks.id, taskId));
   },
 
-  async listMyTasks(user: SessionUser, filters: { status?: PersonalTaskStatus; from?: Date; to?: Date; linkType?: LinkType } = {}) {
+  async listMyTasks(user: SessionUser, filters: TaskFilters = {}) {
     return listTasks(and(
       eq(personalTasks.userId, user.id),
       filters.status ? eq(personalTasks.status, filters.status) : undefined,
       filters.from ? sql`${personalTasks.startedAt} >= ${filters.from}` : undefined,
       filters.to ? sql`${personalTasks.startedAt} <= ${filters.to}` : undefined,
-      linkTypeFilter(filters.linkType)
+      linkTypeFilter(filters.linkType),
+      companyFilter(filters.companyId)
     ));
   },
 
-  async listAllTasks(user: SessionUser, filters: { userId?: string; status?: PersonalTaskStatus; from?: Date; to?: Date; linkType?: LinkType } = {}) {
+  async listAllTasks(user: SessionUser, filters: TaskFilters = {}) {
     if (!isSuperAdmin(user)) throw new Error('Only super admins can view all personal tasks.');
     return listTasks(and(
       filters.userId ? eq(personalTasks.userId, filters.userId) : undefined,
       filters.status ? eq(personalTasks.status, filters.status) : undefined,
       filters.from ? sql`${personalTasks.startedAt} >= ${filters.from}` : undefined,
       filters.to ? sql`${personalTasks.startedAt} <= ${filters.to}` : undefined,
-      linkTypeFilter(filters.linkType)
+      linkTypeFilter(filters.linkType),
+      companyFilter(filters.companyId)
     ));
   },
 
-  async getStats(user: SessionUser, from: Date, to: Date, userId?: string) {
+  async getStats(user: SessionUser, from: Date, to: Date, filters: Omit<TaskFilters, 'from' | 'to'> = {}) {
+    const userId = filters.userId;
     if (userId && !isSuperAdmin(user)) throw new Error('Only super admins can view other users task stats.');
     const targetUserId = userId ?? user.id;
-    const result = await db.execute(sql`
-      SELECT
-        COUNT(*)::int AS total_tasks,
-        COUNT(*) FILTER (WHERE status = 'in_progress')::int AS active_tasks,
-        COUNT(*) FILTER (WHERE status = 'completed')::int AS completed_tasks,
-        COALESCE(SUM(hours_spent) FILTER (WHERE status = 'completed'), 0)::text AS total_hours,
-        COALESCE(SUM(hours_spent) FILTER (WHERE status = 'completed' AND linked_project_id IS NOT NULL), 0)::text AS project_hours,
-        COALESCE(SUM(hours_spent) FILTER (WHERE status = 'completed' AND linked_deal_id IS NOT NULL), 0)::text AS prospect_hours,
-        COALESCE(SUM(hours_spent) FILTER (WHERE status = 'completed' AND is_internal = true), 0)::text AS internal_hours
-      FROM personal_tasks
-      WHERE user_id = ${targetUserId}
-        AND started_at >= ${from}
-        AND started_at <= ${to}
-    `);
-    return (result as { rows?: Array<Record<string, unknown>> }).rows?.[0] ?? {};
+    const [row] = await db
+      .select({
+        total_tasks: sql<number>`COUNT(*)::int`,
+        active_tasks: sql<number>`COUNT(*) FILTER (WHERE ${personalTasks.status} = 'in_progress')::int`,
+        completed_tasks: sql<number>`COUNT(*) FILTER (WHERE ${personalTasks.status} = 'completed')::int`,
+        total_hours: sql<string>`COALESCE(SUM(${personalTasks.hoursSpent}) FILTER (WHERE ${personalTasks.status} = 'completed'), 0)::text`,
+        project_hours: sql<string>`COALESCE(SUM(${personalTasks.hoursSpent}) FILTER (WHERE ${personalTasks.status} = 'completed' AND ${personalTasks.linkedProjectId} IS NOT NULL), 0)::text`,
+        prospect_hours: sql<string>`COALESCE(SUM(${personalTasks.hoursSpent}) FILTER (WHERE ${personalTasks.status} = 'completed' AND ${personalTasks.linkedDealId} IS NOT NULL), 0)::text`,
+        internal_hours: sql<string>`COALESCE(SUM(${personalTasks.hoursSpent}) FILTER (WHERE ${personalTasks.status} = 'completed' AND ${personalTasks.isInternal} = true), 0)::text`,
+      })
+      .from(personalTasks)
+      .leftJoin(projects, eq(personalTasks.linkedProjectId, projects.id))
+      .leftJoin(deals, eq(personalTasks.linkedDealId, deals.id))
+      .where(and(
+        eq(personalTasks.userId, targetUserId),
+        sql`${personalTasks.startedAt} >= ${from}`,
+        sql`${personalTasks.startedAt} <= ${to}`,
+        filters.status ? eq(personalTasks.status, filters.status) : undefined,
+        linkTypeFilter(filters.linkType),
+        companyFilter(filters.companyId)
+      ));
+    return row ?? {};
   },
 
-  async getTeamSummary(user: SessionUser, from: Date, to: Date) {
+  async getTeamSummary(user: SessionUser, from: Date, to: Date, filters: Omit<TaskFilters, 'from' | 'to'> = {}) {
     if (!isSuperAdmin(user)) throw new Error('Only super admins can view team task summaries.');
-    const result = await db.execute(sql`
-      SELECT
-        u.id AS user_id,
-        u.first_name,
-        u.last_name,
-        COUNT(pt.id)::int AS total_tasks,
-        COUNT(pt.id) FILTER (WHERE pt.status = 'completed')::int AS completed_tasks,
-        COALESCE(SUM(pt.hours_spent) FILTER (WHERE pt.status = 'completed'), 0)::text AS total_hours,
-        COALESCE(SUM(pt.hours_spent) FILTER (WHERE pt.status = 'completed' AND pt.linked_project_id IS NOT NULL), 0)::text AS project_hours,
-        COALESCE(SUM(pt.hours_spent) FILTER (WHERE pt.status = 'completed' AND pt.linked_deal_id IS NOT NULL), 0)::text AS prospect_hours,
-        COALESCE(SUM(pt.hours_spent) FILTER (WHERE pt.status = 'completed' AND pt.is_internal = true), 0)::text AS internal_hours
-      FROM users u
-      LEFT JOIN personal_tasks pt ON pt.user_id = u.id AND pt.started_at >= ${from} AND pt.started_at <= ${to}
-      WHERE u.status = 'active'
-      GROUP BY u.id, u.first_name, u.last_name
-      ORDER BY COALESCE(SUM(pt.hours_spent), 0) DESC NULLS LAST, u.first_name ASC
-    `);
-    return (result as { rows?: Array<Record<string, unknown>> }).rows ?? [];
+    return db
+      .select({
+        user_id: users.id,
+        first_name: users.firstName,
+        last_name: users.lastName,
+        total_tasks: sql<number>`COUNT(${personalTasks.id})::int`,
+        completed_tasks: sql<number>`COUNT(${personalTasks.id}) FILTER (WHERE ${personalTasks.status} = 'completed')::int`,
+        total_hours: sql<string>`COALESCE(SUM(${personalTasks.hoursSpent}) FILTER (WHERE ${personalTasks.status} = 'completed'), 0)::text`,
+        project_hours: sql<string>`COALESCE(SUM(${personalTasks.hoursSpent}) FILTER (WHERE ${personalTasks.status} = 'completed' AND ${personalTasks.linkedProjectId} IS NOT NULL), 0)::text`,
+        prospect_hours: sql<string>`COALESCE(SUM(${personalTasks.hoursSpent}) FILTER (WHERE ${personalTasks.status} = 'completed' AND ${personalTasks.linkedDealId} IS NOT NULL), 0)::text`,
+        internal_hours: sql<string>`COALESCE(SUM(${personalTasks.hoursSpent}) FILTER (WHERE ${personalTasks.status} = 'completed' AND ${personalTasks.isInternal} = true), 0)::text`,
+      })
+      .from(users)
+      .leftJoin(personalTasks, and(
+        eq(personalTasks.userId, users.id),
+        sql`${personalTasks.startedAt} >= ${from}`,
+        sql`${personalTasks.startedAt} <= ${to}`,
+        filters.status ? eq(personalTasks.status, filters.status) : undefined,
+        filters.userId ? eq(personalTasks.userId, filters.userId) : undefined,
+        linkTypeFilter(filters.linkType)
+      ))
+      .leftJoin(projects, eq(personalTasks.linkedProjectId, projects.id))
+      .leftJoin(deals, eq(personalTasks.linkedDealId, deals.id))
+      .where(and(
+        eq(users.status, 'active'),
+        filters.userId ? eq(users.id, filters.userId) : undefined,
+        filters.companyId ? or(eq(projects.companyId, filters.companyId), eq(deals.companyId, filters.companyId)) : undefined
+      ))
+      .groupBy(users.id, users.firstName, users.lastName)
+      .orderBy(sql`COALESCE(SUM(${personalTasks.hoursSpent}), 0) DESC NULLS LAST`, users.firstName);
   },
 
   async userHasProjectAccess(projectId: string, user: SessionUser) {

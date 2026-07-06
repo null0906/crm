@@ -1,0 +1,33 @@
+
+    <html><head><meta charset="utf-8" />
+      <style>
+        body { font-family: Arial, sans-serif; color: #111827; }
+        h1 { color: #1d4ed8; font-size: 22px; }
+        h2 { color: #111827; font-size: 16px; margin-top: 22px; }
+        .meta { color: #64748b; font-size: 12px; margin-bottom: 10px; }
+        .filter { display: inline-block; background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; padding: 4px 8px; margin: 2px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+        th { background: #2563eb; color: white; font-weight: 700; text-align: left; }
+        th, td { border: 1px solid #dbe3f0; padding: 8px; font-size: 12px; }
+        tr:nth-child(even) td { background: #f8fafc; }
+      </style>
+    </head><body>
+      <h1>Task Report - Soham  Sawant</h1>
+      <div class="meta">2026-06-29 to 2026-07-06</div>
+      <div><span class="filter">Period: 2026-06-29 to 2026-07-06</span><span class="filter">Member: Soham  Sawant</span><span class="filter">Client: All clients</span><span class="filter">Status: All statuses</span><span class="filter">Link: All links</span></div>
+      
+      <h2>Team Summary</h2>
+      <table>
+        <thead><tr><th>Member</th><th>Total</th><th>Completed</th><th>Hours</th><th>ProjectHours</th><th>ProspectHours</th><th>InternalHours</th></tr></thead>
+        <tbody><tr><td>Soham  Sawant</td><td>10</td><td>10</td><td>23.0</td><td>2.3</td><td>0.0</td><td>20.8</td></tr></tbody>
+      </table>
+    
+      
+      <h2>Detailed Task Log</h2>
+      <table>
+        <thead><tr><th>Member</th><th>Task</th><th>Client</th><th>LinkedTo</th><th>Status</th><th>Hours</th><th>Started</th><th>Completed</th></tr></thead>
+        <tbody><tr><td>Soham  Sawant</td><td>TrueFocus VAPT Report and Mail</td><td></td><td>Truefocus SOC 2 Type II</td><td>completed</td><td>2.0</td><td>01 Jul, 03:00 pm</td><td>01 Jul, 04:52 pm</td></tr><tr><td>Soham  Sawant</td><td>Blog Writing</td><td></td><td>Internal</td><td>completed</td><td>2.0</td><td>01 Jul, 01:42 pm</td><td>01 Jul, 03:45 pm</td></tr><tr><td>Soham  Sawant</td><td>CXO Platform Testing</td><td></td><td>Internal</td><td>completed</td><td>1.0</td><td>01 Jul, 12:50 pm</td><td>01 Jul, 01:25 pm</td></tr><tr><td>Soham  Sawant</td><td>DPDP Session by Sneha Ma&#39;am</td><td></td><td>Internal</td><td>completed</td><td>1.8</td><td>01 Jul, 11:01 am</td><td>01 Jul, 12:44 pm</td></tr><tr><td>Soham  Sawant</td><td>Overwatch feature testing</td><td></td><td>Internal</td><td>completed</td><td>6.7</td><td>30 Jun, 11:21 am</td><td>30 Jun, 05:57 pm</td></tr><tr><td>Soham  Sawant</td><td>Website adding YourComply</td><td></td><td>Internal</td><td>completed</td><td>2.0</td><td>30 Jun, 11:21 am</td><td>30 Jun, 12:23 pm</td></tr><tr><td>Soham  Sawant</td><td>Feature Checking of Evidence Vault</td><td></td><td>Internal</td><td>completed</td><td>0.8</td><td>29 Jun, 05:40 pm</td><td>29 Jun, 06:26 pm</td></tr><tr><td>Soham  Sawant</td><td>DPDP Meeting</td><td></td><td>Internal</td><td>completed</td><td>0.5</td><td>29 Jun, 03:00 pm</td><td>29 Jun, 03:34 pm</td></tr><tr><td>Soham  Sawant</td><td>TrueFocus Naveen Meeting</td><td></td><td>Truefocus SOC 2 Type II</td><td>completed</td><td>0.3</td><td>29 Jun, 02:30 pm</td><td>29 Jun, 02:45 pm</td></tr><tr><td>Soham  Sawant</td><td>Product Testing</td><td></td><td>Internal</td><td>completed</td><td>6.0</td><td>29 Jun, 09:50 am</td><td>29 Jun, 06:42 pm</td></tr></tbody>
+      </table>
+    
+    </body></html>
+  

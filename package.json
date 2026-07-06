@@ -67,6 +67,7 @@
     "dompurify": "^3.3.3",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
+    "exceljs": "^4.4.0",
     "ioredis": "^5.10.1",
     "lucide-react": "^1.7.0",
     "mitt": "^3.0.1",
