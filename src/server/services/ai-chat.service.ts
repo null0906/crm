@@ -16,7 +16,7 @@ import {
 } from '@/server/db/schema';
 import { writeAuditLog } from './audit.service';
 import { executeSafeQuery, validateGeneratedSql } from './sql-safety.service';
-import { generateChatResponse, type GeminiHistoryMessage } from './gemini.service';
+import { generateChatResponse, type LlmHistoryMessage } from './groq.service';
 import type { RolePermissions } from '@/lib/types';
 
 type DbClient = typeof defaultDb;
@@ -41,7 +41,7 @@ type AmbiguityCheck = {
   options?: ClarificationOption[];
 };
 
-type ParsedGeminiResponse =
+type ParsedLlmResponse =
   | { phase: 'clarify'; question: string; options?: ClarificationOption[] }
   | { phase: 'query'; sql: string; explanation?: string }
   | { phase: 'answer'; answer: string; followUpSuggestions?: string[] }
@@ -545,6 +545,7 @@ Permissions JSON: ${JSON.stringify(userContext.permissions)}
 
 ## RBAC Rules for SQL Generation
 - Always add WHERE deleted_at IS NULL to contacts, companies, activities, and deals queries when those tables are used
+- Only contacts, companies, activities, deals, and projects have a deleted_at column. Do NOT add deleted_at filters to tags, tag_categories, contact_tags, company_tags, deal_tags, users, roles, pipelines, pipeline_stages, deal_stage_history, pipeline_benchmarks, onboardings, deal_contacts, deal_team_members, or project_members — none of them have that column, and adding it will cause the query to fail.
 - Never use deals.amount directly for value aggregation. Use deals_with_value.effective_value and its engagement currency fallback.
 - Format INR as INR/₹, USD as USD/$, and never use $ for prospect values unless deals.currency = 'USD'.
 - If user role is 'sales_rep', treat them as an Analyst and never SELECT, summarize, calculate, or reveal deals.amount, project contract values, pipeline value, revenue, weighted pipeline, average deal size, or any prospect/deal monetary amount.
@@ -560,6 +561,7 @@ Permissions JSON: ${JSON.stringify(userContext.permissions)}
 - Sales managers, admins, and super admins can query team-wide data
 - Never expose password_hash, sensitive auth fields, system tables, or internal auth data
 - Only SELECT queries are permitted. Never generate INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, CREATE, GRANT, or REVOKE
+- Always use parentheses when a WHERE clause mixes AND and OR, e.g. "a AND (b OR c)" not "a AND b OR c" — AND binds tighter than OR in SQL, so unparenthesized mixing silently changes which rows match (a common cause of deleted_at IS NULL filters being bypassed)
 
 IMPORTANT TERMINOLOGY:
 - The database table is called "deals" but users call them "Prospects"
@@ -638,7 +640,7 @@ export async function checkForAmbiguity(query: string, db: DbClient = defaultDb)
   return { isAmbiguous: false, clarificationNeeded: '' };
 }
 
-function parseGeminiJsonBlock(response: string): ParsedGeminiResponse {
+function parseLlmJsonBlock(response: string): ParsedLlmResponse {
   const trimmed = response.trim();
   const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const rawJson = fencedMatch?.[1]?.trim() ?? trimmed.match(/\{[\s\S]*\}/)?.[0]?.trim();
@@ -717,7 +719,11 @@ function formatCellValue(value: unknown): string {
   return String(value);
 }
 
-function formatRowsDeterministically(userMessage: string, rows: Array<Record<string, unknown>>): string {
+function formatRowsDeterministically(
+  userMessage: string,
+  rows: Array<Record<string, unknown>>,
+  truncation?: { truncated: boolean; totalCount?: number }
+): string {
   if (rows.length === 0) {
     return 'I did not find any matching CRM records for that query. You can try broadening the filter or using the exact tag/source name.';
   }
@@ -736,7 +742,17 @@ function formatRowsDeterministically(userMessage: string, rows: Array<Record<str
   const tableHeader = `| ${columns.map(humanizeColumnName).join(' | ')} |`;
   const divider = `| ${columns.map(() => '---').join(' | ')} |`;
   const tableRows = visibleRows.map((row) => `| ${columns.map((column) => formatCellValue(row[column]).replace(/\|/g, '\\|')).join(' | ')} |`);
-  const cappedNote = rows.length > visibleRows.length ? `\n\nShowing the first ${visibleRows.length} of ${rows.length} rows.` : '';
+
+  let cappedNote = '';
+  if (truncation?.truncated) {
+    // Never report the 500-row safety cap as if it were the true total — say the real count
+    // when we have it, or an honest "more than 500" when the count query itself failed.
+    cappedNote = typeof truncation.totalCount === 'number'
+      ? `\n\nThis matched **${truncation.totalCount}** records in total — showing the first ${visibleRows.length} here.`
+      : `\n\nThis matched more than 500 records (showing the first ${visibleRows.length}) — try narrowing your filter for an exact count.`;
+  } else if (rows.length > visibleRows.length) {
+    cappedNote = `\n\nShowing the first ${visibleRows.length} of ${rows.length} rows.`;
+  }
 
   return `${header}\n\n${[tableHeader, divider, ...tableRows].join('\n')}${cappedNote}`;
 }
@@ -763,11 +779,8 @@ function formatClarification(question: string, options: ClarificationOption[] = 
   return `${question}\n\n${lines.join('\n')}`;
 }
 
-function toGeminiHistory(messages: Array<{ role: 'user' | 'assistant'; content: string }>): GeminiHistoryMessage[] {
-  return messages.map((message) => ({
-    role: message.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: message.content }],
-  }));
+function toLlmHistory(messages: Array<{ role: 'user' | 'assistant'; content: string }>): LlmHistoryMessage[] {
+  return messages.map((message) => ({ role: message.role, content: message.content }));
 }
 
 async function getUserContext(userId: string, db: DbClient): Promise<UserContext> {
@@ -923,9 +936,9 @@ export async function handleMessage(
       };
     }
 
-    const history = toGeminiHistory(historyRows.reverse());
+    const history = toLlmHistory(historyRows.reverse());
     const response = await generateChatResponse(userMessage, history, systemPrompt);
-    const parsed = parseGeminiJsonBlock(response);
+    const parsed = parseLlmJsonBlock(response);
 
     if (!parsed) {
       const message = await storeAssistantMessage({ db, sessionId, content: response });
@@ -969,7 +982,7 @@ export async function handleMessage(
         entityId: sessionId,
         entityName: 'Rejected direct AI answer',
         metadata: {
-          reason: 'Gemini returned a direct CRM data answer before SQL execution',
+          reason: 'AI returned a direct CRM data answer before SQL execution',
           answer: parsed.answer,
         },
       });
@@ -1010,14 +1023,97 @@ export async function handleMessage(
       };
     }
 
-    const rows = await executeSafeQuery(db, scopedSql);
+    // Generated SQL occasionally references columns that don't exist (e.g. assuming every
+    // table has deleted_at, when only a few do) — a genuine correctness mistake, distinct
+    // from a safety-policy violation. Give the model exactly one chance to self-correct using
+    // the real database error before giving up, a standard resilience pattern for text-to-SQL.
+    let finalSql = scopedSql;
+    let queryResult: Awaited<ReturnType<typeof executeSafeQuery>> | { error: string };
+    try {
+      queryResult = await executeSafeQuery(db, finalSql);
+    } catch (error) {
+      queryResult = { error: error instanceof Error ? error.message : String(error) };
+    }
+
+    if ('error' in queryResult) {
+      const correctionPrompt = `
+Your previous SQL failed to execute against the actual database schema.
+
+Original question: ${userMessage}
+SQL you generated: ${finalSql}
+Database error: ${queryResult.error}
+
+Fix the SQL so it runs successfully against the schema described in your instructions (double-check
+which tables actually have a deleted_at column — not all of them do). Respond with the same JSON shape:
+{"phase":"query","sql":"SELECT ...","explanation":"what this query does"}
+`.trim();
+
+      const correctionResponse = await generateChatResponse(correctionPrompt, [], systemPrompt);
+      const correctedParsed = parseLlmJsonBlock(correctionResponse);
+
+      if (correctedParsed?.phase === 'query') {
+        const correctedScopedSql = applyProspectVisibilityToGeneratedSql(correctedParsed.sql, userContext);
+        const correctedValidation = validateGeneratedSql(correctedScopedSql);
+        if (correctedValidation.valid) {
+          finalSql = correctedScopedSql;
+          try {
+            queryResult = await executeSafeQuery(db, finalSql);
+          } catch (error) {
+            queryResult = { error: error instanceof Error ? error.message : String(error) };
+          }
+        }
+      }
+    }
+
+    if ('error' in queryResult) {
+      await writeAuditLog({
+        userId,
+        action: 'api_access',
+        entityType: 'ai_chat',
+        entityId: sessionId,
+        entityName: 'AI SQL execution failed',
+        metadata: { reason: queryResult.error, sql: finalSql },
+      });
+
+      const message = await storeAssistantMessage({ db, sessionId, content: friendlyError, sqlQuery: finalSql });
+      return {
+        message: {
+          id: message.id,
+          role: 'assistant',
+          content: friendlyError,
+          wasClarification: false,
+          createdAt: message.createdAt,
+        },
+      };
+    }
+
+    const { rows, truncated, totalCount } = queryResult;
+
+    // Never let the model state the 500-row safety cap as if it were the true total (e.g.
+    // "there are 500 leads" when the real count is 921) — tell it the real number explicitly,
+    // or an honest "more than 500" when the count query itself couldn't be computed.
+    const truncationNote = truncated
+      ? typeof totalCount === 'number'
+        ? `\n\nIMPORTANT: This result set was capped at 500 rows for safety, but the TRUE total matching count is ${totalCount}. You MUST state ${totalCount} as the total — never state 500 or the sample size as the total count.`
+        : `\n\nIMPORTANT: This result set was capped at 500 rows for safety and the true total could not be determined. Say "more than 500" rather than inventing an exact number.`
+      : '';
+
+    // Sending all (up to 500) rows to the formatting model is wasteful and, for wide result
+    // sets, can burn tens of thousands of tokens just to write a one-paragraph summary — cap
+    // the sample and rely on the counts/notes above for accuracy instead of raw row volume.
+    const FORMATTING_SAMPLE_SIZE = 25;
+    const sampleRows = rows.slice(0, FORMATTING_SAMPLE_SIZE);
+    const sampleNote = rows.length > sampleRows.length
+      ? `\n\n(This is a sample of ${sampleRows.length} rows out of ${rows.length} returned — do not imply this sample is the complete list; use the counts above for totals.)`
+      : '';
+
     const formatterPrompt = `
 The user asked: ${userMessage}
 
 The safe SQL explanation was: ${parsed.explanation ?? 'No explanation provided'}
 
-The query returned ${rows.length} row(s), capped at 500:
-${JSON.stringify(rows, null, 2)}
+The query returned ${rows.length} row(s)${truncated ? ' (sample only, see note below)' : ''}. Sample data:
+${JSON.stringify(sampleRows, null, 2)}${sampleNote}${truncationNote}
 
 Format this into a concise, useful CRM answer. If there are no rows, say that clearly and suggest a likely next step.
 `.trim();
@@ -1032,19 +1128,19 @@ Lead with the direct answer, then include useful context or suggested next steps
 `.trim();
 
     const formattedResponse = await generateChatResponse(formatterPrompt, [], formattingSystemPrompt);
-    const parsedFormattedResponse = parseGeminiJsonBlock(formattedResponse);
+    const parsedFormattedResponse = parseLlmJsonBlock(formattedResponse);
     const content = parsedFormattedResponse?.phase === 'answer'
       ? formatAnswer(parsedFormattedResponse.answer, parsedFormattedResponse.followUpSuggestions)
       : parsedFormattedResponse || isJsonLikeInternalResponse(formattedResponse)
-        ? formatRowsDeterministically(userMessage, rows)
+        ? formatRowsDeterministically(userMessage, rows, { truncated, totalCount })
         : formattedResponse;
 
     const message = await storeAssistantMessage({
       db,
       sessionId,
       content,
-      sqlQuery: scopedSql,
-      queryResultCount: rows.length,
+      sqlQuery: finalSql,
+      queryResultCount: truncated ? (totalCount ?? rows.length) : rows.length,
     });
 
     return {

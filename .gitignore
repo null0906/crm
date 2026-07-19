@@ -1,5 +1,8 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# local build artifacts / deliverables (not source)
+/teams-app-package
+
 # dependencies
 /node_modules
 /.pnp
