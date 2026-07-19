@@ -9,8 +9,9 @@
 
 import { db } from '@/server/db';
 import { teamsUsers, teamsMessageLog, users, roles } from '@/server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, notInArray, inArray, isNotNull, count } from 'drizzle-orm';
 import { createTeamsApp } from '@/server/lib/teams-bot';
+import { getUserByEmail } from '@/server/lib/microsoft-graph';
 import { parseStructuredMessage } from '@/server/lib/telegram-parser';
 import {
   handleAdd,
@@ -69,6 +70,58 @@ export async function notifyUser(userId: string, message: string): Promise<boole
   const app = await getTeamsApp();
   await app.send(record.conversationReference.conversation.id, { type: 'message', text: message });
   return true;
+}
+
+export interface BulkLinkResult {
+  linked: Array<{ email: string; name: string }>;
+  notFound: string[];
+  skippedAlreadyLinked: number;
+}
+
+/**
+ * Resolves every active CRM user's email against Entra ID via Microsoft Graph and links
+ * anyone found — no need for each person to message the bot first. Users already linked
+ * are left untouched (not re-synced); users with no matching Entra ID account (e.g. a
+ * personal email on file) are reported back rather than silently skipped.
+ */
+export async function bulkLinkUsersByEmail(): Promise<BulkLinkResult> {
+  const alreadyLinkedUserIds = db
+    .select({ crmUserId: teamsUsers.crmUserId })
+    .from(teamsUsers);
+
+  const [alreadyLinkedCount] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(and(eq(users.status, 'active'), inArray(users.id, alreadyLinkedUserIds)));
+
+  const candidates = await db
+    .select({ id: users.id, email: users.email, firstName: users.firstName, lastName: users.lastName })
+    .from(users)
+    .where(and(eq(users.status, 'active'), notInArray(users.id, alreadyLinkedUserIds), isNotNull(users.email)));
+
+  const result: BulkLinkResult = { linked: [], notFound: [], skippedAlreadyLinked: alreadyLinkedCount?.count ?? 0 };
+
+  for (const candidate of candidates) {
+    const graphUser = await getUserByEmail(candidate.email);
+    // GraphAuthError isn't caught here — a permission/auth failure should abort the whole
+    // batch loudly rather than silently mislabel every remaining user as "not found".
+
+    if (!graphUser) {
+      result.notFound.push(candidate.email);
+      continue;
+    }
+
+    await db.insert(teamsUsers).values({
+      aadObjectId: graphUser.id,
+      teamsName: graphUser.displayName ?? `${candidate.firstName} ${candidate.lastName}`,
+      crmUserId: candidate.id,
+      isActive: true,
+    }).onConflictDoNothing({ target: teamsUsers.aadObjectId });
+
+    result.linked.push({ email: candidate.email, name: `${candidate.firstName} ${candidate.lastName}` });
+  }
+
+  return result;
 }
 
 async function getAuthorizedUser(aadObjectId: string): Promise<{

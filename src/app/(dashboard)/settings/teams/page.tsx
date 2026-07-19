@@ -221,6 +221,19 @@ export default function TeamsSettingsPage() {
     },
   });
 
+  const bulkLink = trpc.teams.bulkLinkByEmail.useMutation({
+    onSuccess: (result) => {
+      const parts = [`${result.linked.length} linked`];
+      if (result.skippedAlreadyLinked) parts.push(`${result.skippedAlreadyLinked} already linked`);
+      if (result.notFound.length) parts.push(`${result.notFound.length} not found in Entra ID`);
+      toast.success(`Sync complete — ${parts.join(', ')}`, {
+        description: result.notFound.length ? `Not found: ${result.notFound.join(', ')}` : undefined,
+      });
+      void utils.teams.listUsers.invalidate();
+    },
+    onError: (err) => toast.error('Sync failed', { description: err.message }),
+  });
+
   const botStatus = status as BotStatus | undefined;
 
   return (
@@ -287,10 +300,22 @@ export default function TeamsSettingsPage() {
       <div className="bg-white border border-slate-200 rounded-xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-900">Authorized Users</h2>
-          <Button size="sm" onClick={() => setAddPanelOpen(true)}>
-            <Plus className="w-3.5 h-3.5 mr-1.5" />
-            Add User
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => bulkLink.mutate()}
+              disabled={bulkLink.isPending}
+              title="Automatically link every active CRM user by matching their email against Entra ID — no need for them to message the bot first"
+            >
+              <RefreshCw className={cn('w-3.5 h-3.5 mr-1.5', bulkLink.isPending && 'animate-spin')} />
+              {bulkLink.isPending ? 'Syncing…' : 'Sync All Users'}
+            </Button>
+            <Button size="sm" onClick={() => setAddPanelOpen(true)}>
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              Add User
+            </Button>
+          </div>
         </div>
 
         {usersLoading ? (

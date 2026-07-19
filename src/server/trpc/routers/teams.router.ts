@@ -5,7 +5,8 @@ import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
 import { teamsUsers, teamsMessageLog, users } from '@/server/db/schema';
 import { eq, desc, count } from 'drizzle-orm';
-import { getTeamsApp } from '@/server/services/teams.service';
+import { getTeamsApp, bulkLinkUsersByEmail } from '@/server/services/teams.service';
+import { GraphAuthError } from '@/server/lib/microsoft-graph';
 import { paginationSchema } from '@/server/lib/validators';
 
 // Teams settings require admin-level access (same as user management)
@@ -64,6 +65,31 @@ export const teamsRouter = router({
         .returning();
 
       return created;
+    }),
+
+  /**
+   * Links every active CRM user to Teams automatically by resolving their email against
+   * Entra ID via Microsoft Graph — no need for each person to message the bot first.
+   * Requires the bot's app registration to have User.Read.All (application permission,
+   * admin-consented) in addition to its existing bot-messaging permissions.
+   */
+  bulkLinkByEmail: protectedProcedure
+    .use(requireTeamsManage)
+    .mutation(async () => {
+      try {
+        return await bulkLinkUsersByEmail();
+      } catch (error) {
+        if (error instanceof GraphAuthError) {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: `Microsoft Graph access isn't set up correctly: ${error.message}`,
+          });
+        }
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'Bulk sync failed.',
+        });
+      }
     }),
 
   /** Remove a Teams user mapping */
