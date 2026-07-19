@@ -1,10 +1,12 @@
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { protectedProcedure, router } from '../router';
+import { requirePermission } from '../middleware';
 import { personalTaskService } from '@/server/services/personal-task.service';
 
 const statusSchema = z.enum(['in_progress', 'completed', 'cancelled']);
 const linkTypeSchema = z.enum(['project', 'deal', 'internal', 'any']);
+const prioritySchema = z.enum(['low', 'medium', 'high', 'urgent']);
 
 function toDate(value?: string) {
   return value ? new Date(value) : undefined;
@@ -70,6 +72,8 @@ export const personalTasksRouter = router({
       data: z.object({
         taskName: z.string().min(1).max(255).optional(),
         description: z.string().max(2000).nullable().optional(),
+        dueDate: z.string().nullable().optional(),
+        priority: prioritySchema.nullable().optional(),
       }),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -100,10 +104,30 @@ export const personalTasksRouter = router({
     }),
 
   cancel: protectedProcedure
-    .input(z.object({ id: z.string().uuid() }))
+    .input(z.object({ id: z.string().uuid(), reason: z.string().max(500).optional() }))
     .mutation(async ({ ctx, input }) => {
       try {
-        return await personalTaskService.cancel(input.id, ctx.user!);
+        return await personalTaskService.cancel(input.id, ctx.user!, input.reason);
+      } catch (error) {
+        throw asTrpcError(error);
+      }
+    }),
+
+  assign: protectedProcedure
+    .use(requirePermission('tasks', 'assign'))
+    .input(z.object({
+      assigneeId: z.string().uuid(),
+      taskName: z.string().min(1).max(255),
+      description: z.string().max(2000).optional(),
+      linkedProjectId: z.string().uuid().optional(),
+      linkedDealId: z.string().uuid().optional(),
+      isInternal: z.boolean().optional(),
+      dueDate: z.string().optional(),
+      priority: prioritySchema.optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        return await personalTaskService.assignTask(input, ctx.user!);
       } catch (error) {
         throw asTrpcError(error);
       }

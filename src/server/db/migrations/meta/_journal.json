@@ -113,6 +113,34 @@
       "when": 1779400000000,
       "tag": "0015_personal_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783923261516,
+      "tag": "0016_whatsapp_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784000000000,
+      "tag": "0017_task_assignment",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784100000000,
+      "tag": "0018_teams_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784200000000,
+      "tag": "0019_api_tokens",
+      "breakpoints": true
     }
   ]
 }

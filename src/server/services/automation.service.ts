@@ -17,9 +17,22 @@ import { sendEmail } from '@/server/lib/mailer';
 import { writeAuditLog } from './audit.service';
 import { createAutomatedActivity } from './activity.service';
 import { createNotification } from './notification.service';
-import { notifyUser } from './telegram.service';
+import { notifyUser as notifyTelegramUser } from './telegram.service';
+import { notifyUser as notifyWhatsAppUser } from './whatsapp.service';
+import { notifyUser as notifyTeamsUser } from './teams.service';
 
 type DbClient = typeof defaultDb;
+
+/** Sends a chat notification over every linked bot channel; returns true if at least one delivered. */
+async function notifyUser(userId: string, message: string): Promise<boolean> {
+  const [telegramSent, whatsappSent, teamsSent] = await Promise.all([
+    notifyTelegramUser(userId, message).catch(() => false),
+    notifyWhatsAppUser(userId, message).catch(() => false),
+    notifyTeamsUser(userId, message).catch(() => false),
+  ]);
+  return telegramSent || whatsappSent || teamsSent;
+}
+
 type QueryResultLike<T = Record<string, unknown>> = { rows?: T[]; rowCount?: number };
 
 export const automationDefinitions = [

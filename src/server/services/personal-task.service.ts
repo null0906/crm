@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '@/server/db';
 import { companies, dealTeamMembers, deals, personalTasks, projectMembers, projects, users } from '@/server/db/schema';
-import type { PersonalTaskStatus, SessionUser } from '@/lib/types';
+import type { PersonalTaskStatus, SessionUser, TaskPriority } from '@/lib/types';
+import { createNotification } from './notification.service';
 
 type LinkType = 'project' | 'deal' | 'internal' | 'any';
 type TaskFilters = {
@@ -21,6 +22,19 @@ export interface TaskCreateInput {
   isInternal?: boolean;
 }
 
+export interface TaskAssignInput extends TaskCreateInput {
+  assigneeId: string;
+  dueDate?: string | null;
+  priority?: TaskPriority | null;
+}
+
+export interface TaskUpdateInput {
+  taskName?: string;
+  description?: string | null;
+  dueDate?: string | null;
+  priority?: TaskPriority | null;
+}
+
 export interface TaskCompleteInput {
   hoursSpent: number;
   startedAt?: Date;
@@ -29,6 +43,11 @@ export interface TaskCompleteInput {
 
 function isSuperAdmin(user?: SessionUser) {
   return user?.role.slug === 'super_admin';
+}
+
+/** The doer, the original assigner, or any super_admin may manage (edit/cancel/delete) a task. */
+function canManageTask(task: { userId: string; assignedBy: string | null }, user: SessionUser) {
+  return isSuperAdmin(user) || task.userId === user.id || task.assignedBy === user.id;
 }
 
 function projectAccessFilter(userId: string) {
@@ -63,12 +82,16 @@ function taskSelect() {
   return {
     id: personalTasks.id,
     userId: personalTasks.userId,
+    assignedBy: personalTasks.assignedBy,
     taskName: personalTasks.taskName,
     description: personalTasks.description,
     linkedProjectId: personalTasks.linkedProjectId,
     linkedDealId: personalTasks.linkedDealId,
     isInternal: personalTasks.isInternal,
     status: personalTasks.status,
+    dueDate: personalTasks.dueDate,
+    priority: personalTasks.priority,
+    cancelReason: personalTasks.cancelReason,
     startedAt: personalTasks.startedAt,
     completedAt: personalTasks.completedAt,
     hoursSpent: personalTasks.hoursSpent,
@@ -77,6 +100,8 @@ function taskSelect() {
     userFirstName: users.firstName,
     userLastName: users.lastName,
     userAvatarUrl: users.avatarUrl,
+    assignerFirstName: sql<string | null>`assigner.first_name`,
+    assignerLastName: sql<string | null>`assigner.last_name`,
     linkedProjectName: projects.name,
     linkedProjectServiceType: projects.serviceType,
     linkedProjectCompanyName: sql<string | null>`project_company.name`,
@@ -90,6 +115,7 @@ async function listTasks(where: SQL | undefined) {
     .select(taskSelect())
     .from(personalTasks)
     .innerJoin(users, eq(personalTasks.userId, users.id))
+    .leftJoin(sql`users assigner`, sql`assigner.id = ${personalTasks.assignedBy}`)
     .leftJoin(projects, eq(personalTasks.linkedProjectId, projects.id))
     .leftJoin(sql`companies project_company`, sql`project_company.id = ${projects.companyId}`)
     .leftJoin(deals, eq(personalTasks.linkedDealId, deals.id))
@@ -123,11 +149,55 @@ export const personalTaskService = {
     return task!;
   },
 
+  async assignTask(input: TaskAssignInput, assigner: SessionUser) {
+    if (!isSuperAdmin(assigner)) throw new Error('Only super admins can assign tasks.');
+
+    const linkageCount = (input.linkedProjectId ? 1 : 0) + (input.linkedDealId ? 1 : 0) + (input.isInternal ? 1 : 0);
+    if (linkageCount !== 1) throw new Error('Task must be linked to exactly one of: project, prospect, or internal.');
+
+    const [assignee] = await db.select({ id: users.id, status: users.status }).from(users).where(eq(users.id, input.assigneeId)).limit(1);
+    if (!assignee) throw new Error('Assignee not found.');
+    if (assignee.status !== 'active') throw new Error('Cannot assign a task to an inactive user.');
+
+    if (input.linkedProjectId && !(await this.userHasProjectAccess(input.linkedProjectId, assigner))) {
+      throw new Error('You cannot link a task to a project you are not assigned to.');
+    }
+    if (input.linkedDealId && !(await this.userHasDealAccess(input.linkedDealId, assigner))) {
+      throw new Error('You cannot link a task to a prospect you are not assigned to.');
+    }
+
+    const [task] = await db.insert(personalTasks).values({
+      userId: input.assigneeId,
+      assignedBy: assigner.id,
+      taskName: input.taskName,
+      description: input.description ?? null,
+      linkedProjectId: input.linkedProjectId ?? null,
+      linkedDealId: input.linkedDealId ?? null,
+      isInternal: input.isInternal ?? false,
+      dueDate: input.dueDate ?? null,
+      priority: input.priority ?? null,
+      status: 'in_progress',
+      startedAt: new Date(),
+    }).returning();
+
+    await createNotification({
+      userId: input.assigneeId,
+      type: 'task_assigned',
+      title: 'New task assigned to you',
+      body: input.taskName,
+      entityType: 'personal_task',
+      entityId: task!.id,
+      metadata: { actionUrl: '/tasks' },
+    });
+
+    return task!;
+  },
+
   async complete(taskId: string, user: SessionUser, input: TaskCompleteInput) {
     const [task] = await db.select().from(personalTasks).where(eq(personalTasks.id, taskId)).limit(1);
     if (!task) throw new Error('Task not found.');
     if (task.userId !== user.id) throw new Error('You can only complete your own tasks.');
-    if (task.status === 'completed') throw new Error('Task is already completed.');
+    if (task.status !== 'in_progress') throw new Error('Task is already completed or cancelled.');
     if (input.hoursSpent < 0.1 || input.hoursSpent > 24) throw new Error('Hours spent must be between 0.1 and 24.');
     const startedAt = input.startedAt ?? task.startedAt;
     const completedAt = input.completedAt ?? new Date();
@@ -139,34 +209,77 @@ export const personalTaskService = {
       hoursSpent: input.hoursSpent.toString(),
       completedAt,
       updatedAt: new Date(),
-    }).where(eq(personalTasks.id, taskId)).returning();
-    return updated!;
+    }).where(and(eq(personalTasks.id, taskId), eq(personalTasks.status, 'in_progress'))).returning();
+
+    if (!updated) throw new Error('Task was already completed or cancelled.');
+
+    if (task.assignedBy) {
+      await createNotification({
+        userId: task.assignedBy,
+        type: 'task_completed',
+        title: 'Assigned task completed',
+        body: `${task.taskName} — ${input.hoursSpent}h logged`,
+        entityType: 'personal_task',
+        entityId: task.id,
+        metadata: { actionUrl: '/tasks' },
+      });
+    }
+
+    return updated;
   },
 
-  async update(taskId: string, user: SessionUser, input: Partial<TaskCreateInput>) {
+  async update(taskId: string, user: SessionUser, input: TaskUpdateInput) {
     const [task] = await db.select().from(personalTasks).where(eq(personalTasks.id, taskId)).limit(1);
     if (!task) throw new Error('Task not found.');
-    if (task.userId !== user.id) throw new Error('You can only edit your own tasks.');
+    if (!canManageTask(task, user)) throw new Error('You do not have permission to edit this task.');
+    if (task.status !== 'in_progress') throw new Error('Only in-progress tasks can be edited.');
+
     const [updated] = await db.update(personalTasks).set({
       taskName: input.taskName ?? task.taskName,
       description: input.description === undefined ? task.description : input.description,
+      dueDate: input.dueDate === undefined ? task.dueDate : input.dueDate,
+      priority: input.priority === undefined ? task.priority : input.priority,
       updatedAt: new Date(),
     }).where(eq(personalTasks.id, taskId)).returning();
     return updated!;
   },
 
-  async cancel(taskId: string, user: SessionUser) {
+  async cancel(taskId: string, user: SessionUser, reason?: string) {
     const [task] = await db.select().from(personalTasks).where(eq(personalTasks.id, taskId)).limit(1);
     if (!task) throw new Error('Task not found.');
-    if (task.userId !== user.id) throw new Error('You can only cancel your own tasks.');
-    const [updated] = await db.update(personalTasks).set({ status: 'cancelled', updatedAt: new Date() }).where(eq(personalTasks.id, taskId)).returning();
-    return updated!;
+    if (!canManageTask(task, user)) throw new Error('You can only cancel your own tasks.');
+
+    const isAssigneeCancellingAssignedTask = task.assignedBy !== null && task.userId === user.id;
+    if (isAssigneeCancellingAssignedTask && !reason?.trim()) {
+      throw new Error('Please provide a reason for cancelling an assigned task.');
+    }
+
+    const [updated] = await db.update(personalTasks)
+      .set({ status: 'cancelled', cancelReason: reason?.trim() || null, updatedAt: new Date() })
+      .where(and(eq(personalTasks.id, taskId), eq(personalTasks.status, 'in_progress')))
+      .returning();
+
+    if (!updated) throw new Error('Task was already completed or cancelled.');
+
+    if (task.assignedBy && task.assignedBy !== user.id) {
+      await createNotification({
+        userId: task.assignedBy,
+        type: 'task_cancelled',
+        title: 'Assigned task was cancelled',
+        body: reason?.trim() ? `${task.taskName}: ${reason.trim()}` : task.taskName,
+        entityType: 'personal_task',
+        entityId: task.id,
+        metadata: { actionUrl: '/tasks' },
+      });
+    }
+
+    return updated;
   },
 
   async delete(taskId: string, user: SessionUser) {
     const [task] = await db.select().from(personalTasks).where(eq(personalTasks.id, taskId)).limit(1);
     if (!task) throw new Error('Task not found.');
-    if (task.userId !== user.id) throw new Error('You can only delete your own tasks.');
+    if (!canManageTask(task, user)) throw new Error('You do not have permission to delete this task.');
     await db.delete(personalTasks).where(eq(personalTasks.id, taskId));
   },
 

@@ -3,12 +3,17 @@
 import React from 'react';
 import { useSession } from 'next-auth/react';
 import { Document, Page, StyleSheet, Text, View, pdf } from '@react-pdf/renderer';
-import { Download, FileSpreadsheet, FileText } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 
 type TaskRow = Record<string, any>;
 type SummaryRow = Record<string, any>;
+type LinkType = 'project' | 'deal' | 'internal';
 
 function weekRange() {
   const now = new Date();
@@ -228,6 +233,7 @@ export default function TaskReportsPage() {
   const [linkType, setLinkType] = React.useState('');
   const [companyId, setCompanyId] = React.useState('');
   const [exporting, setExporting] = React.useState('');
+  const [assignOpen, setAssignOpen] = React.useState(false);
   const { data: users = [] } = trpc.users.list.useQuery();
   const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 500 } });
   const reportFilters = {
@@ -294,6 +300,7 @@ export default function TaskReportsPage() {
               <p className="text-sm text-[var(--text-tertiary)]">Team time tracking across personal task logs.</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button onClick={() => setAssignOpen(true)}><Plus className="h-4 w-4" />Assign Task</Button>
               <Button variant="outline" onClick={() => downloadCsv(tasks as TaskRow[], `${filePrefix}.csv`)}><Download className="h-4 w-4" />CSV</Button>
               <Button variant="outline" onClick={() => void exportExcelFor(tasks as TaskRow[], summary as SummaryRow[])} disabled={Boolean(exporting)}><FileSpreadsheet className="h-4 w-4" />Excel</Button>
               <Button onClick={() => exportPdfFor(tasks as TaskRow[], summary as SummaryRow[])} disabled={Boolean(exporting)}><FileText className="h-4 w-4" />{exporting ? 'Preparing...' : 'PDF'}</Button>
@@ -361,13 +368,113 @@ export default function TaskReportsPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-400"><tr><th className="px-4 py-3">Member</th><th>Task</th><th>Linked to</th><th>Status</th><th>Hours</th><th>Started</th><th>Completed</th></tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {(tasks as TaskRow[]).map((task) => <tr key={task.id}><td className="px-4 py-3 font-semibold">{task.userFirstName} {task.userLastName}</td><td className="font-bold text-slate-900">{task.taskName}</td><td>{linked(task)}</td><td><span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-bold">{String(task.status).replace('_', ' ')}</span></td><td>{task.hoursSpent ? h(task.hoursSpent) : '-'}</td><td>{dt(task.startedAt)}</td><td>{dt(task.completedAt)}</td></tr>)}
+                {(tasks as TaskRow[]).map((task) => <tr key={task.id}><td className="px-4 py-3 font-semibold">{task.userFirstName} {task.userLastName}</td><td className="font-bold text-slate-900">{task.taskName}{task.assignedBy && <span className="ml-2 rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold uppercase text-indigo-600">Assigned by {task.assignerFirstName}</span>}</td><td>{linked(task)}</td><td><span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-bold">{String(task.status).replace('_', ' ')}</span></td><td>{task.hoursSpent ? h(task.hoursSpent) : '-'}</td><td>{dt(task.startedAt)}</td><td>{dt(task.completedAt)}</td></tr>)}
                 {(tasks as TaskRow[]).length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-400">No task rows match these filters.</td></tr>}
               </tbody>
             </table>
           </div>
         </section>
       </div>
+      <AssignTaskPanel open={assignOpen} onClose={() => setAssignOpen(false)} users={users as Array<Record<string, unknown>>} />
     </div>
+  );
+}
+
+function AssignTaskPanel({ open, onClose, users }: { open: boolean; onClose: () => void; users: Array<Record<string, unknown>> }) {
+  const utils = trpc.useUtils();
+  const [assigneeId, setAssigneeId] = React.useState('');
+  const [taskName, setTaskName] = React.useState('');
+  const [description, setDescription] = React.useState('');
+  const [linkType, setLinkType] = React.useState<LinkType>('internal');
+  const [linkedProjectId, setLinkedProjectId] = React.useState('');
+  const [linkedDealId, setLinkedDealId] = React.useState('');
+  const [dueDate, setDueDate] = React.useState('');
+  const [priority, setPriority] = React.useState('');
+  const { data: linkables } = trpc.personalTasks.linkableEntities.useQuery(undefined, { enabled: open });
+
+  function reset() {
+    setAssigneeId(''); setTaskName(''); setDescription(''); setLinkType('internal');
+    setLinkedProjectId(''); setLinkedDealId(''); setDueDate(''); setPriority('');
+  }
+
+  const assign = trpc.personalTasks.assign.useMutation({
+    onSuccess: async () => {
+      toast.success('Task assigned');
+      reset();
+      onClose();
+      await utils.personalTasks.invalidate();
+    },
+    onError: (error) => toast.error('Could not assign task', { description: error.message }),
+  });
+
+  const valid = assigneeId && taskName.trim() && (linkType === 'internal' || (linkType === 'project' && linkedProjectId) || (linkType === 'deal' && linkedDealId));
+
+  return (
+    <SlideOverPanel open={open} onClose={onClose} title="Assign Task" width="md">
+      <div className="space-y-4 p-5">
+        <div>
+          <label className="text-xs font-bold uppercase text-slate-500">Assign to</label>
+          <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm">
+            <option value="">Select team member</option>
+            {users.map((u) => <option key={String(u.id)} value={String(u.id)}>{String(u.firstName)} {String(u.lastName)}</option>)}
+          </select>
+        </div>
+        <div><label className="text-xs font-bold uppercase text-slate-500">Task name</label><Input value={taskName} onChange={(e) => setTaskName(e.target.value)} placeholder="What needs to be done?" /></div>
+        <div><label className="text-xs font-bold uppercase text-slate-500">Description</label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Add context if helpful..." /></div>
+        <div className="space-y-2">
+          <p className="text-xs font-bold uppercase text-slate-500">Link to</p>
+          {(['project', 'deal', 'internal'] as const).map((type) => (
+            <label key={type} className="flex items-center gap-2 text-sm">
+              <input type="radio" checked={linkType === type} onChange={() => { setLinkType(type); setLinkedProjectId(''); setLinkedDealId(''); }} />
+              {type === 'deal' ? 'A prospect' : type === 'project' ? 'A project' : 'SecComply Internal'}
+            </label>
+          ))}
+        </div>
+        {linkType === 'project' && (
+          <select value={linkedProjectId} onChange={(e) => setLinkedProjectId(e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm">
+            <option value="">Select project</option>
+            {(linkables?.projects ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}{p.companyName ? ` (${p.companyName})` : ''}</option>)}
+          </select>
+        )}
+        {linkType === 'deal' && (
+          <select value={linkedDealId} onChange={(e) => setLinkedDealId(e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm">
+            <option value="">Select prospect</option>
+            {(linkables?.deals ?? []).map((d) => <option key={d.id} value={d.id}>{d.title}{d.companyName ? ` - ${d.companyName}` : ''}</option>)}
+          </select>
+        )}
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="text-xs font-bold uppercase text-slate-500">Due date (optional)</label><Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
+          <div>
+            <label className="text-xs font-bold uppercase text-slate-500">Priority (optional)</label>
+            <select value={priority} onChange={(e) => setPriority(e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm">
+              <option value="">None</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </div>
+        </div>
+        <p className="text-xs text-slate-400">The task will appear on their My Tasks page immediately; they log hours when marking it complete.</p>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={!valid || assign.isPending}
+            onClick={() => assign.mutate({
+              assigneeId,
+              taskName: taskName.trim(),
+              description: description || undefined,
+              linkedProjectId: linkType === 'project' ? linkedProjectId : undefined,
+              linkedDealId: linkType === 'deal' ? linkedDealId : undefined,
+              isInternal: linkType === 'internal',
+              dueDate: dueDate || undefined,
+              priority: (priority || undefined) as 'low' | 'medium' | 'high' | 'urgent' | undefined,
+            })}
+          >
+            Assign Task
+          </Button>
+        </div>
+      </div>
+    </SlideOverPanel>
   );
 }

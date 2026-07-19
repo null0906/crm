@@ -33,6 +33,7 @@ async function seed() {
         roles: { manage: true },
         telegram: { manage: true },
         digests: { manage: true },
+        tasks: { assign: true },
       },
     },
     {

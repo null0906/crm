@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Tag, Users, LayoutGrid, FileText, Shield, ChevronRight, Bot, CalendarClock, BellRing, DatabaseZap } from 'lucide-react';
+import { Tag, Users, LayoutGrid, FileText, Shield, ChevronRight, Bot, CalendarClock, BellRing, DatabaseZap, MessageCircle, Key } from 'lucide-react';
 import Link from 'next/link';
 
 const settingsSections = [
@@ -18,6 +18,7 @@ const settingsSections = [
     items: [
       { label: 'Users & Roles', description: 'Manage team members and permissions', href: '/settings/users', icon: Users },
       { label: 'Audit Log', description: 'View all system activity and changes', href: '/settings/audit-log', icon: Shield },
+      { label: 'API Access', description: 'Manage read-only tokens for external automations', href: '/settings/api-access', icon: Key },
     ],
   },
   {
@@ -30,6 +31,8 @@ const settingsSections = [
     title: 'Integrations',
     items: [
       { label: 'Telegram Bot', description: 'Add contacts and log activities from Telegram', href: '/settings/telegram', icon: Bot },
+      { label: 'WhatsApp Bot', description: 'Add contacts and log activities from WhatsApp', href: '/settings/whatsapp', icon: MessageCircle },
+      { label: 'Microsoft Teams Bot', description: 'Add contacts and log activities from Microsoft Teams', href: '/settings/teams', icon: Users },
       { label: 'Digest Schedules', description: 'Send scheduled dashboard reports via email & Telegram', href: '/settings/digests', icon: CalendarClock },
       { label: 'Automations', description: 'Configure stale-lead reminder emails and future workflow automations', href: '/settings/automations', icon: BellRing },
     ],

@@ -1,13 +1,16 @@
 /**
- * Telegram bot command handler.
+ * Microsoft Teams bot command handler.
  * Authenticates callers, routes commands, calls existing CRM services,
  * formats responses, and logs all interactions.
+ *
+ * See teams-bot.ts for why this transport uses the official Teams SDK instead of a
+ * hand-rolled fetch wrapper (JWT/JWKS validation shouldn't be hand-rolled).
  */
 
 import { db } from '@/server/db';
-import { telegramUsers, telegramMessageLog, users, roles } from '@/server/db/schema';
+import { teamsUsers, teamsMessageLog, users, roles } from '@/server/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { sendMessage } from '@/server/lib/telegram-bot';
+import { createTeamsApp } from '@/server/lib/teams-bot';
 import { parseStructuredMessage } from '@/server/lib/telegram-parser';
 import {
   handleAdd,
@@ -19,31 +22,62 @@ import {
   HELP_TEXT,
 } from './bot-commands.service';
 import type { SessionUser } from '@/lib/types';
+import type { App, IActivityContext } from '@microsoft/teams.apps';
+import type { Activity } from '@microsoft/teams.api';
 
-const SOURCE = 'telegram';
+const SOURCE = 'teams';
+
+type MessageContext = IActivityContext<Extract<Activity, { type: 'message' }>>;
+
+// ── App singleton ────────────────────────────────────────────────────────────
+
+let appPromise: Promise<App> | null = null;
+
+/**
+ * Lazily constructs, registers the message handler on, and initializes the Teams App exactly
+ * once. Both the webhook route (for app.server.handleRequest) and notifyUser (for app.send)
+ * go through this accessor so the message handler is guaranteed registered before any
+ * request is processed.
+ */
+export function getTeamsApp(): Promise<App> {
+  if (!appPromise) {
+    appPromise = (async () => {
+      const app = createTeamsApp();
+      app.on('message', async (ctx) => {
+        const aadObjectId = ctx.activity.from.aadObjectId;
+        if (!aadObjectId) return;
+        await handleMessage(aadObjectId, ctx.activity.text ?? '', { name: ctx.activity.from.name }, ctx);
+      });
+      await app.initialize();
+      return app;
+    })();
+  }
+  return appPromise;
+}
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 export async function notifyUser(userId: string, message: string): Promise<boolean> {
   const [record] = await db
-    .select({ telegramUserId: telegramUsers.telegramUserId })
-    .from(telegramUsers)
-    .where(and(eq(telegramUsers.crmUserId, userId), eq(telegramUsers.isActive, true)))
+    .select({ conversationReference: teamsUsers.conversationReference })
+    .from(teamsUsers)
+    .where(and(eq(teamsUsers.crmUserId, userId), eq(teamsUsers.isActive, true)))
     .limit(1);
 
-  if (!record) return false;
+  if (!record?.conversationReference) return false;
 
-  await sendMessage(record.telegramUserId, message, 'Markdown');
+  const app = await getTeamsApp();
+  await app.send(record.conversationReference.conversation.id, { type: 'message', text: message });
   return true;
 }
 
-async function getAuthorizedUser(telegramUserId: number): Promise<{
+async function getAuthorizedUser(aadObjectId: string): Promise<{
   sessionUser: SessionUser;
-  telegramRecord: typeof telegramUsers.$inferSelect;
+  teamsRecord: typeof teamsUsers.$inferSelect;
 } | null> {
   const [record] = await db
     .select({
-      tg: telegramUsers,
+      tm: teamsUsers,
       user: {
         id: users.id,
         email: users.email,
@@ -59,15 +93,10 @@ async function getAuthorizedUser(telegramUserId: number): Promise<{
         permissions: roles.permissions,
       },
     })
-    .from(telegramUsers)
-    .innerJoin(users, eq(telegramUsers.crmUserId, users.id))
+    .from(teamsUsers)
+    .innerJoin(users, eq(teamsUsers.crmUserId, users.id))
     .innerJoin(roles, eq(users.roleId, roles.id))
-    .where(
-      and(
-        eq(telegramUsers.telegramUserId, telegramUserId),
-        eq(telegramUsers.isActive, true)
-      )
-    )
+    .where(and(eq(teamsUsers.aadObjectId, aadObjectId), eq(teamsUsers.isActive, true)))
     .limit(1);
 
   if (!record) return null;
@@ -87,13 +116,13 @@ async function getAuthorizedUser(telegramUserId: number): Promise<{
     },
   };
 
-  return { sessionUser, telegramRecord: record.tg };
+  return { sessionUser, teamsRecord: record.tm };
 }
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 
 async function logMessage(params: {
-  telegramUserId: number;
+  aadObjectId: string;
   direction: 'inbound' | 'outbound';
   command?: string;
   rawMessage?: string;
@@ -104,48 +133,48 @@ async function logMessage(params: {
   entityId?: string;
 }) {
   try {
-    await db.insert(telegramMessageLog).values({
-      telegramUserId: params.telegramUserId,
+    await db.insert(teamsMessageLog).values({
+      aadObjectId: params.aadObjectId,
       direction: params.direction,
       command: params.command,
       rawMessage: params.rawMessage,
-      parsedData: params.parsedData as Record<string, unknown> ?? null,
+      parsedData: (params.parsedData as Record<string, unknown>) ?? null,
       resultStatus: params.resultStatus,
       resultMessage: params.resultMessage,
       entityType: params.entityType,
       entityId: params.entityId,
     });
   } catch (err) {
-    console.error('[TelegramLog] Failed to log message:', err);
+    console.error('[TeamsLog] Failed to log message:', err);
   }
 }
 
 // ── Main Entry Point ──────────────────────────────────────────────────────────
 
-export async function handleMessage(
-  telegramUserId: number,
+async function handleMessage(
+  aadObjectId: string,
   messageText: string,
-  senderInfo?: { username?: string }
+  senderInfo: { name?: string },
+  ctx: MessageContext
 ): Promise<void> {
-  // Update last active timestamp in background (don't await)
-  db.update(telegramUsers)
-    .set({ lastActiveAt: new Date(), telegramUsername: senderInfo?.username })
-    .where(eq(telegramUsers.telegramUserId, telegramUserId))
+  // Update last active timestamp + conversation reference in background (don't await).
+  // The conversation reference is what lets notifyUser resume this conversation later
+  // without the user having messaged first — Bot Framework has no static "send by ID" API.
+  db.update(teamsUsers)
+    .set({ lastActiveAt: new Date(), teamsName: senderInfo.name, conversationReference: ctx.ref })
+    .where(eq(teamsUsers.aadObjectId, aadObjectId))
     .catch(() => {});
 
-  const auth = await getAuthorizedUser(telegramUserId);
+  const auth = await getAuthorizedUser(aadObjectId);
 
   if (!auth) {
-    await sendMessage(
-      telegramUserId,
-      'Your Telegram account is not linked to a CRM user. Contact your admin to set up access.'
-    );
+    await ctx.reply('Your Microsoft Teams account is not linked to a CRM user. Contact your admin to set up access.');
     await logMessage({
-      telegramUserId,
+      aadObjectId,
       direction: 'inbound',
       rawMessage: messageText,
       resultStatus: 'unauthorized',
-      resultMessage: 'No matching telegram_users record',
+      resultMessage: 'No matching teams_users record',
     });
     return;
   }
@@ -225,20 +254,20 @@ export async function handleMessage(
       }
     }
   } catch (err) {
-    console.error(`[TelegramBot] Error handling command ${parsed.command}:`, err);
+    console.error(`[TeamsBot] Error handling command ${parsed.command}:`, err);
     responseText = `❌ An error occurred: ${err instanceof Error ? err.message : 'Unknown error'}`;
     status = 'error';
   }
 
-  // Truncate to Telegram's 4096 char limit
+  // Same 4096-char cap used by the other two transports, for consistent truncation behavior.
   if (responseText.length > 4096) {
     responseText = responseText.slice(0, 4050) + '\n\n_(message truncated)_';
   }
 
-  await sendMessage(telegramUserId, responseText, 'Markdown');
+  await ctx.reply(responseText);
 
   await logMessage({
-    telegramUserId,
+    aadObjectId,
     direction: 'inbound',
     command: parsed.command,
     rawMessage: messageText,

@@ -14,6 +14,9 @@ import { notificationRouter } from './routers/notification.router';
 import { savedViewRouter } from './routers/saved-view.router';
 import { importRouter } from './routers/import.router';
 import { telegramRouter } from './routers/telegram.router';
+import { whatsappRouter } from './routers/whatsapp.router';
+import { teamsRouter } from './routers/teams.router';
+import { apiTokensRouter } from './routers/api-tokens.router';
 import { digestRouter } from './routers/digest.router';
 import { automationRouter } from './routers/automation.router';
 import { partnerRouter } from './routers/partner.router';
@@ -43,6 +46,9 @@ export const appRouter = router({
   savedViews: savedViewRouter,
   import: importRouter,
   telegram: telegramRouter,
+  whatsapp: whatsappRouter,
+  teams: teamsRouter,
+  apiTokens: apiTokensRouter,
   digests: digestRouter,
   automation: automationRouter,
   partners: partnerRouter,

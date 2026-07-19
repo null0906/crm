@@ -1,13 +1,13 @@
 /**
- * Telegram bot command handler.
- * Authenticates callers, routes commands, calls existing CRM services,
- * formats responses, and logs all interactions.
+ * WhatsApp bot command handler.
+ * Mirrors telegram.service.ts: authenticates callers, routes commands via the
+ * shared bot-commands.service handlers, formats responses, and logs interactions.
  */
 
 import { db } from '@/server/db';
-import { telegramUsers, telegramMessageLog, users, roles } from '@/server/db/schema';
+import { whatsappUsers, whatsappMessageLog, users, roles } from '@/server/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { sendMessage } from '@/server/lib/telegram-bot';
+import { sendMessage } from '@/server/lib/whatsapp-bot';
 import { parseStructuredMessage } from '@/server/lib/telegram-parser';
 import {
   handleAdd,
@@ -20,30 +20,30 @@ import {
 } from './bot-commands.service';
 import type { SessionUser } from '@/lib/types';
 
-const SOURCE = 'telegram';
+const SOURCE = 'whatsapp';
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 
 export async function notifyUser(userId: string, message: string): Promise<boolean> {
   const [record] = await db
-    .select({ telegramUserId: telegramUsers.telegramUserId })
-    .from(telegramUsers)
-    .where(and(eq(telegramUsers.crmUserId, userId), eq(telegramUsers.isActive, true)))
+    .select({ waId: whatsappUsers.waId })
+    .from(whatsappUsers)
+    .where(and(eq(whatsappUsers.crmUserId, userId), eq(whatsappUsers.isActive, true)))
     .limit(1);
 
   if (!record) return false;
 
-  await sendMessage(record.telegramUserId, message, 'Markdown');
+  await sendMessage(record.waId, message);
   return true;
 }
 
-async function getAuthorizedUser(telegramUserId: number): Promise<{
+async function getAuthorizedUser(waId: string): Promise<{
   sessionUser: SessionUser;
-  telegramRecord: typeof telegramUsers.$inferSelect;
+  whatsappRecord: typeof whatsappUsers.$inferSelect;
 } | null> {
   const [record] = await db
     .select({
-      tg: telegramUsers,
+      wa: whatsappUsers,
       user: {
         id: users.id,
         email: users.email,
@@ -59,15 +59,10 @@ async function getAuthorizedUser(telegramUserId: number): Promise<{
         permissions: roles.permissions,
       },
     })
-    .from(telegramUsers)
-    .innerJoin(users, eq(telegramUsers.crmUserId, users.id))
+    .from(whatsappUsers)
+    .innerJoin(users, eq(whatsappUsers.crmUserId, users.id))
     .innerJoin(roles, eq(users.roleId, roles.id))
-    .where(
-      and(
-        eq(telegramUsers.telegramUserId, telegramUserId),
-        eq(telegramUsers.isActive, true)
-      )
-    )
+    .where(and(eq(whatsappUsers.waId, waId), eq(whatsappUsers.isActive, true)))
     .limit(1);
 
   if (!record) return null;
@@ -87,13 +82,13 @@ async function getAuthorizedUser(telegramUserId: number): Promise<{
     },
   };
 
-  return { sessionUser, telegramRecord: record.tg };
+  return { sessionUser, whatsappRecord: record.wa };
 }
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 
 async function logMessage(params: {
-  telegramUserId: number;
+  waId: string;
   direction: 'inbound' | 'outbound';
   command?: string;
   rawMessage?: string;
@@ -104,48 +99,48 @@ async function logMessage(params: {
   entityId?: string;
 }) {
   try {
-    await db.insert(telegramMessageLog).values({
-      telegramUserId: params.telegramUserId,
+    await db.insert(whatsappMessageLog).values({
+      waId: params.waId,
       direction: params.direction,
       command: params.command,
       rawMessage: params.rawMessage,
-      parsedData: params.parsedData as Record<string, unknown> ?? null,
+      parsedData: (params.parsedData as Record<string, unknown>) ?? null,
       resultStatus: params.resultStatus,
       resultMessage: params.resultMessage,
       entityType: params.entityType,
       entityId: params.entityId,
     });
   } catch (err) {
-    console.error('[TelegramLog] Failed to log message:', err);
+    console.error('[WhatsAppLog] Failed to log message:', err);
   }
 }
 
 // ── Main Entry Point ──────────────────────────────────────────────────────────
 
 export async function handleMessage(
-  telegramUserId: number,
+  waId: string,
   messageText: string,
-  senderInfo?: { username?: string }
+  senderInfo?: { name?: string }
 ): Promise<void> {
   // Update last active timestamp in background (don't await)
-  db.update(telegramUsers)
-    .set({ lastActiveAt: new Date(), telegramUsername: senderInfo?.username })
-    .where(eq(telegramUsers.telegramUserId, telegramUserId))
+  db.update(whatsappUsers)
+    .set({ lastActiveAt: new Date(), waName: senderInfo?.name })
+    .where(eq(whatsappUsers.waId, waId))
     .catch(() => {});
 
-  const auth = await getAuthorizedUser(telegramUserId);
+  const auth = await getAuthorizedUser(waId);
 
   if (!auth) {
     await sendMessage(
-      telegramUserId,
-      'Your Telegram account is not linked to a CRM user. Contact your admin to set up access.'
+      waId,
+      'Your WhatsApp number is not linked to a CRM user. Contact your admin to set up access.'
     );
     await logMessage({
-      telegramUserId,
+      waId,
       direction: 'inbound',
       rawMessage: messageText,
       resultStatus: 'unauthorized',
-      resultMessage: 'No matching telegram_users record',
+      resultMessage: 'No matching whatsapp_users record',
     });
     return;
   }
@@ -225,20 +220,20 @@ export async function handleMessage(
       }
     }
   } catch (err) {
-    console.error(`[TelegramBot] Error handling command ${parsed.command}:`, err);
+    console.error(`[WhatsAppBot] Error handling command ${parsed.command}:`, err);
     responseText = `❌ An error occurred: ${err instanceof Error ? err.message : 'Unknown error'}`;
     status = 'error';
   }
 
-  // Truncate to Telegram's 4096 char limit
+  // WhatsApp text messages cap at 4096 chars, same as Telegram
   if (responseText.length > 4096) {
     responseText = responseText.slice(0, 4050) + '\n\n_(message truncated)_';
   }
 
-  await sendMessage(telegramUserId, responseText, 'Markdown');
+  await sendMessage(waId, responseText);
 
   await logMessage({
-    telegramUserId,
+    waId,
     direction: 'inbound',
     command: parsed.command,
     rawMessage: messageText,

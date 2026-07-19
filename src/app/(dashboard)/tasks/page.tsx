@@ -8,9 +8,26 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 
 type TaskRow = Record<string, any>;
 type LinkType = 'project' | 'deal' | 'internal';
+
+const PRIORITY_DOT: Record<string, string> = {
+  urgent: 'bg-red-500',
+  high: 'bg-orange-500',
+  medium: 'bg-amber-500',
+  low: 'bg-slate-400',
+};
+
+function isOverdue(task: TaskRow) {
+  if (!task.dueDate || task.status !== 'in_progress') return false;
+  return String(task.dueDate) < new Date().toISOString().slice(0, 10);
+}
+
+function formatDueDate(value: unknown) {
+  return new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short' }).format(new Date(String(value)));
+}
 
 function dateTimeInput(value: unknown) {
   const date = value ? new Date(String(value)) : new Date();
@@ -59,6 +76,7 @@ export default function MyTasksPage() {
   const [companyId, setCompanyId] = React.useState('');
   const [addOpen, setAddOpen] = React.useState(false);
   const [completeTask, setCompleteTask] = React.useState<TaskRow | null>(null);
+  const [cancelTarget, setCancelTarget] = React.useState<TaskRow | null>(null);
   const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 500 } });
   const taskFilters = {
     status: (status as 'in_progress' | 'completed' | 'cancelled') || undefined,
@@ -71,8 +89,8 @@ export default function MyTasksPage() {
     ...taskFilters,
   });
   const { data: stats = {} } = trpc.personalTasks.myStats.useQuery(taskFilters);
-  const cancelTask = trpc.personalTasks.cancel.useMutation({
-    onSuccess: async () => { toast.success('Task cancelled'); await utils.personalTasks.invalidate(); },
+  const cancelTaskMutation = trpc.personalTasks.cancel.useMutation({
+    onSuccess: async () => { toast.success('Task cancelled'); setCancelTarget(null); await utils.personalTasks.invalidate(); },
     onError: (error) => toast.error('Could not cancel task', { description: error.message }),
   });
   const deleteTask = trpc.personalTasks.delete.useMutation({
@@ -142,7 +160,10 @@ export default function MyTasksPage() {
                 key={task.id}
                 task={task}
                 onComplete={() => setCompleteTask(task)}
-                onCancel={() => cancelTask.mutate({ id: task.id })}
+                onCancel={() => {
+                  if (task.assignedBy) setCancelTarget(task);
+                  else cancelTaskMutation.mutate({ id: task.id });
+                }}
                 onDelete={() => {
                   if (window.confirm('Delete this task permanently?')) deleteTask.mutate({ id: task.id });
                 }}
@@ -155,7 +176,35 @@ export default function MyTasksPage() {
       </main>
       <AddTaskPanel open={addOpen} onClose={() => setAddOpen(false)} />
       <CompleteTaskPanel task={completeTask} onClose={() => setCompleteTask(null)} />
+      <CancelReasonDialog
+        task={cancelTarget}
+        loading={cancelTaskMutation.isPending}
+        onClose={() => setCancelTarget(null)}
+        onConfirm={(reason) => cancelTaskMutation.mutate({ id: cancelTarget!.id, reason })}
+      />
     </div>
+  );
+}
+
+function CancelReasonDialog({ task, onClose, onConfirm, loading }: { task: TaskRow | null; onClose: () => void; onConfirm: (reason: string) => void; loading: boolean }) {
+  const [reason, setReason] = React.useState('');
+  React.useEffect(() => { if (task) setReason(''); }, [task]);
+  return (
+    <Dialog open={Boolean(task)} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cancel assigned task</DialogTitle>
+          <DialogDescription>
+            Let {task?.assignerFirstName ?? 'the assigner'} know why you&apos;re cancelling &ldquo;{task?.taskName}&rdquo;.
+          </DialogDescription>
+        </DialogHeader>
+        <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason for cancelling..." autoFocus />
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={loading}>Never mind</Button>
+          <Button variant="destructive" disabled={loading || !reason.trim()} onClick={() => onConfirm(reason.trim())}>Cancel task</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -165,6 +214,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: 'gr
 
 function TaskCard({ task, onComplete, onCancel, onDelete, deleting }: { task: TaskRow; onComplete: () => void; onCancel: () => void; onDelete: () => void; deleting: boolean }) {
   const active = task.status === 'in_progress';
+  const overdue = isOverdue(task);
   return (
     <div className={`rounded-xl border border-l-[3px] bg-white p-4 shadow-sm ${active ? 'border-l-amber-500' : task.status === 'completed' ? 'border-l-emerald-500' : 'border-l-slate-300'}`}>
       <div className="mb-1 flex items-start justify-between gap-3">
@@ -176,9 +226,25 @@ function TaskCard({ task, onComplete, onCancel, onDelete, deleting }: { task: Ta
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-      <p className="text-sm font-bold text-slate-900">{task.taskName}</p>
+      <div className="flex items-center gap-1.5">
+        {task.priority && <span className={`h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[task.priority] ?? PRIORITY_DOT.medium}`} title={`Priority: ${task.priority}`} />}
+        <p className="text-sm font-bold text-slate-900">{task.taskName}</p>
+      </div>
       {task.description && <p className="mt-1 text-xs text-slate-500">{task.description}</p>}
       <p className="mt-2 text-xs font-semibold text-slate-400">{linkLabel(task)}</p>
+      {task.assignedBy && (
+        <p className="mt-1 text-xs font-semibold text-indigo-500">
+          Assigned by {task.assignerFirstName} {task.assignerLastName}
+          {task.dueDate && (
+            <span className={overdue ? 'ml-2 font-bold text-red-600' : 'ml-2 text-slate-400'}>
+              · Due {formatDueDate(task.dueDate)}{overdue ? ' (overdue)' : ''}
+            </span>
+          )}
+        </p>
+      )}
+      {task.status === 'cancelled' && task.cancelReason && (
+        <p className="mt-1 text-xs italic text-slate-400">Cancelled: {task.cancelReason}</p>
+      )}
       {active && <div className="mt-3 flex justify-end gap-2"><Button size="sm" onClick={onComplete}>Mark Complete</Button><Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button></div>}
     </div>
   );

@@ -22,3 +22,8 @@ export * from './ai-chat';
 export * from './pipeline-benchmarks';
 export * from './onboardings';
 export * from './personal-tasks';
+export * from './whatsapp-users';
+export * from './whatsapp-message-log';
+export * from './teams-users';
+export * from './teams-message-log';
+export * from './api-tokens';

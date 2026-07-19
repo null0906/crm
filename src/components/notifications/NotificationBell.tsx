@@ -14,6 +14,9 @@ const TYPE_ICONS: Record<string, string> = {
   mention: '💬',
   stage_change: '📋',
   deal_inactivity_email: '📬',
+  task_assigned: '📌',
+  task_completed: '✅',
+  task_cancelled: '🚫',
   system: '🔔',
 };
 
