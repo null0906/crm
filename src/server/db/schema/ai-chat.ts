@@ -1,5 +1,11 @@
-import { pgTable, uuid, varchar, text, timestamp, integer, boolean, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, integer, boolean, jsonb, index } from 'drizzle-orm/pg-core';
 import { users } from './users';
+
+export interface AiChatToolCall {
+  tool: string;
+  args: Record<string, unknown>;
+  resultSummary: string;
+}
 
 export const aiChatSessions = pgTable(
   'ai_chat_sessions',
@@ -24,6 +30,7 @@ export const aiChatMessages = pgTable(
     sqlQuery: text('sql_query'),
     queryResultCount: integer('query_result_count'),
     wasClarification: boolean('was_clarification').notNull().default(false),
+    toolCalls: jsonb('tool_calls').$type<AiChatToolCall[]>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

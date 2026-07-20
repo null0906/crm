@@ -141,6 +141,13 @@
       "when": 1784200000000,
       "tag": "0019_api_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784457941523,
+      "tag": "0020_ai_chat_tool_calls",
+      "breakpoints": true
     }
   ]
 }

@@ -6,8 +6,8 @@ import { activities, users, roles } from '@/server/db/schema';
 import { buildRepReport, describeReportFilters, getActivityFeed, getRepProfile, type ReportFilters } from '@/server/services/report.service';
 import { generateReportPDF } from '@/server/lib/report-pdf';
 import { hasPermission } from '@/server/lib/permissions';
-import type { SessionUser } from '@/lib/types';
 import { writeAuditLog } from '@/server/services/audit.service';
+import { canViewTeamReports, assertReportAccess } from '@/server/services/report-access';
 
 const presets = ['this_week', 'last_week', 'this_month', 'last_month', 'this_quarter', 'last_quarter', 'till_date', 'custom'] as const;
 type ReportPreset = (typeof presets)[number];
@@ -89,21 +89,6 @@ export function getDateRange(preset: string): { dateFrom: Date; dateTo: Date } {
       return { dateFrom: new Date(2000, 0, 1), dateTo: now };
     default:
       return { dateFrom: new Date(now.getTime() - 30 * 86400000), dateTo: now };
-  }
-}
-
-function canViewTeamReports(ctxUser: SessionUser) {
-  const roleSlug = ctxUser.role.slug;
-  return (
-    hasPermission(ctxUser.role.permissions, 'reports', 'view') ||
-    ['super_admin', 'admin', 'sales_manager', 'manager', 'viewer'].includes(roleSlug)
-  );
-}
-
-function assertReportAccess(ctxUser: SessionUser, targetUserId: string) {
-  if (targetUserId === ctxUser.id) return;
-  if (!canViewTeamReports(ctxUser)) {
-    throw new TRPCError({ code: 'FORBIDDEN', message: 'You can only view your own report.' });
   }
 }
 

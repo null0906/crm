@@ -1,51 +1,19 @@
-import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
+import { generateText, stepCountIs, type ModelMessage } from 'ai';
+import { createGroq } from '@ai-sdk/groq';
 import { db as defaultDb } from '@/server/db';
-import {
-  activities,
-  aiChatMessages,
-  aiChatSessions,
-  companies,
-  contacts,
-  contactTags,
-  deals,
-  pipelines,
-  roles,
-  tagCategories,
-  tags,
-  users,
-} from '@/server/db/schema';
-import { writeAuditLog } from './audit.service';
-import { executeSafeQuery, validateGeneratedSql } from './sql-safety.service';
-import { generateChatResponse, type LlmHistoryMessage } from './groq.service';
-import type { RolePermissions } from '@/lib/types';
+import { aiChatMessages, aiChatSessions } from '@/server/db/schema';
+import type { AiChatToolCall } from '@/server/db/schema/ai-chat';
+import { createAiTools } from './ai-tools';
+import type { SessionUser } from '@/lib/types';
 
 type DbClient = typeof defaultDb;
-
-type UserContext = {
-  userId: string;
-  userName: string;
-  role: string;
-  permissions: RolePermissions;
-};
 
 type ClarificationOption = {
   id?: string;
   label: string;
   count?: number;
 };
-
-type AmbiguityCheck = {
-  isAmbiguous: boolean;
-  clarificationNeeded: string;
-  question?: string;
-  options?: ClarificationOption[];
-};
-
-type ParsedLlmResponse =
-  | { phase: 'clarify'; question: string; options?: ClarificationOption[] }
-  | { phase: 'query'; sql: string; explanation?: string }
-  | { phase: 'answer'; answer: string; followUpSuggestions?: string[] }
-  | null;
 
 export type AiChatResponse = {
   message: {
@@ -59,715 +27,66 @@ export type AiChatResponse = {
 };
 
 const friendlyError = 'I had trouble processing that query. Try rephrasing, or contact your admin.';
+const MAX_STEPS = Number(process.env.GROQ_MAX_TOOL_STEPS ?? 6);
 
-function formatCurrencyAmount(value: number, currency = 'INR'): string {
-  const normalizedCurrency = (currency || 'INR').toUpperCase();
-  const locale = normalizedCurrency === 'INR' ? 'en-IN' : 'en-US';
+function getCandidateModels(): string[] {
+  // openai/gpt-oss-* models come first: they're OpenAI-trained specifically for the standard
+  // OpenAI-style structured tool-calling format, and are markedly more reliable at emitting
+  // well-formed tool calls on Groq than the Llama models, which are documented (both in our
+  // own testing and widely elsewhere) to sometimes emit malformed pseudo-XML function-call
+  // text that Groq's API then rejects as an invalid tool name.
+  const configuredModels = [
+    process.env.GROQ_MODEL,
+    ...(process.env.GROQ_FALLBACK_MODELS?.split(',') ?? []),
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'llama-3.3-70b-versatile',
+  ]
+    .map((model) => model?.trim())
+    .filter((model): model is string => Boolean(model));
 
-  try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: normalizedCurrency,
-      maximumFractionDigits: 2,
-    }).format(value);
-  } catch {
-    return `${normalizedCurrency} ${value.toLocaleString(locale, { maximumFractionDigits: 2 })}`;
-  }
+  return Array.from(new Set(configuredModels));
 }
 
-function isPipelineValueQuestion(query: string): boolean {
-  const normalized = query.toLowerCase();
-  const mentionsDeals = /\b(deal|deals|prospect|prospects|pipeline)\b/.test(normalized);
-  const asksValue = /\b(value|amount|total|worth|sum)\b/.test(normalized);
-  return mentionsDeals && asksValue;
-}
-
-async function answerPipelineValueQuestion(query: string, db: DbClient, userContext: UserContext): Promise<string | null> {
-  if (!isPipelineValueQuestion(query)) return null;
-  if (userContext.role === 'sales_rep') {
-    return 'Prospect values are restricted for your Analyst role, so I cannot show prospect amounts, pipeline value, or revenue totals.';
-  }
-
-  const normalized = query.toLowerCase();
-  const onlyOpenDeals = /\bopen\b/.test(normalized) || /\bpipeline value\b/.test(normalized);
-  const salesPipelineOnly = /\bsales\b/.test(normalized);
-
-  const result = await db.execute(sql`
-    SELECT COALESCE(dv.engagement_currency, dv.currency, 'INR') AS currency,
-      COUNT(*)::int AS deal_count,
-      COALESCE(SUM(dv.effective_value), 0)::text AS total_value
-    FROM deals_with_value dv
-    JOIN pipelines p ON p.id = dv.pipeline_id
-    WHERE dv.deleted_at IS NULL
-      ${onlyOpenDeals ? sql`AND dv.status = 'open'` : sql``}
-      ${salesPipelineOnly ? sql`AND p.name ILIKE '%sales%'` : sql``}
-    GROUP BY COALESCE(dv.engagement_currency, dv.currency, 'INR')
-  `);
-  const rawRows = Array.isArray(result) ? result : ((result as unknown as { rows?: unknown[] }).rows ?? []);
-  const rows = (rawRows as Array<{ currency: string; deal_count: number; total_value: string }>)
-    .map((row) => ({ currency: row.currency, dealCount: row.deal_count, totalValue: row.total_value }));
-
-  const dealCount = rows.reduce((sum, row) => sum + Number(row.dealCount ?? 0), 0);
-  const totals = rows.map((row) => {
-    const value = Number(row.totalValue ?? 0);
-    return formatCurrencyAmount(value, row.currency);
-  });
-
-  const scope = `${onlyOpenDeals ? 'open ' : ''}${salesPipelineOnly ? 'sales pipeline ' : 'pipeline '}prospects`;
-
-  if (rows.length === 0 || dealCount === 0) {
-    return `There are no ${scope} with a value recorded.`;
-  }
-
-  return `You have **${dealCount} ${scope}** with a total value of **${totals.join(' + ')}**.\n\nI used each prospect's stored currency, so INR amounts are shown as rupees rather than dollars.`;
-}
-
-type ParsedUserActivityQuestion = {
-  name: string;
-  includeTasks: boolean;
-  includeAutomated: boolean;
-  timeframe: 'week' | 'month' | 'all_time';
-  wantsMonthlySummary: boolean;
-};
-
-function cleanPersonName(value: string): string {
-  return value
-    .replace(/'s\b/gi, '')
-    .replace(/\b(all|the|calls?|emails?|activities?|activity|done|did|has|have|had|this|week|month|monthly|till|date|from|start|structured|tabular|format|numbers?|which)\b/gi, ' ')
-    .replace(/[^a-zA-Z\s.'-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function parseUserActivityQuestion(query: string): ParsedUserActivityQuestion | null {
-  const normalized = query.toLowerCase();
-  const mentionsActivity = /\b(activit(?:y|ies)|calls?|emails?|whatsapp|meetings?|logged|done)\b/.test(normalized);
-  if (!mentionsActivity) return null;
-
-  const nameMatch =
-    query.match(/\bthat\s+([a-z][a-z\s.'-]{1,60}?)\s+(?:has|have|had|did|done)\b/i) ??
-    query.match(/\b([a-z][a-z\s.'-]{1,60}?)(?:'s)\s+(?:activit(?:y|ies)|calls?|emails?|whatsapp|meetings?)\b/i) ??
-    query.match(/\bshow\s+me\s+([a-z][a-z\s.'-]{1,60}?)(?:'s|\s+activity|\s+activities|\s+calls|\s+emails)/i) ??
-    query.match(/\b(?:by|for)\s+([a-z][a-z\s.'-]{1,60}?)(?:\s+from|\s+till|\s+this|\s+in|\s*$)/i);
-
-  const name = nameMatch?.[1] ? cleanPersonName(nameMatch[1]) : '';
-  if (!name) return null;
-
-  const timeframe = /\b(this week|week)\b/.test(normalized)
-    ? 'week'
-    : /\b(this month)\b/.test(normalized)
-      ? 'month'
-      : 'all_time';
-
-  return {
-    name,
-    includeTasks: /\b(all activities|task|tasks|reminder|reminders|todo|to-do)\b/i.test(query),
-    includeAutomated: /\b(automated|automation|system)\b/i.test(query),
-    timeframe,
-    wantsMonthlySummary: /\b(month|monthly|which month|tabular|table|numbers?)\b/i.test(query),
-  };
-}
-
-function getCurrentIstWeekRange(now = new Date()): { start: Date; end: Date } {
-  const istOffsetMs = 5.5 * 60 * 60 * 1000;
-  const istNow = new Date(now.getTime() + istOffsetMs);
-  const day = istNow.getUTCDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  const mondayIstMidnight = Date.UTC(
-    istNow.getUTCFullYear(),
-    istNow.getUTCMonth(),
-    istNow.getUTCDate() + diffToMonday,
-    0,
-    0,
-    0,
-    0
-  );
-
-  return {
-    start: new Date(mondayIstMidnight - istOffsetMs),
-    end: new Date(mondayIstMidnight + 7 * 24 * 60 * 60 * 1000 - istOffsetMs),
-  };
-}
-
-function formatActivityType(type: string): string {
-  return type
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function formatActivityTimestamp(value: Date): string {
-  return value.toLocaleString('en-IN', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Asia/Kolkata',
-  });
-}
-
-function getActivityRange(parsed: ParsedUserActivityQuestion): { start?: Date; end?: Date; label: string } {
-  if (parsed.timeframe === 'week') {
-    const { start, end } = getCurrentIstWeekRange();
-    return { start, end, label: 'this week' };
-  }
-
-  if (parsed.timeframe === 'month') {
-    const istOffsetMs = 5.5 * 60 * 60 * 1000;
-    const istNow = new Date(Date.now() + istOffsetMs);
-    const monthStartIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1, 0, 0, 0, 0);
-    const nextMonthStartIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth() + 1, 1, 0, 0, 0, 0);
-    return {
-      start: new Date(monthStartIst - istOffsetMs),
-      end: new Date(nextMonthStartIst - istOffsetMs),
-      label: 'this month',
-    };
-  }
-
-  return { label: 'from the start till date' };
-}
-
-async function resolveActivityUser(
-  parsed: ParsedUserActivityQuestion,
-  db: DbClient,
-  currentUserId?: string
-): Promise<
-  | { user: { id: string; firstName: string | null; lastName: string | null; email: string | null }; clarification?: never }
-  | { user?: never; clarification: string }
-> {
-  const normalizedName = parsed.name.toLowerCase();
-  const matchingUsers = await db
-    .select({
-      id: users.id,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      email: users.email,
-    })
-    .from(users)
-    .where(and(
-      sql`${users.status} != 'inactive'`,
-      or(
-        sql`concat_ws(' ', ${users.firstName}, ${users.lastName}) ILIKE ${`%${parsed.name}%`}`,
-        ilike(users.firstName, parsed.name),
-        ilike(users.lastName, parsed.name)
-      )
-    ))
-    .limit(10);
-
-  if (matchingUsers.length === 0) {
-    return { clarification: `I could not find a CRM user matching **${parsed.name}**. Try using their full name.` };
-  }
-
-  if (matchingUsers.length === 1) {
-    return { user: matchingUsers[0]! };
-  }
-
-  const currentUserMatch = matchingUsers.find((user) => {
-    if (user.id !== currentUserId) return false;
-    const firstName = user.firstName?.toLowerCase() ?? '';
-    const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ').toLowerCase();
-    return firstName === normalizedName || fullName.includes(normalizedName);
-  });
-
-  if (currentUserMatch) {
-    return { user: currentUserMatch };
-  }
-
-  const { start, end } = getActivityRange(parsed);
-  const typeFilter = parsed.includeTasks
-    ? undefined
-    : sql`${activities.activityType} != 'task'`;
-  const automationFilter = parsed.includeAutomated
-    ? undefined
-    : sql`COALESCE(${activities.isAutomated}, false) = false`;
-
-  const activityCounts = await db
-    .select({
-      userId: activities.performedBy,
-      count: sql<number>`COUNT(*)::int`,
-    })
-    .from(activities)
-    .where(and(
-      inArray(activities.performedBy, matchingUsers.map((user) => user.id)),
-      sql`${activities.deletedAt} IS NULL`,
-      start ? sql`${activities.occurredAt} >= ${start}` : undefined,
-      end ? sql`${activities.occurredAt} < ${end}` : undefined,
-      typeFilter,
-      automationFilter
-    ))
-    .groupBy(activities.performedBy);
-
-  const usersWithActivity = activityCounts
-    .filter((row) => Number(row.count ?? 0) > 0)
-    .map((row) => matchingUsers.find((user) => user.id === row.userId))
-    .filter(Boolean);
-
-  if (usersWithActivity.length === 1) {
-    return { user: usersWithActivity[0]! };
-  }
-
-  return {
-    clarification: `I found multiple users matching **${parsed.name}**:\n\n${matchingUsers
-      .map((user, index) => `${index + 1}. ${[user.firstName, user.lastName].filter(Boolean).join(' ')} (${user.email})`)
-      .join('\n')}\n\nPlease ask again with the full name.`,
-  };
-}
-
-async function answerUserActivityQuestion(query: string, db: DbClient, currentUserId?: string): Promise<string | null> {
-  const parsed = parseUserActivityQuestion(query);
-  if (!parsed) return null;
-
-  const resolvedUser = await resolveActivityUser(parsed, db, currentUserId);
-  if (resolvedUser.clarification) return resolvedUser.clarification;
-  if (!resolvedUser.user) {
-    return `I could not find a CRM user matching **${parsed.name}**. Try using their full name.`;
-  }
-
-  const matchedUser = resolvedUser.user;
-  const { start, end, label } = getActivityRange(parsed);
-  const typeFilter = parsed.includeTasks
-    ? undefined
-    : sql`${activities.activityType} != 'task'`;
-  const automationFilter = parsed.includeAutomated
-    ? undefined
-    : sql`COALESCE(${activities.isAutomated}, false) = false`;
-  const displayName = [matchedUser.firstName, matchedUser.lastName].filter(Boolean).join(' ') || parsed.name;
-
-  if (parsed.wantsMonthlySummary || parsed.timeframe === 'all_time') {
-    const rows = await db
-      .select({
-        monthStart: sql<string>`to_char(date_trunc('month', ${activities.occurredAt} AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM')`,
-        monthLabel: sql<string>`to_char(date_trunc('month', ${activities.occurredAt} AT TIME ZONE 'Asia/Kolkata'), 'Mon YYYY')`,
-        total: sql<number>`COUNT(*)::int`,
-        calls: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} = 'call')::int`,
-        emails: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} IN ('email_sent', 'email_received'))::int`,
-        whatsapp: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} = 'whatsapp')::int`,
-        meetings: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} IN ('meeting', 'demo'))::int`,
-        notes: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} = 'note')::int`,
-        tasks: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} = 'task')::int`,
-        other: sql<number>`COUNT(*) FILTER (WHERE ${activities.activityType} NOT IN ('call', 'email_sent', 'email_received', 'whatsapp', 'meeting', 'demo', 'note', 'task'))::int`,
-      })
-      .from(activities)
-      .where(and(
-        eq(activities.performedBy, matchedUser.id),
-        sql`${activities.deletedAt} IS NULL`,
-        start ? sql`${activities.occurredAt} >= ${start}` : undefined,
-        end ? sql`${activities.occurredAt} < ${end}` : undefined,
-        typeFilter,
-        automationFilter
-      ))
-      .groupBy(sql`date_trunc('month', ${activities.occurredAt} AT TIME ZONE 'Asia/Kolkata')`)
-      .orderBy(sql`date_trunc('month', ${activities.occurredAt} AT TIME ZONE 'Asia/Kolkata')`);
-
-    if (rows.length === 0) {
-      const filteredNote = parsed.includeTasks || parsed.includeAutomated
-        ? ''
-      : ' I excluded automated CRM tasks and stale-prospect reminders from this activity summary.';
-      return `I did not find any human activity logged by **${displayName}** ${label}.${filteredNote}`;
-    }
-
-    const totals = rows.reduce(
-      (acc, row) => ({
-        total: acc.total + Number(row.total ?? 0),
-        calls: acc.calls + Number(row.calls ?? 0),
-        emails: acc.emails + Number(row.emails ?? 0),
-        whatsapp: acc.whatsapp + Number(row.whatsapp ?? 0),
-        meetings: acc.meetings + Number(row.meetings ?? 0),
-        notes: acc.notes + Number(row.notes ?? 0),
-        tasks: acc.tasks + Number(row.tasks ?? 0),
-        other: acc.other + Number(row.other ?? 0),
-      }),
-      { total: 0, calls: 0, emails: 0, whatsapp: 0, meetings: 0, notes: 0, tasks: 0, other: 0 }
-    );
-
-    const tableRows = rows.map((row) => (
-      `| ${row.monthLabel} | ${row.total} | ${row.calls} | ${row.emails} | ${row.whatsapp} | ${row.meetings} | ${row.notes} | ${row.tasks} | ${row.other} |`
-    ));
-
-    const exclusions = parsed.includeTasks || parsed.includeAutomated
-      ? ''
-      : '\n\nI excluded automated system tasks and stale-prospect reminders so this reflects actual logged activity.';
-
-    return `Here is **${displayName}'s activity summary ${label}**, grouped by month.\n\n| Month | Total | Calls | Emails | WhatsApp | Meetings/Demos | Notes | Tasks | Other |\n| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n${tableRows.join('\n')}\n| **Total** | **${totals.total}** | **${totals.calls}** | **${totals.emails}** | **${totals.whatsapp}** | **${totals.meetings}** | **${totals.notes}** | **${totals.tasks}** | **${totals.other}** |\n\n[View full report →](/reports/${matchedUser.id}?preset=this_month)${exclusions}`;
-  }
-
-  const rows = await db
-    .select({
-      activityType: activities.activityType,
-      subject: activities.subject,
-      occurredAt: activities.occurredAt,
-      contactFirstName: contacts.firstName,
-      contactLastName: contacts.lastName,
-      companyName: companies.name,
-      dealTitle: deals.title,
-    })
-    .from(activities)
-    .leftJoin(contacts, eq(activities.contactId, contacts.id))
-    .leftJoin(companies, eq(activities.companyId, companies.id))
-    .leftJoin(deals, eq(activities.dealId, deals.id))
-    .where(and(
-      eq(activities.performedBy, matchedUser.id),
-      sql`${activities.deletedAt} IS NULL`,
-      start ? sql`${activities.occurredAt} >= ${start}` : undefined,
-      end ? sql`${activities.occurredAt} < ${end}` : undefined,
-      typeFilter,
-      automationFilter
-    ))
-    .orderBy(desc(activities.occurredAt))
-    .limit(25);
-
-  if (rows.length === 0) {
-    const filteredNote = parsed.includeTasks || parsed.includeAutomated
-      ? ''
-      : ' I excluded automated CRM tasks and stale-prospect reminders from this activity view.';
-    return `I did not find any human activity logged by **${displayName}** ${label}.${filteredNote}`;
-  }
-
-  const lines = rows.map((row) => {
-    const related = [
-      [row.contactFirstName, row.contactLastName].filter(Boolean).join(' '),
-      row.companyName,
-      row.dealTitle ? `Prospect: ${row.dealTitle}` : '',
-    ].filter(Boolean);
-    const relatedText = related.length ? ` — ${related.join(' · ')}` : '';
-    return `- **${formatActivityType(row.activityType)}:** ${row.subject || 'No subject'}${relatedText} _(${formatActivityTimestamp(row.occurredAt)})_`;
-  });
-
-  const exclusions = parsed.includeTasks || parsed.includeAutomated
-    ? ''
-    : '\n\nI excluded automated system tasks and stale-prospect reminders so this reflects actual logged activity.';
-  const capped = rows.length === 25 ? '\n\nShowing the latest 25 activities for this week.' : '';
-
-  return `**${displayName} has ${rows.length} human activit${rows.length === 1 ? 'y' : 'ies'} logged ${label}:**\n\n${lines.join('\n')}${capped}\n\n[View full report →](/reports/${matchedUser.id}?preset=this_month)${exclusions}`;
-}
-
-export function buildSystemPrompt(userContext: UserContext): string {
+export function buildSystemPrompt(user: SessionUser): string {
   return `
-You are the SecComply CRM Intelligence Assistant. You help the sales team and management query their CRM data using natural language.
+You are the SecComply CRM Intelligence Assistant. You answer questions about contacts, companies,
+Prospects (the CRM's deals/pipeline records), activities, and team performance by calling tools —
+never by inventing numbers or guessing at data you haven't fetched.
 
-## Your Capabilities
-- Answer questions about contacts, companies, prospects, activities, pipelines, tags, and team performance
-- Generate SQL queries against the SecComply CRM PostgreSQL database
-- Ask smart clarifying questions when a query is ambiguous
-- Format results in a clean, readable way with relevant context
-- Suggest follow-up actions when appropriate
+## Current user
+Name: ${user.firstName} ${user.lastName}
+Role: ${user.role.name} (slug: ${user.role.slug})
+User ID: ${user.id}
 
-## Database Schema
+## Terminology
+- The database calls them "deals" but you must always say "Prospect/Prospects" to the user, never "Deal/Deals".
+- The role slug "sales_rep" is displayed to users as "Analyst" — say "Analyst" in your responses.
 
-### contacts
-id (uuid), first_name, last_name, email, secondary_email, phone, mobile, job_title, department,
-company_id (-> companies.id), company_name, source, status (new/contacted/qualified/unqualified/nurturing/converted/lost/archived),
-lead_score (0-100), owner_id (-> users.id), city, state, country, location, created_at, last_contacted_at,
-custom_fields (jsonb), deleted_at (null = active)
-
-### companies
-id (uuid), name, domain, website, industry, sub_industry, company_size, company_type (prospect/customer/partner/vendor/competitor/other),
-phone, email, city, state, country, location, owner_id (-> users.id), status, created_at, deleted_at
-
-### deals (called "Prospects" in the UI)
-id (uuid), title, pipeline_id (-> pipelines.id), stage_id (-> pipeline_stages.id), amount (decimal), currency,
-probability (0-100), services (jsonb text array), service_other, status (open/won/lost/abandoned),
-expected_close_date, actual_close_date, primary_contact_id (-> contacts.id), company_id (-> companies.id),
-partner_company_id (-> companies.id), owner_id (-> users.id), stage_entered_at, is_velocity_slow, created_at, deleted_at
-
-### deal_team_members
-deal_id (-> deals.id), user_id (-> users.id), role. These are additional assigned users who may not be the owner.
-
-### projects
-id, name, description, company_id, primary_contact_id, service_type, stage, start_date, end_date, is_delayed,
-owner_id (-> users.id), created_by (-> users.id), status, deleted_at
-
-### project_members
-project_id (-> projects.id), user_id (-> users.id), role. These are additional assigned users who may not be the owner.
-
-ASSIGNED USER SEMANTICS:
-When asked what a person is working on, or for that person's prospects/projects, include records where the person is
-the owner, the creator, OR a member through deal_team_members/project_members. Never filter only by owner_id.
-
-NOTE: Users will refer to these as "prospects" in natural language queries.
-When a user asks about "prospects", query the deals table.
-When responding, always use the word "prospect/prospects" not "deal/deals".
-
-### deal_contacts
-deal_id (-> deals.id), contact_id (-> contacts.id), role
-
-### activities
-id (uuid), activity_type (call/email_sent/email_received/meeting/note/task/sms/whatsapp/linkedin/demo/proposal/document/stage_change/status_change/assignment/custom),
-subject, body, contact_id, company_id, deal_id, performed_by (-> users.id), occurred_at, task_due_date,
-task_completed_at, task_priority, call_duration_seconds, call_outcome, is_automated, deleted_at
-
-### tags
-id (uuid), name, slug, color, category_id, usage_count
-
-### tag_categories
-id (uuid), name, color, description
-
-### contact_tags, company_tags, deal_tags
-contact_tags.contact_id/tag_id, company_tags.company_id/tag_id, deal_tags.deal_id/tag_id
-
-### users
-id (uuid), first_name, last_name, email, role_id, status
-
-### roles
-id (uuid), name, slug, permissions
-
-### pipelines
-id (uuid), name, pipeline_type, is_sales_pipeline
-
-is_sales_pipeline is the independent source of truth for automatic onboarding. A won prospect enters onboarding
-automatically only when its pipeline has is_sales_pipeline = true. Pipeline type and pipeline name do not imply this.
-
-### onboardings
-id (uuid), deal_id (-> deals.id), stage, status, engagement_amount, engagement_currency, owner_id, created_at
-
-Onboarding normally contains won prospects from sales-onboarding-enabled pipelines. Super admins can manually add an
-exceptional won prospect from another pipeline, so do not assume every onboarding row's pipeline is flagged.
-The onboarding stage value "completed" must be described as "Onboarding Complete". It means the sales-to-delivery
-handoff is complete and delivery is beginning; it does not mean the project itself has been delivered or certified.
-
-### pipeline_stages
-id (uuid), pipeline_id, name, position, stage_type (active/won/lost), default_probability
-
-### deal_stage_history
-id, deal_id, from_stage_id, to_stage_id, entered_at, exited_at, moved_by, created_at
-
-### pipeline_benchmarks
-id, pipeline_id, stage_id, avg_days_in_stage, sample_size, calculated_at
-
-### deals_with_value
-Use this view for every revenue, pipeline value, or prospect value query. effective_value coalesces onboardings.engagement_amount with deals.amount. It also exposes engagement_amount, engagement_currency, and has_engagement_amount.
-
-## Current User Context
-Name: ${userContext.userName}
-Role: ${userContext.role}
-User ID: ${userContext.userId}
-Permissions JSON: ${JSON.stringify(userContext.permissions)}
-
-## RBAC Rules for SQL Generation
-- Always add WHERE deleted_at IS NULL to contacts, companies, activities, and deals queries when those tables are used
-- Only contacts, companies, activities, deals, and projects have a deleted_at column. Do NOT add deleted_at filters to tags, tag_categories, contact_tags, company_tags, deal_tags, users, roles, pipelines, pipeline_stages, deal_stage_history, pipeline_benchmarks, onboardings, deal_contacts, deal_team_members, or project_members — none of them have that column, and adding it will cause the query to fail.
-- Never use deals.amount directly for value aggregation. Use deals_with_value.effective_value and its engagement currency fallback.
-- Format INR as INR/₹, USD as USD/$, and never use $ for prospect values unless deals.currency = 'USD'.
-- If user role is 'sales_rep', treat them as an Analyst and never SELECT, summarize, calculate, or reveal deals.amount, project contract values, pipeline value, revenue, weighted pipeline, average deal size, or any prospect/deal monetary amount.
-- Analysts may only see prospects they own, created, or are assigned to through deal_team_members.
-- When a user asks for someone's "activity", default to human logged activity: activities.performed_by = that user's id, activities.is_automated = false, and exclude activity_type = 'task' unless they explicitly ask for tasks/reminders/automations.
-- Do not treat stale-prospect reminders such as "Prospect stuck..." as sales activity unless the user explicitly asks for automated tasks.
-- For Analysts (role slug 'sales_rep'), prospect queries must filter to: deals.owner_id = current user OR deals.created_by = current user OR membership in deal_team_members.
-- If permissions are own-scoped, add owner filters:
-  - contacts.owner_id = '${userContext.userId}' for contacts
-  - deals.owner_id = '${userContext.userId}' for deals
-  - companies.owner_id = '${userContext.userId}' for companies
-  - activities.performed_by = '${userContext.userId}' for activity-only queries
-- Sales managers, admins, and super admins can query team-wide data
-- Never expose password_hash, sensitive auth fields, system tables, or internal auth data
-- Only SELECT queries are permitted. Never generate INSERT, UPDATE, DELETE, DROP, TRUNCATE, ALTER, CREATE, GRANT, or REVOKE
-- Always use parentheses when a WHERE clause mixes AND and OR, e.g. "a AND (b OR c)" not "a AND b OR c" — AND binds tighter than OR in SQL, so unparenthesized mixing silently changes which rows match (a common cause of deleted_at IS NULL filters being bypassed)
-
-IMPORTANT TERMINOLOGY:
-- The database table is called "deals" but users call them "Prospects"
-- Always use "Prospect/Prospects" in your responses, never "Deal/Deals"
-- Example: "You have 8 open prospects worth ₹24,00,000" NOT "8 open deals"
-- The database role slug "sales_rep" is displayed to users as "Analyst"; if a user asks about Analysts, use role slug/name "sales_rep" in SQL and say "Analyst" in the response.
-- Pipeline stages, pipeline names, and all other terms remain unchanged
-
-## How to Handle Ambiguous Queries
-- If they mention "Delhi event" or any event name, list matching event-like tags and ask which ones
-- For activity/performance questions, treat a mentioned first name as a CRM user first, not a contact. If the first name matches the current user, use the current user without asking. Only ask for clarification when multiple active CRM users are equally likely after applying that preference.
-- If they mention a person by first name only for non-activity questions and there are multiple users or contacts, list them and ask
-- If they mention "this quarter/month/year", use the current date context and include the exact date range in the query explanation
-- If they ask "how many" without specifying a breakdown, ask if they want a total or breakdown only when the answer would otherwise be unclear
-
-## Response Format
-For data answers: Lead with a summary line, then structured breakdown. Include the direct answer prominently, relevant context, and a suggested follow-up action if useful.
-
-For clarifying questions: List the options clearly and ask what they want. Keep it concise.
-
-For no results: Say so clearly and suggest why the filter may be too narrow.
-
-IMPORTANT: For this SQL-planning step, respond in one JSON object only:
-{"phase":"clarify","question":"...","options":[{"label":"..."}]} if clarification is needed, OR
-{"phase":"query","sql":"SELECT ...","explanation":"what this query does"} if a safe read-only query should run.
-Do not use phase "answer" in this step. CRM data answers must come from SQL results.
+## Tool selection
+- Prefer the most specific curated tool over run_custom_query. Curated tools already enforce
+  correct access control and are guaranteed to run correctly — run_custom_query is a last resort
+  for questions no curated tool covers.
+- Call resolve_crm_user before get_activity_by_person or get_rep_report when a question names a
+  person. If a match has isCurrentUser: true and the caller is plausibly asking about themselves,
+  use it without asking. Only call ask_clarifying_question if multiple users remain equally likely.
+- get_daily_metrics is always a company-wide total — never use it for "my numbers" questions;
+  use get_rep_report or get_activity_by_person for anything personalized.
+- If a tool result has forbidden: true, explain that plainly to the user (quoting its reason) —
+  do not try another tool to route around an access restriction.
+- Call ask_clarifying_question only when there is genuine ambiguity you cannot reasonably resolve
+  (e.g. multiple similarly-named tags or people). Prefer answering over asking when a sensible
+  default interpretation exists.
+- Once you have enough information, respond with a clear, concise, well-formatted final answer —
+  lead with the direct answer, then supporting detail. Never respond with raw JSON or code.
 `.trim();
 }
 
-export async function checkForAmbiguity(query: string, db: DbClient = defaultDb): Promise<AmbiguityCheck> {
-  const normalized = query.toLowerCase();
-  const eventKeywords = ['event', 'conference', 'summit', 'expo', 'meetup'];
-  const mentionsEvent = eventKeywords.some((keyword) => normalized.includes(keyword));
-
-  if (!mentionsEvent) {
-    return { isAmbiguous: false, clarificationNeeded: '' };
-  }
-
-  const eventTags = await db
-    .select({
-      id: tags.id,
-      label: tags.name,
-      count: sql<number>`COUNT(${contactTags.contactId})::int`,
-    })
-    .from(tags)
-    .leftJoin(tagCategories, eq(tags.categoryId, tagCategories.id))
-    .leftJoin(contactTags, eq(contactTags.tagId, tags.id))
-    .where(or(
-      ilike(tagCategories.name, '%event%'),
-      ilike(tags.name, '%event%'),
-      ilike(tags.name, '%summit%'),
-      ilike(tags.name, '%conference%'),
-      ilike(tags.name, '%expo%'),
-      ilike(tags.name, '%meetup%')
-    ))
-    .groupBy(tags.id, tags.name)
-    .orderBy(desc(sql<number>`COUNT(${contactTags.contactId})`))
-    .limit(8);
-
-  if (eventTags.length >= 2) {
-    return {
-      isAmbiguous: true,
-      clarificationNeeded: 'multiple_events',
-      question: 'I found multiple event tags. Which event should I use?',
-      options: [
-        ...eventTags.map((tag) => ({
-          id: tag.id,
-          label: tag.label,
-          count: Number(tag.count ?? 0),
-        })),
-        { label: 'All matching events combined' },
-      ],
-    };
-  }
-
-  return { isAmbiguous: false, clarificationNeeded: '' };
-}
-
-function parseLlmJsonBlock(response: string): ParsedLlmResponse {
-  const trimmed = response.trim();
-  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const rawJson = fencedMatch?.[1]?.trim() ?? trimmed.match(/\{[\s\S]*\}/)?.[0]?.trim();
-
-  if (!rawJson) return null;
-
-  try {
-    const parsed = JSON.parse(rawJson) as {
-      phase?: string;
-      question?: unknown;
-      options?: unknown;
-      sql?: unknown;
-      explanation?: unknown;
-      answer?: unknown;
-      follow_up_suggestions?: unknown;
-      followUpSuggestions?: unknown;
-    };
-    if (parsed?.phase === 'clarify' && typeof parsed.question === 'string') {
-      return {
-        phase: 'clarify',
-        question: parsed.question,
-        options: Array.isArray(parsed.options) ? parsed.options as ClarificationOption[] : undefined,
-      };
-    }
-    if (parsed?.phase === 'query' && typeof parsed.sql === 'string') {
-      return {
-        phase: 'query',
-        sql: parsed.sql,
-        explanation: typeof parsed.explanation === 'string' ? parsed.explanation : undefined,
-      };
-    }
-    if (parsed?.phase === 'answer' && typeof parsed.answer === 'string') {
-      const suggestions = Array.isArray(parsed.follow_up_suggestions)
-        ? parsed.follow_up_suggestions
-        : parsed.followUpSuggestions;
-
-      return {
-        phase: 'answer',
-        answer: parsed.answer,
-        followUpSuggestions: Array.isArray(suggestions)
-          ? suggestions.filter((suggestion): suggestion is string => typeof suggestion === 'string')
-          : undefined,
-      };
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-}
-
-function formatAnswer(answer: string, followUpSuggestions: string[] = []): string {
-  if (!followUpSuggestions.length) return answer;
-
-  const suggestions = followUpSuggestions
-    .map((suggestion) => `- ${suggestion}`)
-    .join('\n');
-
-  return `${answer}\n\nSuggested next steps:\n${suggestions}`;
-}
-
-function humanizeColumnName(column: string): string {
-  return column
-    .replace(/_/g, ' ')
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function formatCellValue(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—';
-  if (value instanceof Date) return value.toLocaleString('en-IN');
-  if (typeof value === 'number') return Number.isInteger(value) ? value.toLocaleString('en-IN') : value.toLocaleString('en-IN', { maximumFractionDigits: 2 });
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  if (Array.isArray(value)) return value.map(formatCellValue).join(', ');
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-}
-
-function formatRowsDeterministically(
-  userMessage: string,
-  rows: Array<Record<string, unknown>>,
-  truncation?: { truncated: boolean; totalCount?: number }
-): string {
-  if (rows.length === 0) {
-    return 'I did not find any matching CRM records for that query. You can try broadening the filter or using the exact tag/source name.';
-  }
-
-  const columns = Object.keys(rows[0] ?? {});
-  const countColumn = columns.find((column) => /(^|_)(count|total|lead_count|deal_count)($|_)/i.test(column));
-  const nameColumn = columns.find((column) => /(name|title|tag|source|stage|status|owner|company|contact)/i.test(column));
-
-  if (rows.length === 1 && countColumn) {
-    const label = nameColumn ? ` for **${formatCellValue(rows[0]?.[nameColumn])}**` : '';
-    return `I found **${formatCellValue(rows[0]?.[countColumn])}** result${label}.`;
-  }
-
-  const visibleRows = rows.slice(0, 20);
-  const header = `Here are the results for: **${userMessage}**`;
-  const tableHeader = `| ${columns.map(humanizeColumnName).join(' | ')} |`;
-  const divider = `| ${columns.map(() => '---').join(' | ')} |`;
-  const tableRows = visibleRows.map((row) => `| ${columns.map((column) => formatCellValue(row[column]).replace(/\|/g, '\\|')).join(' | ')} |`);
-
-  let cappedNote = '';
-  if (truncation?.truncated) {
-    // Never report the 500-row safety cap as if it were the true total — say the real count
-    // when we have it, or an honest "more than 500" when the count query itself failed.
-    cappedNote = typeof truncation.totalCount === 'number'
-      ? `\n\nThis matched **${truncation.totalCount}** records in total — showing the first ${visibleRows.length} here.`
-      : `\n\nThis matched more than 500 records (showing the first ${visibleRows.length}) — try narrowing your filter for an exact count.`;
-  } else if (rows.length > visibleRows.length) {
-    cappedNote = `\n\nShowing the first ${visibleRows.length} of ${rows.length} rows.`;
-  }
-
-  return `${header}\n\n${[tableHeader, divider, ...tableRows].join('\n')}${cappedNote}`;
-}
-
-function isJsonLikeInternalResponse(response: string): boolean {
-  const trimmed = response.trim();
-  return trimmed.startsWith('{') && /"phase"\s*:\s*"(query|clarify|answer)"/i.test(trimmed);
-}
-
-function applyProspectVisibilityToGeneratedSql(query: string, userContext: UserContext): string {
-  if (userContext.role !== 'sales_rep' || !/\b(from|join)\s+deals\b/i.test(query)) return query;
-  const filter = `(deals.owner_id = '${userContext.userId}' OR deals.created_by = '${userContext.userId}' OR deals.id IN (SELECT deal_id FROM deal_team_members WHERE user_id = '${userContext.userId}'))`;
-  if (/\bwhere\b/i.test(query)) return query.replace(/\bwhere\b/i, `WHERE ${filter} AND `);
-  const boundary = query.match(/\b(group by|order by|having|limit)\b/i);
-  return boundary ? query.replace(boundary[0], `WHERE ${filter} ${boundary[0]}`) : `${query} WHERE ${filter}`;
+function toModelMessages(history: Array<{ role: 'user' | 'assistant'; content: string }>, userMessage: string): ModelMessage[] {
+  return [
+    ...history.map((message): ModelMessage => ({ role: message.role, content: message.content })),
+    { role: 'user', content: userMessage },
+  ];
 }
 
 function formatClarification(question: string, options: ClarificationOption[] = []): string {
@@ -779,35 +98,13 @@ function formatClarification(question: string, options: ClarificationOption[] = 
   return `${question}\n\n${lines.join('\n')}`;
 }
 
-function toLlmHistory(messages: Array<{ role: 'user' | 'assistant'; content: string }>): LlmHistoryMessage[] {
-  return messages.map((message) => ({ role: message.role, content: message.content }));
-}
-
-async function getUserContext(userId: string, db: DbClient): Promise<UserContext> {
-  const [row] = await db
-    .select({
-      id: users.id,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      roleName: roles.name,
-      roleSlug: roles.slug,
-      permissions: roles.permissions,
-    })
-    .from(users)
-    .innerJoin(roles, eq(users.roleId, roles.id))
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  if (!row) {
-    throw new Error('User not found');
+function summarizeToolOutput(output: unknown): string {
+  try {
+    const json = JSON.stringify(output);
+    return json.length > 300 ? `${json.slice(0, 300)}…` : json;
+  } catch {
+    return String(output);
   }
-
-  return {
-    userId: row.id,
-    userName: [row.firstName, row.lastName].filter(Boolean).join(' '),
-    role: row.roleSlug || row.roleName,
-    permissions: row.permissions as RolePermissions,
-  };
 }
 
 async function assertSessionAccess(sessionId: string, userId: string, db: DbClient): Promise<void> {
@@ -829,6 +126,7 @@ async function storeAssistantMessage(args: {
   sqlQuery?: string | null;
   queryResultCount?: number | null;
   wasClarification?: boolean;
+  toolCalls?: AiChatToolCall[];
 }) {
   const [message] = await args.db
     .insert(aiChatMessages)
@@ -839,6 +137,7 @@ async function storeAssistantMessage(args: {
       sqlQuery: args.sqlQuery ?? null,
       queryResultCount: args.queryResultCount ?? null,
       wasClarification: args.wasClarification ?? false,
+      toolCalls: args.toolCalls?.length ? args.toolCalls : null,
     })
     .returning();
 
@@ -850,16 +149,47 @@ async function storeAssistantMessage(args: {
   return message!;
 }
 
+async function runAgent(params: { systemPrompt: string; messages: ModelMessage[]; tools: ReturnType<typeof createAiTools> }) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    console.error('[AI Chat] GROQ_API_KEY is not configured');
+    throw new Error(friendlyError);
+  }
+
+  const groq = createGroq({ apiKey });
+  const candidateModels = getCandidateModels();
+  let lastError: unknown = null;
+
+  for (const modelName of candidateModels) {
+    try {
+      return await generateText({
+        model: groq(modelName),
+        system: params.systemPrompt,
+        messages: params.messages,
+        tools: params.tools,
+        stopWhen: stepCountIs(MAX_STEPS),
+        temperature: Number(process.env.GROQ_TEMPERATURE ?? 0.1),
+      });
+    } catch (error) {
+      lastError = error;
+      console.warn(`[AI Chat] Model ${modelName} failed, trying fallback if available:`, error);
+    }
+  }
+
+  console.error('[AI Chat] All model attempts failed:', lastError);
+  throw new Error(friendlyError);
+}
+
 export async function handleMessage(
   sessionId: string,
-  userId: string,
+  user: SessionUser,
   userMessage: string,
   db: DbClient = defaultDb
 ): Promise<AiChatResponse> {
   let userMessageStored = false;
 
   try {
-    await assertSessionAccess(sessionId, userId, db);
+    await assertSessionAccess(sessionId, user.id, db);
 
     const historyRows = await db
       .select({ role: aiChatMessages.role, content: aiChatMessages.content })
@@ -868,11 +198,7 @@ export async function handleMessage(
       .orderBy(desc(aiChatMessages.createdAt))
       .limit(6);
 
-    await db.insert(aiChatMessages).values({
-      sessionId,
-      role: 'user',
-      content: userMessage,
-    });
+    await db.insert(aiChatMessages).values({ sessionId, role: 'user', content: userMessage });
     userMessageStored = true;
 
     await db
@@ -880,48 +206,29 @@ export async function handleMessage(
       .set({ lastMessageAt: new Date() })
       .where(eq(aiChatSessions.id, sessionId));
 
-    const userContext = await getUserContext(userId, db);
-    const systemPrompt = buildSystemPrompt(userContext);
-    const pipelineValueAnswer = await answerPipelineValueQuestion(userMessage, db, userContext);
-    const userActivityAnswer = await answerUserActivityQuestion(userMessage, db, userContext.userId);
+    const tools = createAiTools(user, sessionId, db);
+    const systemPrompt = buildSystemPrompt(user);
+    const messages = toModelMessages(historyRows.reverse(), userMessage);
 
-    if (pipelineValueAnswer) {
-      const message = await storeAssistantMessage({ db, sessionId, content: pipelineValueAnswer });
+    const result = await runAgent({ systemPrompt, messages, tools });
 
-      return {
-        message: {
-          id: message.id,
-          role: 'assistant',
-          content: pipelineValueAnswer,
-          wasClarification: false,
-          createdAt: message.createdAt,
-        },
-      };
-    }
+    const toolCallLog: AiChatToolCall[] = result.toolResults.map((toolResult) => ({
+      tool: toolResult.toolName,
+      args: toolResult.input as Record<string, unknown>,
+      resultSummary: summarizeToolOutput(toolResult.output),
+    }));
 
-    if (userActivityAnswer) {
-      const message = await storeAssistantMessage({ db, sessionId, content: userActivityAnswer });
+    const clarifyCall = result.finalStep.toolCalls.find((call) => call.toolName === 'ask_clarifying_question');
 
-      return {
-        message: {
-          id: message.id,
-          role: 'assistant',
-          content: userActivityAnswer,
-          wasClarification: false,
-          createdAt: message.createdAt,
-        },
-      };
-    }
-
-    const ambiguity = await checkForAmbiguity(userMessage, db);
-
-    if (ambiguity.isAmbiguous) {
-      const content = formatClarification(ambiguity.question ?? 'Can you clarify what you want to use?', ambiguity.options);
+    if (clarifyCall) {
+      const clarifyInput = clarifyCall.input as { question: string; options?: ClarificationOption[] };
+      const content = formatClarification(clarifyInput.question, clarifyInput.options);
       const message = await storeAssistantMessage({
         db,
         sessionId,
         content,
         wasClarification: true,
+        toolCalls: toolCallLog,
       });
 
       return {
@@ -929,218 +236,24 @@ export async function handleMessage(
           id: message.id,
           role: 'assistant',
           content,
-          options: ambiguity.options,
+          options: clarifyInput.options,
           wasClarification: true,
           createdAt: message.createdAt,
         },
       };
     }
 
-    const history = toLlmHistory(historyRows.reverse());
-    const response = await generateChatResponse(userMessage, history, systemPrompt);
-    const parsed = parseLlmJsonBlock(response);
-
-    if (!parsed) {
-      const message = await storeAssistantMessage({ db, sessionId, content: response });
-      return {
-        message: {
-          id: message.id,
-          role: 'assistant',
-          content: response,
-          wasClarification: false,
-          createdAt: message.createdAt,
-        },
-      };
-    }
-
-    if (parsed.phase === 'clarify') {
-      const content = formatClarification(parsed.question, parsed.options);
-      const message = await storeAssistantMessage({
-        db,
-        sessionId,
-        content,
-        wasClarification: true,
-      });
-
-      return {
-        message: {
-          id: message.id,
-          role: 'assistant',
-          content,
-          options: parsed.options,
-          wasClarification: true,
-          createdAt: message.createdAt,
-        },
-      };
-    }
-
-    if (parsed.phase === 'answer') {
-      await writeAuditLog({
-        userId,
-        action: 'api_access',
-        entityType: 'ai_chat',
-        entityId: sessionId,
-        entityName: 'Rejected direct AI answer',
-        metadata: {
-          reason: 'AI returned a direct CRM data answer before SQL execution',
-          answer: parsed.answer,
-        },
-      });
-
-      throw new Error('AI returned a direct answer before querying CRM data');
-    }
-
-    const scopedSql = applyProspectVisibilityToGeneratedSql(parsed.sql, userContext);
-    const validation = validateGeneratedSql(scopedSql);
-    if (!validation.valid) {
-      await writeAuditLog({
-        userId,
-        action: 'api_access',
-        entityType: 'ai_chat',
-        entityId: sessionId,
-        entityName: 'Rejected AI SQL',
-        metadata: {
-          reason: validation.reason,
-          sql: scopedSql,
-        },
-      });
-
-      const message = await storeAssistantMessage({
-        db,
-        sessionId,
-        content: friendlyError,
-        sqlQuery: scopedSql,
-      });
-
-      return {
-        message: {
-          id: message.id,
-          role: 'assistant',
-          content: friendlyError,
-          wasClarification: false,
-          createdAt: message.createdAt,
-        },
-      };
-    }
-
-    // Generated SQL occasionally references columns that don't exist (e.g. assuming every
-    // table has deleted_at, when only a few do) — a genuine correctness mistake, distinct
-    // from a safety-policy violation. Give the model exactly one chance to self-correct using
-    // the real database error before giving up, a standard resilience pattern for text-to-SQL.
-    let finalSql = scopedSql;
-    let queryResult: Awaited<ReturnType<typeof executeSafeQuery>> | { error: string };
-    try {
-      queryResult = await executeSafeQuery(db, finalSql);
-    } catch (error) {
-      queryResult = { error: error instanceof Error ? error.message : String(error) };
-    }
-
-    if ('error' in queryResult) {
-      const correctionPrompt = `
-Your previous SQL failed to execute against the actual database schema.
-
-Original question: ${userMessage}
-SQL you generated: ${finalSql}
-Database error: ${queryResult.error}
-
-Fix the SQL so it runs successfully against the schema described in your instructions (double-check
-which tables actually have a deleted_at column — not all of them do). Respond with the same JSON shape:
-{"phase":"query","sql":"SELECT ...","explanation":"what this query does"}
-`.trim();
-
-      const correctionResponse = await generateChatResponse(correctionPrompt, [], systemPrompt);
-      const correctedParsed = parseLlmJsonBlock(correctionResponse);
-
-      if (correctedParsed?.phase === 'query') {
-        const correctedScopedSql = applyProspectVisibilityToGeneratedSql(correctedParsed.sql, userContext);
-        const correctedValidation = validateGeneratedSql(correctedScopedSql);
-        if (correctedValidation.valid) {
-          finalSql = correctedScopedSql;
-          try {
-            queryResult = await executeSafeQuery(db, finalSql);
-          } catch (error) {
-            queryResult = { error: error instanceof Error ? error.message : String(error) };
-          }
-        }
-      }
-    }
-
-    if ('error' in queryResult) {
-      await writeAuditLog({
-        userId,
-        action: 'api_access',
-        entityType: 'ai_chat',
-        entityId: sessionId,
-        entityName: 'AI SQL execution failed',
-        metadata: { reason: queryResult.error, sql: finalSql },
-      });
-
-      const message = await storeAssistantMessage({ db, sessionId, content: friendlyError, sqlQuery: finalSql });
-      return {
-        message: {
-          id: message.id,
-          role: 'assistant',
-          content: friendlyError,
-          wasClarification: false,
-          createdAt: message.createdAt,
-        },
-      };
-    }
-
-    const { rows, truncated, totalCount } = queryResult;
-
-    // Never let the model state the 500-row safety cap as if it were the true total (e.g.
-    // "there are 500 leads" when the real count is 921) — tell it the real number explicitly,
-    // or an honest "more than 500" when the count query itself couldn't be computed.
-    const truncationNote = truncated
-      ? typeof totalCount === 'number'
-        ? `\n\nIMPORTANT: This result set was capped at 500 rows for safety, but the TRUE total matching count is ${totalCount}. You MUST state ${totalCount} as the total — never state 500 or the sample size as the total count.`
-        : `\n\nIMPORTANT: This result set was capped at 500 rows for safety and the true total could not be determined. Say "more than 500" rather than inventing an exact number.`
-      : '';
-
-    // Sending all (up to 500) rows to the formatting model is wasteful and, for wide result
-    // sets, can burn tens of thousands of tokens just to write a one-paragraph summary — cap
-    // the sample and rely on the counts/notes above for accuracy instead of raw row volume.
-    const FORMATTING_SAMPLE_SIZE = 25;
-    const sampleRows = rows.slice(0, FORMATTING_SAMPLE_SIZE);
-    const sampleNote = rows.length > sampleRows.length
-      ? `\n\n(This is a sample of ${sampleRows.length} rows out of ${rows.length} returned — do not imply this sample is the complete list; use the counts above for totals.)`
-      : '';
-
-    const formatterPrompt = `
-The user asked: ${userMessage}
-
-The safe SQL explanation was: ${parsed.explanation ?? 'No explanation provided'}
-
-The query returned ${rows.length} row(s)${truncated ? ' (sample only, see note below)' : ''}. Sample data:
-${JSON.stringify(sampleRows, null, 2)}${sampleNote}${truncationNote}
-
-Format this into a concise, useful CRM answer. If there are no rows, say that clearly and suggest a likely next step.
-`.trim();
-
-    const formattingSystemPrompt = `
-You format SecComply CRM query results into concise, readable Markdown for the user.
-Return plain Markdown text only.
-Do not return JSON.
-Do not wrap the answer in a phase object.
-Respect currency fields exactly. Use ₹/INR only for INR rows and $/USD only for USD rows. Never invent or convert currencies.
-Lead with the direct answer, then include useful context or suggested next steps if helpful.
-`.trim();
-
-    const formattedResponse = await generateChatResponse(formatterPrompt, [], formattingSystemPrompt);
-    const parsedFormattedResponse = parseLlmJsonBlock(formattedResponse);
-    const content = parsedFormattedResponse?.phase === 'answer'
-      ? formatAnswer(parsedFormattedResponse.answer, parsedFormattedResponse.followUpSuggestions)
-      : parsedFormattedResponse || isJsonLikeInternalResponse(formattedResponse)
-        ? formatRowsDeterministically(userMessage, rows, { truncated, totalCount })
-        : formattedResponse;
+    const content = result.text.trim() || friendlyError;
+    const customQueryResult = result.toolResults.find((toolResult) => toolResult.toolName === 'run_custom_query');
+    const customQueryOutput = customQueryResult?.output as { sql?: string; rowCount?: number; trueTotalCount?: number } | undefined;
 
     const message = await storeAssistantMessage({
       db,
       sessionId,
       content,
-      sqlQuery: finalSql,
-      queryResultCount: truncated ? (totalCount ?? rows.length) : rows.length,
+      sqlQuery: customQueryOutput?.sql ?? null,
+      queryResultCount: customQueryOutput ? (customQueryOutput.trueTotalCount ?? customQueryOutput.rowCount ?? null) : null,
+      toolCalls: toolCallLog,
     });
 
     return {
@@ -1157,11 +270,7 @@ Lead with the direct answer, then include useful context or suggested next steps
 
     if (userMessageStored) {
       try {
-        const message = await storeAssistantMessage({
-          db,
-          sessionId,
-          content: friendlyError,
-        });
+        const message = await storeAssistantMessage({ db, sessionId, content: friendlyError });
 
         return {
           message: {

@@ -72,7 +72,7 @@ export const aiChatRouter = router({
       try {
         return await aiChatService.handleMessage(
           input.sessionId,
-          ctx.user.id,
+          ctx.user,
           input.message,
           ctx.db
         );
