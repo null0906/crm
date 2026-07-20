@@ -5,7 +5,7 @@ import {
   useReactTable, getCoreRowModel, flexRender,
   type ColumnDef, type RowSelectionState, type VisibilityState,
 } from '@tanstack/react-table';
-import { Plus, Search, Building2, Pencil, Trash2, ChevronDown } from 'lucide-react';
+import { Plus, Search, Building2, Pencil, Trash2, ChevronDown, Upload } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import { CompanyTypeBadge } from '@/components/companies/CompanyTypeBadge';
 import { TagInput } from '@/components/tags/TagInput';
 import { CompanyDetail } from '@/components/companies/CompanyDetail';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { ImportWizard } from '@/components/import-export/ImportWizard';
 import { formatDate } from '@/lib/formatters';
 import { PAGE_SIZES, COMPANY_SIZES, COMPANY_STATUSES, COMPANY_TYPES } from '@/lib/constants';
 import { toast } from 'sonner';
@@ -50,6 +51,7 @@ export default function CompaniesPage() {
   const [pageSize, setPageSize] = useState(50);
   const [cursor, setCursor] = useState<string | undefined>();
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [editCompany, setEditCompany] = useState<Company | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -271,10 +273,16 @@ export default function CompaniesPage() {
           <h1 className="text-[15px] font-semibold text-slate-900 tracking-tight">Companies</h1>
           <p className="text-xs text-slate-400 mt-0.5">{data ? `${data.total ?? data.items.length} companies` : 'Loading...'}</p>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="w-4 h-4" />
-          Add Company
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="w-4 h-4" />
+            Import
+          </Button>
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="w-4 h-4" />
+            Add Company
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -550,6 +558,11 @@ export default function CompaniesPage() {
             onCancel={() => setCreateOpen(false)}
           />
         </div>
+      </SlideOverPanel>
+
+      {/* Import wizard */}
+      <SlideOverPanel open={importOpen} onClose={() => setImportOpen(false)} title="Import Companies" width="lg">
+        <ImportWizard entityType="company" onClose={() => { setImportOpen(false); void utils.companies.list.invalidate(); }} />
       </SlideOverPanel>
 
       {/* Detail */}
