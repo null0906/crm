@@ -3,7 +3,7 @@
 import React from 'react';
 import { useSession } from 'next-auth/react';
 import { Document, Page, StyleSheet, Text, View, pdf } from '@react-pdf/renderer';
-import { Download, FileSpreadsheet, FileText, Plus } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Plus, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,17 @@ function linked(task: TaskRow) {
 
 function memberName(task: TaskRow) {
   return `${task.userFirstName ?? ''} ${task.userLastName ?? ''}`.trim() || 'Unknown member';
+}
+
+function statusBadgeClass(status: unknown) {
+  if (status === 'completed') return 'bg-emerald-50 text-emerald-700';
+  if (status === 'cancelled') return 'bg-rose-50 text-rose-700';
+  return 'bg-amber-50 text-amber-700';
+}
+
+function dueLabel(value: unknown) {
+  if (!value) return 'No due date';
+  return new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(String(value)));
 }
 
 function saveBlob(blob: Blob, filename: string) {
@@ -224,7 +235,9 @@ async function downloadPdf(rows: TaskRow[], summary: SummaryRow[], meta: { title
 
 export default function TaskReportsPage() {
   const { data: session } = useSession();
-  const role = (((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug);
+  const sessionUser = session?.user as Record<string, unknown> | undefined;
+  const role = ((sessionUser?.role as Record<string, unknown> | undefined)?.slug);
+  const currentUserId = sessionUser?.id ? String(sessionUser.id) : '';
   const defaultRange = React.useMemo(weekRange, []);
   const [from, setFrom] = React.useState(defaultRange.from);
   const [to, setTo] = React.useState(defaultRange.to);
@@ -267,6 +280,14 @@ export default function TaskReportsPage() {
   ];
   const reportTitle = userId ? `Task Report - ${selectedName}` : 'Consolidated Task Report';
   const filePrefix = `task-report-${selectedName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${new Date().toISOString().slice(0, 10)}`;
+
+  // Tasks the current super admin personally assigned to someone else, within the same
+  // filtered date range/status/link/client already applied to the log below — not a separate
+  // query, just a client-side slice of the same `tasks` fetch, since listAll already joins in
+  // assignedBy/assignerFirstName/assignerLastName for every row.
+  const assignedByMe = (tasks as TaskRow[]).filter((task) => task.assignedBy && String(task.assignedBy) === currentUserId);
+  const assignedByMeOpen = assignedByMe.filter((task) => task.status !== 'completed' && task.status !== 'cancelled').length;
+  const assignedByMeCompleted = assignedByMe.filter((task) => task.status === 'completed').length;
 
   async function exportPdfFor(rows: TaskRow[], summaryRows: SummaryRow[], suffix = filePrefix, title = reportTitle, filters = appliedFilters) {
     setExporting(`pdf-${suffix}`);
@@ -337,6 +358,38 @@ export default function TaskReportsPage() {
             {(from !== defaultRange.from || to !== defaultRange.to || userId || companyId || status || linkType) && (
               <Button variant="ghost" onClick={() => { setFrom(defaultRange.from); setTo(defaultRange.to); setUserId(''); setCompanyId(''); setStatus(''); setLinkType(''); }}>Reset</Button>
             )}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.06em] text-[var(--text-tertiary)]">
+              <UserCheck className="h-4 w-4 text-[var(--accent)]" />
+              Tasks You&apos;ve Assigned
+            </div>
+            <div className="flex gap-2 text-xs font-bold">
+              <span className="rounded-md bg-amber-50 px-2 py-1 text-amber-700">{assignedByMeOpen} open</span>
+              <span className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-700">{assignedByMeCompleted} completed</span>
+              <span className="rounded-md bg-slate-100 px-2 py-1 text-slate-500">{assignedByMe.length} total</span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-400"><tr><th className="px-4 py-3">Assigned to</th><th>Task</th><th>Linked to</th><th>Status</th><th>Due</th><th>Hours logged</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {assignedByMe.map((task) => (
+                  <tr key={task.id} className="cursor-pointer hover:bg-blue-50/50" onClick={() => setUserId(String(task.userId))}>
+                    <td className="px-4 py-3 font-semibold">{task.userFirstName} {task.userLastName}</td>
+                    <td className="font-bold text-slate-900">{task.taskName}</td>
+                    <td>{linked(task)}</td>
+                    <td><span className={`rounded-md px-2 py-1 text-xs font-bold ${statusBadgeClass(task.status)}`}>{String(task.status).replace('_', ' ')}</span></td>
+                    <td>{dueLabel(task.dueDate)}</td>
+                    <td>{task.hoursSpent ? h(task.hoursSpent) : '-'}</td>
+                  </tr>
+                ))}
+                {assignedByMe.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-400">You haven&apos;t assigned any tasks in this date range. Use &quot;Assign Task&quot; above to delegate one.</td></tr>}
+              </tbody>
+            </table>
           </div>
         </section>
 
