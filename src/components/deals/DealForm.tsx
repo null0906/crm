@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, UserPlus, X } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { dealCreateSchema } from '@/server/lib/validators';
 import { CustomFieldRenderer } from '@/components/custom-fields/CustomFieldRenderer';
+import { ContactForm } from '@/components/contacts/ContactForm';
 import { DEAL_SERVICE_OPTIONS } from '@/lib/constants';
 import { isDeliveryPipeline } from '@/lib/pipeline-utils';
 import type { z } from 'zod';
@@ -38,6 +39,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
 
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
   const [contactSearch, setContactSearch] = React.useState('');
+  const [showAddContact, setShowAddContact] = React.useState(false);
   const [companySearch, setCompanySearch] = React.useState('');
   const debouncedContactSearch = React.useDeferredValue(contactSearch.trim());
   const debouncedCompanySearch = React.useDeferredValue(companySearch.trim());
@@ -136,6 +138,13 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
     search: debouncedCompanySearch || undefined,
     pagination: { limit: 50 },
   });
+  // Partner dropdowns need every partner-type company, not just whatever happens to land in
+  // the generic 50-item companies page above (partners can easily be pushed off that page by
+  // more-recently-created non-partner companies) — filter server-side instead of client-side.
+  const { data: partnersData } = trpc.companies.list.useQuery({
+    filters: { conditions: [{ field: 'companyType', operator: 'eq', value: 'partner' }], logic: 'AND' },
+    pagination: { limit: 200 },
+  });
   const { data: selectedPrimaryContactData } = trpc.contacts.getById.useQuery(
     { id: String(selectedPrimaryContactId) },
     { enabled: Boolean(selectedPrimaryContactId) }
@@ -167,20 +176,29 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   const companyItems = React.useMemo(() => {
     const items = (companiesData?.items ?? []) as Array<Record<string, unknown>>;
     const merged = [...items];
-    for (const selectedItem of [selectedCompanyData, selectedPartnerCompanyData, selectedReferredPartnerData]) {
+    if (selectedCompanyData) {
+      const alreadyIncluded = merged.some((company) => String(company.id) === String(selectedCompanyData.id));
+      if (!alreadyIncluded) merged.unshift(selectedCompanyData as Record<string, unknown>);
+    }
+    return merged;
+  }, [companiesData?.items, selectedCompanyData]);
+  const filteredCompanyItems = companyItems;
+  const selectedCompany = companyItems.find((company) => String(company.id) === String(selectedCompanyId ?? ''));
+  const partnerItems = React.useMemo(() => {
+    const items = (partnersData?.items ?? []) as Array<Record<string, unknown>>;
+    const merged = [...items];
+    for (const selectedItem of [selectedPartnerCompanyData, selectedReferredPartnerData]) {
       if (!selectedItem) continue;
       const alreadyIncluded = merged.some((company) => String(company.id) === String(selectedItem.id));
       if (!alreadyIncluded) merged.unshift(selectedItem as Record<string, unknown>);
     }
     return merged;
-  }, [companiesData?.items, selectedCompanyData, selectedPartnerCompanyData, selectedReferredPartnerData]);
-  const filteredCompanyItems = companyItems;
-  const selectedCompany = companyItems.find((company) => String(company.id) === String(selectedCompanyId ?? ''));
-  const partnerItems = companyItems.filter((company) => String(company.companyType ?? '') === 'partner');
+  }, [partnersData?.items, selectedPartnerCompanyData, selectedReferredPartnerData]);
   const selectedPartnerCompany = partnerItems.find((company) => String(company.id) === String(selectedPartnerCompanyId ?? ''));
   const selectedReferredPartner = partnerItems.find((company) => String(company.id) === String(selectedReferredByPartnerId ?? ''));
 
   return (
+    <>
     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
       <div className="space-y-1.5">
         <Label htmlFor="title">Prospect Title *</Label>
@@ -329,7 +347,17 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="primaryContactId">Primary Contact</Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="primaryContactId">Primary Contact</Label>
+          <button
+            type="button"
+            onClick={() => setShowAddContact(true)}
+            className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Add new contact
+          </button>
+        </div>
         <input type="hidden" {...form.register('primaryContactId')} />
         <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="relative">
@@ -593,5 +621,32 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
         </Button>
       </div>
     </form>
+
+    {showAddContact && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+        <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-900">Add New Contact</h3>
+            <button type="button" onClick={() => setShowAddContact(false)} className="text-slate-400 hover:text-slate-600">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <ContactForm
+            compact
+            defaultValues={{
+              companyId: selectedCompanyId || undefined,
+              companyName: (selectedCompany?.name as string | undefined) ?? undefined,
+            }}
+            onSuccess={(contact) => {
+              form.setValue('primaryContactId', String(contact.id), { shouldDirty: true });
+              setShowAddContact(false);
+              void utils.contacts.list.invalidate();
+            }}
+            onCancel={() => setShowAddContact(false)}
+          />
+        </div>
+      </div>
+    )}
+    </>
   );
 }

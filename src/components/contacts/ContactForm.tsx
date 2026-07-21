@@ -37,9 +37,13 @@ export function ContactForm({ onSuccess, onCancel, defaultValues, compact = fals
 
   const { data: users = [] } = trpc.users.list.useQuery();
   const { data: customFields = [] } = trpc.customFields.list.useQuery({ entityType: 'contact' });
-  const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 200 } });
-  const partnerCompanies = (companiesData?.items ?? [] as Array<Record<string, unknown>>)
-    .filter((c) => String((c as Record<string, unknown>).companyType ?? '') === 'partner') as Array<Record<string, unknown>>;
+  // Server-side filter, not a client-side filter of a generic company page — partners can
+  // easily be pushed off a plain top-200-by-recency page by newer non-partner companies.
+  const { data: partnersData } = trpc.companies.list.useQuery({
+    filters: { conditions: [{ field: 'companyType', operator: 'eq', value: 'partner' }], logic: 'AND' },
+    pagination: { limit: 200 },
+  });
+  const partnerCompanies = (partnersData?.items ?? []) as Array<Record<string, unknown>>;
 
   const createContact = trpc.contacts.create.useMutation({
     onSuccess: (data) => {
