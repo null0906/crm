@@ -18,10 +18,7 @@ const DEAL_FIELDS = [
   { value: 'contactName', label: 'Contact Name', mandatory: false },
   { value: 'companyName', label: 'Company Name', mandatory: false },
   { value: 'stageName', label: 'Stage Name', mandatory: false },
-  { value: 'amount', label: 'Amount', mandatory: false },
-  { value: 'currency', label: 'Currency', mandatory: false },
   { value: 'probability', label: 'Probability (%)', mandatory: false },
-  { value: 'expectedCloseDate', label: 'Expected Close Date', mandatory: false },
   { value: 'description', label: 'Notes', mandatory: false },
 ];
 

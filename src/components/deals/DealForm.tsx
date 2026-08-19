@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Search, UserPlus, X } from 'lucide-react';
+import { Building2, Search, UserPlus, X } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -13,7 +13,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { dealCreateSchema } from '@/server/lib/validators';
 import { CustomFieldRenderer } from '@/components/custom-fields/CustomFieldRenderer';
-import { ContactForm } from '@/components/contacts/ContactForm';
 import { DEAL_SERVICE_OPTIONS } from '@/lib/constants';
 import { isDeliveryPipeline } from '@/lib/pipeline-utils';
 import type { z } from 'zod';
@@ -35,11 +34,12 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   const { data: session } = useSession();
   const currentUserId = (session?.user as Record<string, unknown> | undefined)?.id as string | undefined;
   const currentRoleSlug = ((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug;
-  const canViewDealAmounts = currentRoleSlug === 'super_admin' || currentRoleSlug === 'sales_manager';
+  const canChangeOwner = currentRoleSlug === 'super_admin';
 
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
   const [contactSearch, setContactSearch] = React.useState('');
-  const [showAddContact, setShowAddContact] = React.useState(false);
+  const [showInlineContact, setShowInlineContact] = React.useState(false);
+  const [showInlineCompany, setShowInlineCompany] = React.useState(false);
   const [companySearch, setCompanySearch] = React.useState('');
   const debouncedContactSearch = React.useDeferredValue(contactSearch.trim());
   const debouncedCompanySearch = React.useDeferredValue(companySearch.trim());
@@ -112,7 +112,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
   }, [defaultStageId, form]);
 
   async function onSubmit(data: FormData) {
-    const payload = canViewDealAmounts ? data : { ...data, amount: undefined };
+    const payload = { ...data, amount: undefined, currency: undefined, expectedCloseDate: undefined };
     if (mode === 'edit' && dealId) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await updateDeal.mutateAsync({ id: dealId, data: { ...payload, customFields: customFieldValues } as any });
@@ -221,20 +221,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
         </select>
       </div>
 
-      <div className={`grid gap-4 ${canViewDealAmounts ? 'grid-cols-2' : 'grid-cols-1'}`}>
-        {canViewDealAmounts && (
-          <div className="space-y-1.5">
-            <Label htmlFor="amount">Prospect Value (₹)</Label>
-            <Input
-              id="amount"
-              type="number"
-              min={0}
-              step={0.01}
-              {...form.register('amount', { valueAsNumber: true })}
-              placeholder="500000"
-            />
-          </div>
-        )}
+      <div className="grid gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="probability">Probability (%)</Label>
           <Input
@@ -246,15 +233,6 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
             placeholder="50"
           />
         </div>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="expectedCloseDate">Expected Close Date</Label>
-        <Input
-          id="expectedCloseDate"
-          type="date"
-          {...form.register('expectedCloseDate')}
-        />
       </div>
 
       {showProjectFields && (
@@ -351,15 +329,42 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
           <Label htmlFor="primaryContactId">Primary Contact</Label>
           <button
             type="button"
-            onClick={() => setShowAddContact(true)}
+            onClick={() => {
+              setShowInlineContact((current) => !current);
+              form.setValue('primaryContactId', '', { shouldDirty: true });
+            }}
             className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
           >
             <UserPlus className="h-3.5 w-3.5" />
-            Add new contact
+            {showInlineContact ? 'Search existing' : 'New contact details'}
           </button>
         </div>
         <input type="hidden" {...form.register('primaryContactId')} />
-        <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+        {showInlineContact && (
+          <div className="grid gap-3 rounded-lg border border-blue-100 bg-blue-50/50 p-3 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="inlineContact.firstName">First name</Label>
+              <Input id="inlineContact.firstName" {...form.register('inlineContact.firstName')} placeholder="First name" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inlineContact.lastName">Last name</Label>
+              <Input id="inlineContact.lastName" {...form.register('inlineContact.lastName')} placeholder="Last name" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inlineContact.email">Email</Label>
+              <Input id="inlineContact.email" type="email" {...form.register('inlineContact.email')} placeholder="name@company.com" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inlineContact.phone">Phone</Label>
+              <Input id="inlineContact.phone" {...form.register('inlineContact.phone')} placeholder="+91..." />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="inlineContact.jobTitle">Job title</Label>
+              <Input id="inlineContact.jobTitle" {...form.register('inlineContact.jobTitle')} placeholder="Founder, CISO, Manager..." />
+            </div>
+          </div>
+        )}
+        {!showInlineContact && <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <Input
@@ -414,13 +419,62 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
               <div className="px-3 py-3 text-sm text-slate-400">No contacts match your search.</div>
             )}
           </div>
-        </div>
+        </div>}
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="companyId">Company</Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="companyId">Company</Label>
+          <button
+            type="button"
+            onClick={() => {
+              setShowInlineCompany((current) => !current);
+              form.setValue('companyId', '', { shouldDirty: true });
+            }}
+            className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+          >
+            <Building2 className="h-3.5 w-3.5" />
+            {showInlineCompany ? 'Search existing' : 'New company details'}
+          </button>
+        </div>
         <input type="hidden" {...form.register('companyId')} />
-        <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+        {showInlineCompany && (
+          <div className="grid gap-3 rounded-lg border border-blue-100 bg-blue-50/50 p-3 md:grid-cols-2">
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="inlineCompany.name">Company name</Label>
+              <Input id="inlineCompany.name" {...form.register('inlineCompany.name')} placeholder="Company Pvt Ltd" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inlineCompany.domain">Domain</Label>
+              <Input id="inlineCompany.domain" {...form.register('inlineCompany.domain')} placeholder="company.com" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inlineCompany.website">Website</Label>
+              <Input id="inlineCompany.website" {...form.register('inlineCompany.website')} placeholder="https://company.com" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inlineCompany.phone">Phone</Label>
+              <Input id="inlineCompany.phone" {...form.register('inlineCompany.phone')} placeholder="+91..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inlineCompany.email">Email</Label>
+              <Input id="inlineCompany.email" type="email" {...form.register('inlineCompany.email')} placeholder="hello@company.com" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inlineCompany.city">City</Label>
+              <Input id="inlineCompany.city" {...form.register('inlineCompany.city')} placeholder="Mumbai" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inlineCompany.country">Country</Label>
+              <Input id="inlineCompany.country" {...form.register('inlineCompany.country')} placeholder="India" />
+            </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="inlineCompany.location">Location</Label>
+              <Input id="inlineCompany.location" {...form.register('inlineCompany.location')} placeholder="Office, region, or notes" />
+            </div>
+          </div>
+        )}
+        {!showInlineCompany && <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <Input
@@ -477,7 +531,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
               <div className="px-3 py-3 text-sm text-slate-400">No companies match your search.</div>
             )}
           </div>
-        </div>
+        </div>}
       </div>
 
       {isSalesPipeline && (
@@ -580,6 +634,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
         </div>
       </div>
 
+      {canChangeOwner && (
       <div className="space-y-1.5">
         <Label htmlFor="ownerId">Owner</Label>
         <select
@@ -593,6 +648,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
           ))}
         </select>
       </div>
+      )}
 
       <div className="space-y-1.5">
         <Label htmlFor="description">Notes</Label>
@@ -622,31 +678,6 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
       </div>
     </form>
 
-    {showAddContact && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-        <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-slate-900">Add New Contact</h3>
-            <button type="button" onClick={() => setShowAddContact(false)} className="text-slate-400 hover:text-slate-600">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <ContactForm
-            compact
-            defaultValues={{
-              companyId: selectedCompanyId || undefined,
-              companyName: (selectedCompany?.name as string | undefined) ?? undefined,
-            }}
-            onSuccess={(contact) => {
-              form.setValue('primaryContactId', String(contact.id), { shouldDirty: true });
-              setShowAddContact(false);
-              void utils.contacts.list.invalidate();
-            }}
-            onCancel={() => setShowAddContact(false)}
-          />
-        </div>
-      </div>
-    )}
     </>
   );
 }

@@ -271,6 +271,114 @@ async function resolvePrimaryContactSnapshot(primaryContactId?: string | null) {
   };
 }
 
+type InlineCompanyInput = {
+  name?: string | null;
+  domain?: string | null;
+  website?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  city?: string | null;
+  country?: string | null;
+  location?: string | null;
+};
+
+type InlineContactInput = {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  jobTitle?: string | null;
+};
+
+async function resolveInlineCompanyAndContact(
+  user: SessionUser,
+  data: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const { inlineCompany, inlineContact, ...dealData } = data as Record<string, unknown> & {
+    inlineCompany?: InlineCompanyInput;
+    inlineContact?: InlineContactInput;
+  };
+
+  let companyId = (dealData.companyId as string | null | undefined) || null;
+  let primaryContactId = (dealData.primaryContactId as string | null | undefined) || null;
+  const ownerId = (dealData.ownerId as string | null | undefined) || user.id;
+
+  const companyName = inlineCompany?.name?.trim();
+  if (!companyId && companyName) {
+    const [existingCompany] = await db
+      .select({ id: companies.id })
+      .from(companies)
+      .where(and(ilike(companies.name, companyName), isNull(companies.deletedAt)))
+      .limit(1);
+
+    if (existingCompany) {
+      companyId = existingCompany.id;
+    } else {
+      const [createdCompany] = await db
+        .insert(companies)
+        .values({
+          name: companyName,
+          domain: inlineCompany?.domain?.trim() || null,
+          website: inlineCompany?.website?.trim() || null,
+          phone: inlineCompany?.phone?.trim() || null,
+          email: inlineCompany?.email?.trim() || null,
+          city: inlineCompany?.city?.trim() || null,
+          country: inlineCompany?.country?.trim() || null,
+          location: inlineCompany?.location?.trim() || null,
+          companyType: 'prospect',
+          status: 'active',
+          ownerId,
+          createdBy: user.id,
+        })
+        .returning({ id: companies.id });
+      companyId = createdCompany?.id ?? null;
+    }
+  }
+
+  const firstName = inlineContact?.firstName?.trim();
+  const lastName = inlineContact?.lastName?.trim();
+  const contactEmail = inlineContact?.email?.trim();
+  if (!primaryContactId && (firstName || lastName || contactEmail)) {
+    const existingContacts = contactEmail
+      ? await db
+          .select({ id: contacts.id, companyId: contacts.companyId })
+          .from(contacts)
+          .where(and(eq(contacts.email, contactEmail), isNull(contacts.deletedAt)))
+          .limit(1)
+      : [];
+    const existingContact = existingContacts[0];
+
+    if (existingContact) {
+      primaryContactId = existingContact.id;
+      companyId = companyId ?? existingContact.companyId ?? null;
+    } else {
+      const [createdContact] = await db
+        .insert(contacts)
+        .values({
+          firstName: firstName || 'Unknown',
+          lastName: lastName || 'Contact',
+          email: contactEmail || null,
+          phone: inlineContact?.phone?.trim() || null,
+          jobTitle: inlineContact?.jobTitle?.trim() || null,
+          companyId,
+          companyName: companyName || (dealData.primaryContactName as string | null | undefined) || null,
+          source: 'manual',
+          status: 'new',
+          ownerId,
+          createdBy: user.id,
+        })
+        .returning({ id: contacts.id });
+      primaryContactId = createdContact?.id ?? null;
+    }
+  }
+
+  return {
+    ...dealData,
+    companyId,
+    primaryContactId,
+  };
+}
+
 export async function listDeals(
   user: SessionUser,
   opts: {
@@ -722,9 +830,13 @@ export async function getDealById(
 
 export async function createDeal(
   user: SessionUser,
-  data: Omit<NewDeal, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>
+  data: Omit<NewDeal, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'> & {
+    inlineCompany?: InlineCompanyInput;
+    inlineContact?: InlineContactInput;
+  }
 ): Promise<Record<string, unknown>> {
-  const writeData = sanitizeDealWriteDataForUser(user, data as Record<string, unknown>) as typeof data;
+  const resolvedData = await resolveInlineCompanyAndContact(user, data as Record<string, unknown>);
+  const writeData = sanitizeDealWriteDataForUser(user, resolvedData as Record<string, unknown>) as typeof data;
   await validatePartnerAssignment(writeData.pipelineId, writeData.partnerCompanyId);
   const resolvedLifecycle = await resolveStageAndStatus({
     pipelineId: writeData.pipelineId,
@@ -794,9 +906,13 @@ export async function createDeal(
 export async function updateDeal(
   user: SessionUser,
   id: string,
-  data: Partial<Omit<NewDeal, 'id' | 'createdAt' | 'createdBy'>>
+  data: Partial<Omit<NewDeal, 'id' | 'createdAt' | 'createdBy'>> & {
+    inlineCompany?: InlineCompanyInput;
+    inlineContact?: InlineContactInput;
+  }
 ): Promise<Record<string, unknown>> {
-  const writeData = sanitizeDealWriteDataForUser(user, data as Record<string, unknown>) as typeof data;
+  const resolvedData = await resolveInlineCompanyAndContact(user, data as Record<string, unknown>);
+  const writeData = sanitizeDealWriteDataForUser(user, resolvedData as Record<string, unknown>) as typeof data;
   const existing = await getDealById(user, id);
   if (!existing) throw new Error('Prospect not found');
 

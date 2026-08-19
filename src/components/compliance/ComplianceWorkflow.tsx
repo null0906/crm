@@ -10,7 +10,6 @@ import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useDebounce } from '@/hooks/useDebounce';
-import { formatCurrency } from '@/lib/formatters';
 
 interface Stage {
   id: string;
@@ -84,10 +83,6 @@ export function ComplianceWorkflow({ type }: { type: ComplianceType }) {
   );
   const activeDeals = allDeals.filter((d) => !wonStageIds.has(String(d.stageId ?? '')) && String(d.status ?? '') !== 'won' && String(d.status ?? '') !== 'lost');
   const wonDeals = allDeals.filter((d) => String(d.status ?? '') === 'won');
-  const totalValue = allDeals
-    .filter((d) => String(d.status ?? '') !== 'lost')
-    .reduce((sum, d) => sum + (parseFloat(String(d.amount ?? '0')) || 0), 0);
-
   const activeStages = (pipeline?.stages ?? []).filter((s) => s.stageType !== 'lost');
 
   if (!pipeline) {
@@ -146,12 +141,6 @@ export function ComplianceWorkflow({ type }: { type: ComplianceType }) {
         <StatChip icon={TrendingUp} label="Active" value={activeDeals.length} color="text-blue-600" />
         <StatChip icon={CheckCircle2} label="Completed" value={wonDeals.length} color="text-emerald-600" />
         <StatChip icon={Clock} label="Total Clients" value={allDeals.filter((d) => String(d.status ?? '') !== 'lost').length} color="text-slate-500" />
-        {totalValue > 0 && (
-          <div className="ml-auto text-right">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Pipeline Value</p>
-            <p className="text-sm font-bold text-slate-800">{formatCurrency(totalValue)}</p>
-          </div>
-        )}
       </div>
 
       {/* Kanban */}

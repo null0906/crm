@@ -4,7 +4,7 @@ import React from 'react';
 import { CheckSquare, CalendarDays, TrendingUp, Activity, Clock, AlertCircle } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { ActivityFeed } from '@/components/activities/ActivityFeed';
-import { formatDate, formatRelative, formatCurrency } from '@/lib/formatters';
+import { formatDate, formatRelative } from '@/lib/formatters';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -229,9 +229,7 @@ export default function CommandCenterPage() {
             <div className="divide-y divide-slate-50 max-h-[240px] overflow-y-auto">
               {activeDeals.length === 0 ? (
                 <p className="px-4 py-6 text-center text-sm text-slate-400">No active deals.</p>
-              ) : activeDeals.filter((d) => d.status === 'open').map((d) => {
-                const amount = d.amount ? Number(d.amount) : null;
-                return (
+              ) : activeDeals.filter((d) => d.status === 'open').map((d) => (
                   <div key={String(d.id)} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-medium text-slate-800">{String(d.title ?? '')}</p>
@@ -239,14 +237,8 @@ export default function CommandCenterPage() {
                         {[d.stageName, d.primaryContactName || d.companyName].filter(Boolean).join(' · ')}
                       </p>
                     </div>
-                    {amount !== null && (
-                      <span className="shrink-0 text-[12px] font-semibold text-slate-700">
-                        ₹{amount.toLocaleString('en-IN')}
-                      </span>
-                    )}
                   </div>
-                );
-              })}
+                ))}
             </div>
           </div>
         </div>

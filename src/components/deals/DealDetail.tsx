@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Calendar, Pencil, Trash2, BellRing, AlertTriangle, CheckSquare, Users, ShieldCheck, ChevronDown } from 'lucide-react';
+import { X, Pencil, Trash2, BellRing, AlertTriangle, CheckSquare, Users, ShieldCheck, ChevronDown } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -117,8 +117,6 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
   const title = deal?.title as string | undefined;
   const status = deal?.status as string | undefined;
   const probability = deal?.probability as number | null | undefined;
-  const amount = deal?.amount as number | null | undefined;
-  const expectedCloseDate = deal?.expectedCloseDate as string | null | undefined;
   const primaryContactFirstName = deal?.primaryContactFirstName as string | null | undefined;
   const primaryContactLastName = deal?.primaryContactLastName as string | null | undefined;
   const primaryContactName = deal?.primaryContactName as string | null | undefined;
@@ -132,7 +130,6 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
   const ownerLastName = deal?.ownerLastName as string | null | undefined;
   const services = ((deal?.services as string[] | null | undefined) ?? []).filter(Boolean);
   const serviceOther = deal?.serviceOther as string | null | undefined;
-  const currency = deal?.currency as string | undefined;
   const createdAt = deal?.createdAt as Date | undefined;
   const updatedAt = deal?.updatedAt as Date | undefined;
   const description = deal?.description as string | null | undefined;
@@ -160,10 +157,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
     description: description ?? '',
     pipelineId: pipelineId ?? '',
     stageId: stageId ?? '',
-    amount: amount ?? undefined,
-    currency: currency ?? 'INR',
     probability: (probability as number) ?? 0,
-    expectedCloseDate: expectedCloseDate ?? '',
     status: (status as 'open' | 'won' | 'lost' | 'abandoned') ?? 'open',
     services,
     serviceOther: serviceOther ?? '',
@@ -226,18 +220,6 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                     <X className="w-5 h-5" />
                   </button>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mt-4">
-                {expectedCloseDate && (
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-slate-400" />
-                    <div>
-                      <p className="text-xs text-slate-400 uppercase tracking-wide">Close Date</p>
-                      <p className="text-sm font-semibold text-slate-900">{formatDate(new Date(expectedCloseDate))}</p>
-                    </div>
-                  </div>
-                )}
               </div>
 
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -343,7 +325,6 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                     )}
                     {createdAt && <InfoField label="Created" value={formatDate(createdAt)} />}
                     {updatedAt && <InfoField label="Last Updated" value={formatRelative(updatedAt)} />}
-                    {currency && <InfoField label="Currency" value={currency} />}
                   </div>
 
                   {description && (

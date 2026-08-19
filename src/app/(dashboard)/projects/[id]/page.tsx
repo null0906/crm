@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { ArrowLeft, CalendarDays, CheckSquare, Clock, Link2, Plus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
@@ -28,11 +29,6 @@ function getSyncedStageColor(stages: ProjectStageOption[], stage: string | null 
 
 function getSyncedStageLabel(stages: ProjectStageOption[], stage: string | null | undefined) {
   return getStageOption(stages, stage).label;
-}
-
-function formatINR(value: unknown) {
-  if (value === null || value === undefined) return '—';
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(value ?? 0));
 }
 
 function formatDate(value: unknown) {
@@ -334,7 +330,21 @@ export default function ProjectDetailPage() {
   const params = useParams<{ id: string }>();
   const projectId = String(params.id ?? '');
   const [tab, setTab] = React.useState<'overview' | 'tasks' | 'team' | 'timeline' | 'linked'>('overview');
+  const { data: session } = useSession();
+  const currentRoleSlug = ((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug;
   const { data: project, isLoading } = trpc.projects.getById.useQuery({ id: projectId }, { enabled: Boolean(projectId) });
+  const { data: users = [] } = trpc.users.list.useQuery(undefined, { enabled: currentRoleSlug === 'super_admin' });
+  const utils = trpc.useUtils();
+  const updateProject = trpc.projects.update.useMutation({
+    onSuccess: () => {
+      toast.success('Project owner updated');
+      void utils.projects.getById.invalidate({ id: projectId });
+      void utils.projects.list.invalidate();
+      void utils.deals.list.invalidate();
+      void utils.deals.byStage.invalidate();
+    },
+    onError: (err) => toast.error('Could not update owner', { description: err.message }),
+  });
   const { data: pipelines = [] } = trpc.pipelines.list.useQuery();
   const activePipelineId = React.useMemo(() => {
     const activePipeline = pipelines.find((pipeline) => String((pipeline as Record<string, unknown>).pipelineType ?? '') === 'active_delivery');
@@ -395,10 +405,20 @@ export default function ProjectDetailPage() {
               {record.company?.name ?? 'No company'} {record.primaryContact?.firstName ? `· Primary: ${record.primaryContact.firstName} ${record.primaryContact.lastName ?? ''}` : ''}
             </p>
           </div>
-          <div className="text-left lg:text-right">
-            <p className="font-mono text-2xl font-black tracking-[-0.04em] text-[var(--text-primary)]">{formatINR(record.contractValue)}</p>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-tertiary)]">Contract Value</p>
-          </div>
+          {currentRoleSlug === 'super_admin' && (
+            <div className="w-full lg:w-64">
+              <label className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-tertiary)]">Owner</label>
+              <select
+                value={String(record.ownerId ?? '')}
+                disabled={updateProject.isPending}
+                onChange={(event) => updateProject.mutate({ id: projectId, data: { ownerId: event.target.value || null } })}
+                className="mt-1 h-9 w-full rounded-lg border border-[var(--border-default)] bg-white px-3 text-sm font-medium text-[var(--text-secondary)]"
+              >
+                <option value="">Unassigned</option>
+                {users.map((user) => <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>)}
+              </select>
+            </div>
+          )}
         </div>
         <div className="mt-5">
           <StagePills project={record} stages={projectStages} />
@@ -466,7 +486,6 @@ export default function ProjectDetailPage() {
               <div>
                 <h2 className="text-sm font-bold text-[var(--text-primary)]">Linked Prospect</h2>
                 <p className="mt-2 text-lg font-bold text-[var(--text-primary)]">{record.deal.title}</p>
-                {record.deal.amount != null && <p className="mt-1 font-mono text-xl font-black text-[var(--text-primary)]">{formatINR(record.deal.amount)}</p>}
                 <Link href={`/deals/${record.deal.id}`} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent)]">
                   View in pipeline
                   <Link2 className="h-4 w-4" />

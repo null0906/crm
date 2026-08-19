@@ -3,7 +3,7 @@
 import React from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-import { ClipboardCheck, Clock, IndianRupee, Info, Plus, Search, Settings } from 'lucide-react';
+import { ClipboardCheck, Clock, Info, Plus, Search, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
-import { formatCurrency, formatDate } from '@/lib/formatters';
+import { formatDate } from '@/lib/formatters';
 import { getOnboardingStageLabel, ONBOARDING_STAGE_LABELS } from '@/lib/onboarding';
 
 const STAGES = [
@@ -84,7 +84,6 @@ export default function OnboardingPage() {
                     <p className="mt-1 text-xs text-slate-500">{String(row.companyName ?? 'No company')}</p>
                     <div className="mt-3 flex items-center justify-between text-xs">
                       <span className="flex items-center gap-1 text-slate-400"><Clock className="h-3 w-3" />{formatDate(row.stageEnteredAt as string)}</span>
-                      {row.engagementAmount != null && <span className="font-mono font-bold">{formatCurrency(row.engagementAmount as string)}</span>}
                     </div>
                   </button>
                 ))}
@@ -160,27 +159,23 @@ function OnboardingPanel({ id, open, onClose }: { id: string; open: boolean; onC
   const [form, setForm] = React.useState<Record<string, string>>({});
   React.useEffect(() => {
     if (!record) return;
-    setForm(Object.fromEntries(['engagementAmount','amountVarianceReason','paymentTerms','paymentTermsNotes','poNumber','poReceivedAt','firstPaymentAmount','firstPaymentReceivedAt','kickoffMeetingLink','kickoffNotes','notes'].map((key) => [key, String(record[key] ?? '')])));
+    setForm(Object.fromEntries(['paymentTerms','paymentTermsNotes','poNumber','poReceivedAt','firstPaymentReceivedAt','kickoffMeetingLink','kickoffNotes','notes'].map((key) => [key, String(record[key] ?? '')])));
   }, [record]);
   const update = trpc.onboarding.update.useMutation({ onSuccess: async () => { toast.success('Onboarding updated'); await utils.onboarding.invalidate(); } });
   const move = trpc.onboarding.moveStage.useMutation({ onSuccess: async () => { toast.success('Onboarding stage updated'); await utils.onboarding.invalidate(); } });
   const set = (key: string, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const save = () => update.mutate({ id, data: {
-    engagementAmount: form.engagementAmount ? Number(form.engagementAmount) : null,
-    amountVarianceReason: form.amountVarianceReason || null, paymentTerms: form.paymentTerms || null,
+    paymentTerms: form.paymentTerms || null,
     paymentTermsNotes: form.paymentTermsNotes || null, poNumber: form.poNumber || null, poReceivedAt: form.poReceivedAt || null,
-    firstPaymentAmount: form.firstPaymentAmount ? Number(form.firstPaymentAmount) : null,
     firstPaymentReceivedAt: form.firstPaymentReceivedAt || null, kickoffMeetingLink: form.kickoffMeetingLink || null,
     kickoffNotes: form.kickoffNotes || null, notes: form.notes || null,
   } });
 
   return <SlideOverPanel open={open} onClose={onClose} width="lg" title={String(record?.dealTitle ?? 'Onboarding')}>
     {!record ? <p className="p-6 text-sm text-slate-400">Loading...</p> : <div className="space-y-6 p-5">
-      <div className="grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-slate-400">Company</p><p className="font-semibold">{String(record.companyName ?? 'Not set')}</p></div><div><p className="text-xs text-slate-400">Sales estimate</p><p className="font-mono">{formatCurrency(record.salesEstimate as string)}</p></div></div>
-      <Field label="Engagement amount" value={form.engagementAmount} onChange={(v) => set('engagementAmount', v)} type="number" icon={<IndianRupee className="h-3.5 w-3.5" />} />
-      <Field label="Variance reason" value={form.amountVarianceReason} onChange={(v) => set('amountVarianceReason', v)} />
+      <div className="grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-slate-400">Company</p><p className="font-semibold">{String(record.companyName ?? 'Not set')}</p></div></div>
       <div className="grid grid-cols-3 gap-3">{(['msaStatus','ndaStatus','sowStatus'] as const).map((key) => <label key={key} className="text-xs font-semibold uppercase text-slate-500">{key.replace('Status','')}<select value={String(record[key] ?? 'pending')} onChange={(e) => update.mutate({ id, data: { [key]: e.target.value } })} className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm"><option value="pending">Pending</option><option value="sent">Sent</option><option value="signed">Signed</option><option value="not_required">Not required</option></select></label>)}</div>
-      <div className="grid grid-cols-2 gap-3"><Field label="Payment terms" value={form.paymentTerms} onChange={(v) => set('paymentTerms', v)} /><Field label="PO number" value={form.poNumber} onChange={(v) => set('poNumber', v)} /><Field label="First payment" value={form.firstPaymentAmount} onChange={(v) => set('firstPaymentAmount', v)} type="number" /><Field label="Payment received" value={form.firstPaymentReceivedAt} onChange={(v) => set('firstPaymentReceivedAt', v)} type="date" /></div>
+	      <div className="grid grid-cols-2 gap-3"><Field label="Payment terms" value={form.paymentTerms} onChange={(v) => set('paymentTerms', v)} /><Field label="PO number" value={form.poNumber} onChange={(v) => set('poNumber', v)} /><Field label="Payment received" value={form.firstPaymentReceivedAt} onChange={(v) => set('firstPaymentReceivedAt', v)} type="date" /></div>
       <Field label="Kickoff meeting link" value={form.kickoffMeetingLink} onChange={(v) => set('kickoffMeetingLink', v)} />
       <Label>Kickoff notes<Textarea value={form.kickoffNotes} onChange={(e) => set('kickoffNotes', e.target.value)} className="mt-1" /></Label>
       <Label>Notes<Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} className="mt-1" /></Label>

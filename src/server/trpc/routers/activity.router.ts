@@ -6,6 +6,7 @@ import { activities, users, contacts, companies, deals, pipelineStages } from '@
 import { eq, and, isNull, desc, inArray, gte, lte, sql } from 'drizzle-orm';
 import { activityCreateSchema, paginationSchema } from '@/server/lib/validators';
 import { writeAuditLog } from '@/server/services/audit.service';
+import { syncActivityToMatchingDeal } from '@/server/services/activity-sync.service';
 import eventBus from '@/server/lib/event-bus';
 
 export const activityRouter = router({
@@ -183,10 +184,12 @@ export const activityRouter = router({
           .where(inArray(companies.id, Array.from(linkedCompanyIds)));
       }
 
+      const syncedDealId = await syncActivityToMatchingDeal(activity!.id);
+
       eventBus.emit('activity.created', {
         activityId: activity!.id,
         activityType: activity!.activityType,
-        entityIds: [input.contactId, input.companyId, input.dealId].filter(Boolean) as string[],
+        entityIds: [input.contactId, input.companyId, input.dealId ?? syncedDealId].filter(Boolean) as string[],
         performedBy: ctx.user!.id,
       });
 

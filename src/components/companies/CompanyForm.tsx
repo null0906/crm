@@ -185,7 +185,7 @@ export function CompanyForm({ onSuccess, onCancel, defaultValues, mode = 'create
         <Input
           id="annualRevenueRange"
           {...form.register('annualRevenueRange')}
-          placeholder="e.g. ₹1Cr – ₹10Cr"
+          placeholder="e.g. 1Cr - 10Cr"
         />
       </div>
 

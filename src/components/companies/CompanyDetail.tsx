@@ -16,7 +16,7 @@ import { CompanyForm } from './CompanyForm';
 import { TagBadge } from '@/components/tags/TagBadge';
 import { ActivityFeed } from '@/components/activities/ActivityFeed';
 import { LogDemoPanel } from '@/components/activities/LogDemoPanel';
-import { formatCurrency, formatDate, formatRelative } from '@/lib/formatters';
+import { formatDate, formatRelative } from '@/lib/formatters';
 import { toast } from 'sonner';
 
 interface CompanyDetailProps {
@@ -60,7 +60,6 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted, fullPage }:
   const tags = (company?.tags as Array<{ id: string; name: string; color: string }>) ?? [];
   const metrics = company?.metrics as {
     contactCount: number;
-    pipelineValue?: string | number;
     openDeals?: number;
     activeProjects?: number;
     lastActivityAt?: string | Date | null;
@@ -200,7 +199,6 @@ export function CompanyDetail({ companyId, open, onClose, onDeleted, fullPage }:
         {metrics && (
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <CompanyMetricCard label="Contacts" value={String(metrics.contactCount ?? 0)} />
-            {metrics.pipelineValue != null && <CompanyMetricCard label="Pipeline" value={formatCurrency(metrics.pipelineValue)} />}
             <CompanyMetricCard label="Open Prospects" value={String(metrics.openDeals ?? 0)} />
             <CompanyMetricCard label="Active Projects" value={String(metrics.activeProjects ?? 0)} />
           </div>
@@ -655,11 +653,6 @@ function CompanyProjects({ companyId }: { companyId: string }) {
                   {p.isDelayed ? ' · Delayed' : ''}
                 </p>
               </div>
-              {p.contractValue != null && (
-                <span className="font-mono text-[12px] font-bold text-slate-700">
-                  ₹{Number(p.contractValue).toLocaleString('en-IN')}
-                </span>
-              )}
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
               <div
@@ -738,7 +731,6 @@ function CompanyDeals({ companyId }: { companyId: string }) {
       {deals.map((deal) => {
         const d = deal as Record<string, unknown>;
         const status = (d.status as string) ?? 'open';
-        const amount = d.amount ? Number(d.amount) : null;
         return (
           <div key={d.id as string} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-slate-100 bg-slate-50 hover:bg-white hover:border-slate-200 transition-colors">
             <div className="min-w-0 flex-1">
@@ -750,11 +742,6 @@ function CompanyDeals({ companyId }: { companyId: string }) {
               </p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              {amount !== null && (
-                <span className="text-[12px] font-semibold text-slate-700">
-                  ₹{amount.toLocaleString('en-IN')}
-                </span>
-              )}
               <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full capitalize ${statusColor[status] ?? 'bg-slate-100 text-slate-500'}`}>
                 {status}
               </span>

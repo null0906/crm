@@ -7,10 +7,10 @@ import {
   LabelList, LineChart, Line,
 } from 'recharts';
 import { trpc } from '@/lib/trpc';
-import { formatCurrency, formatRelative } from '@/lib/formatters';
+import { formatRelative } from '@/lib/formatters';
 import {
   TrendingUp, Users, Building2, Activity, Phone, Mail, MessageSquare,
-  Target, DollarSign, Award, BarChart2, Calendar, CheckCircle,
+  Target, Award, BarChart2, Calendar, CheckCircle,
 } from 'lucide-react';
 import { useSession } from 'next-auth/react';
 import { getOnboardingStageLabel } from '@/lib/onboarding';
@@ -52,9 +52,8 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 function useCanViewDealAmounts() {
-  const { data: session } = useSession();
-  const roleSlug = ((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug;
-  return roleSlug !== 'sales_rep';
+  useSession();
+  return false;
 }
 
 // ─── Source helpers ────────────────────────────────────────────────
@@ -139,15 +138,10 @@ function buildMonthly(deals: Array<Record<string, unknown>>) {
     const slice = deals.filter((d) => { const at = new Date(d.createdAt as string); return at >= start && at <= end; });
     return {
       month: start.toLocaleString('default', { month: 'short' }),
-      revenue: slice.filter((d) => d.status === 'won').reduce((s, d) => s + getDealValue(d), 0),
-      pipeline: slice.reduce((s, d) => s + getDealValue(d), 0),
+      pipeline: slice.length,
       count: slice.length,
     };
   });
-}
-
-function getDealValue(deal: Record<string, unknown>) {
-  return parseFloat(String(deal.effectiveValue ?? deal.amount ?? '0')) || 0;
 }
 
 // ─── Custom dark tooltip ───────────────────────────────────────────
@@ -165,7 +159,7 @@ function DarkTooltip({ active, payload, label }: {
           <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: p.color }} />
           <span className="text-slate-400">{p.name}:</span>
           <span className="font-semibold ml-0.5">
-            {typeof p.value === 'number' && p.value > 1000 ? formatCurrency(p.value) : p.value}
+            {p.value}
           </span>
         </p>
       ))}
@@ -193,7 +187,7 @@ function MIcon({ metric, color }: { metric?: string; color: string }) {
     case 'won_value':     return <Award className={cls} style={s} strokeWidth={1.75} />;
     case 'open_deals':    return <BarChart2 className={cls} style={s} strokeWidth={1.75} />;
     case 'win_rate':      return <Target className={cls} style={s} strokeWidth={1.75} />;
-    case 'avg_deal_size': return <DollarSign className={cls} style={s} strokeWidth={1.75} />;
+    case 'avg_deal_size': return <Award className={cls} style={s} strokeWidth={1.75} />;
     default:              return <TrendingUp className={cls} style={s} strokeWidth={1.75} />;
   }
 }
@@ -203,8 +197,6 @@ function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilt
   const metric = widget.config.metric as string | undefined;
   const source = getWidgetSource(widget);
   const accent = widget.color ?? '#3b82f6';
-  const canViewDealAmounts = useCanViewDealAmounts();
-
   const { data: contactsRaw } = trpc.contacts.list.useQuery(
     { pagination: { limit: 500 } },
     { enabled: metric === 'contacts' },
@@ -242,30 +234,16 @@ function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilt
     subLine = `${source} view`;
   } else if (metric === 'pipeline_value') {
     const open = filteredDeals.filter((d) => d.status === 'open');
-    if (canViewDealAmounts) {
-      const total = open.reduce((s, d) => s + getDealValue(d), 0);
-      const wt = open.reduce((s, d) => s + getDealValue(d) * ((d.probability as number || 0) / 100), 0);
-      value = formatCurrency(total);
-      subLine = `${formatCurrency(wt)} weighted · ${open.length} prospects`;
-    } else {
-      value = open.length;
-      subLine = 'open prospects';
-    }
+    value = open.length;
+    subLine = 'open prospects';
   } else if (metric === 'won_value') {
     const won = filteredDeals.filter((d) => d.status === 'won');
-    value = canViewDealAmounts
-      ? formatCurrency(won.reduce((s, d) => s + getDealValue(d), 0))
-      : won.length;
+    value = won.length;
     subLine = `${won.length} prospect${won.length !== 1 ? 's' : ''} closed won`;
   } else if (metric === 'open_deals') {
     const open = filteredDeals.filter((d) => d.status === 'open');
     value = open.length;
-    if (canViewDealAmounts) {
-      const tv = open.reduce((s, d) => s + getDealValue(d), 0);
-      subLine = tv > 0 ? formatCurrency(tv) + ' total value' : 'active pipeline';
-    } else {
-      subLine = 'active pipeline';
-    }
+    subLine = 'active pipeline';
   } else if (metric === 'win_rate') {
     const closed = filteredDeals.filter((d) => d.status === 'won' || d.status === 'lost');
     const won = filteredDeals.filter((d) => d.status === 'won');
@@ -274,14 +252,8 @@ function MetricCard({ widget, filter }: { widget: Widget; filter?: DashboardFilt
     subLine = `${won.length} won / ${closed.length} closed`;
   } else if (metric === 'avg_deal_size') {
     const won = filteredDeals.filter((d) => d.status === 'won');
-    if (canViewDealAmounts) {
-      const total = won.reduce((s, d) => s + getDealValue(d), 0);
-      value = won.length > 0 ? formatCurrency(total / won.length) : '—';
-      subLine = `across ${won.length} won prospects`;
-    } else {
-      value = won.length;
-      subLine = 'won prospects';
-    }
+    value = won.length;
+    subLine = 'won prospects';
   }
 
   return (
@@ -365,7 +337,6 @@ function PipelineSummary({ widget, filter }: { widget: Widget; filter?: Dashboar
           return {
             name: stageNameMap[sid] ?? 'Unknown',
             deals: filtered.length,
-            value: filtered.reduce((s, d) => s + getDealValue(d), 0),
             fill: stageColorMap[sid] ?? CHART_COLORS[i % CHART_COLORS.length]!,
             gradId: `sg_${widget.id}_${i}`,
           };
@@ -651,13 +622,13 @@ function RevenueAreaChart({ widget, filter }: { widget: Widget; filter?: Dashboa
             <Line
               type="monotone"
               dataKey="pipeline"
-              name="Pipeline Value"
+              name="Prospects"
               stroke={accent}
               strokeWidth={2.5}
               dot={{ r: 4, fill: accent, strokeWidth: 0 }}
               activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff' }}
             >
-              {showLabels && <LabelList dataKey="pipeline" position="top" style={{ fontSize: 9, fill: '#64748b', fontWeight: 600 }} formatter={(v) => (typeof v === 'number' && v > 0 ? `₹${Math.round(v / 1000)}k` : '')} />}
+              {showLabels && <LabelList dataKey="pipeline" position="top" style={{ fontSize: 9, fill: '#64748b', fontWeight: 600 }} />}
             </Line>
           </LineChart>
         </ResponsiveContainer>
@@ -677,14 +648,14 @@ function RevenueAreaChart({ widget, filter }: { widget: Widget; filter?: Dashboa
             <Area
               type="monotone"
               dataKey="pipeline"
-              name="Pipeline Value"
+              name="Prospects"
               stroke={accent}
               strokeWidth={2.5}
               fill={`url(#${gradId})`}
               dot={{ r: 3.5, fill: accent, strokeWidth: 0 }}
               activeDot={{ r: 6, strokeWidth: 2, stroke: '#fff' }}
             >
-              {showLabels && <LabelList dataKey="pipeline" position="top" style={{ fontSize: 9, fill: '#64748b', fontWeight: 600 }} formatter={(v) => (typeof v === 'number' && v > 0 ? `₹${Math.round(v / 1000)}k` : '')} />}
+              {showLabels && <LabelList dataKey="pipeline" position="top" style={{ fontSize: 9, fill: '#64748b', fontWeight: 600 }} />}
             </Area>
           </AreaChart>
         </ResponsiveContainer>
@@ -696,7 +667,6 @@ function RevenueAreaChart({ widget, filter }: { widget: Widget; filter?: Dashboa
 // ─── DEAL FUNNEL (funnel_chart) ────────────────────────────────────
 function DealFunnelChart({ widget }: { widget: Widget }) {
   const source = getWidgetSource(widget);
-  const canViewDealAmounts = useCanViewDealAmounts();
   const { data: pipelines = [] } = trpc.pipelines.list.useQuery();
   const sourcePipeline = resolvePipelineForSource(pipelines as Array<Record<string, unknown>>, source);
   const pipelineId = sourcePipeline?.id as string | undefined;
@@ -720,7 +690,6 @@ function DealFunnelChart({ widget }: { widget: Widget }) {
     return {
       name: s.name,
       deals: stageDeals.length,
-      value: stageDeals.reduce((sum, d) => sum + getDealValue(d), 0),
       color: s.color ?? CHART_COLORS[i % CHART_COLORS.length]!,
     };
   }).filter((s) => s.deals > 0);
@@ -758,11 +727,6 @@ function DealFunnelChart({ widget }: { widget: Widget }) {
                       {stage.deals} prospect{stage.deals !== 1 ? 's' : ''}
                     </span>
                   </div>
-                  {canViewDealAmounts && formatCurrency(stage.value) !== '₹0' && (
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-medium">
-                      {formatCurrency(stage.value)}
-                    </span>
-                  )}
                 </div>
                 <div className="w-9 flex-shrink-0 text-right">
                   {convRate !== null ? (

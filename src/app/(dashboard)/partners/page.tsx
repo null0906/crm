@@ -16,7 +16,6 @@ import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { CompanyForm } from '@/components/companies/CompanyForm';
 import { CompanyDetail } from '@/components/companies/CompanyDetail';
 import { DealForm } from '@/components/deals/DealForm';
-import { formatCurrency } from '@/lib/formatters';
 import { toast } from 'sonner';
 
 type Company = Record<string, unknown>;
@@ -83,7 +82,6 @@ function AttachDealPanel({
                   <div className="flex items-center gap-2 mt-1 text-xs text-slate-400">
                     {Boolean(deal.companyName) && <span>{String(deal.companyName)}</span>}
                     {Boolean(deal.stageName) && <span>• {String(deal.stageName)}</span>}
-                    {Boolean(deal.amount) && <span>• {formatCurrency(parseFloat(String(deal.amount)), String(deal.currency ?? 'INR'))}</span>}
                   </div>
                 </div>
                 <Button
@@ -149,7 +147,6 @@ function PartnerRow({ partner }: { partner: Company }) {
   const contacts = (partnerContacts ?? []) as Contact[];
   const referredContacts = (referredData?.contacts ?? []) as Array<Record<string, unknown>>;
   const referredDeals = (referredData?.deals ?? []) as Deal[];
-  const totalValue = deals.reduce((sum, d) => sum + (parseFloat(String(d.amount ?? '0')) || 0), 0);
   const wonDeals = deals.filter((d) => d.status === 'won');
 
   const handleRefresh = () => {
@@ -212,13 +209,6 @@ function PartnerRow({ partner }: { partner: Company }) {
             <div className="text-center">
               <p className="text-sm font-bold text-emerald-700">{stats?.wonDeals ?? wonDeals.length}</p>
               <p className="text-[10px] text-slate-400 uppercase tracking-wide">Won</p>
-            </div>
-            <div className="text-center min-w-[80px]">
-              <p className="text-sm font-bold text-slate-800">
-                {stats?.wonRevenue ? formatCurrency(stats.wonRevenue, String(stats.currency ?? 'INR')) :
-                  totalValue > 0 ? formatCurrency(totalValue, String(deals[0]?.currency ?? 'INR')) : '—'}
-              </p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wide">Won Revenue</p>
             </div>
           </div>
 
@@ -294,9 +284,6 @@ function PartnerRow({ partner }: { partner: Company }) {
                           </div>
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             {Boolean(deal.stageName) && <span className="text-slate-400">{String(deal.stageName)}</span>}
-                            {Boolean(deal.amount) && (
-                              <span className="font-mono text-slate-600">{formatCurrency(parseFloat(String(deal.amount)), String(deal.currency ?? 'INR'))}</span>
-                            )}
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium capitalize ${STATUS_COLORS[String(deal.status ?? 'open')]}`}>
                               {String(deal.status)}
                             </span>
@@ -361,7 +348,6 @@ function PartnerRow({ partner }: { partner: Company }) {
                             </div>
                             <div className="flex items-center gap-1.5 flex-shrink-0">
                               {Boolean(d.stageName) && <span className="text-slate-400">{String(d.stageName)}</span>}
-                              {Boolean(d.amount) && <span className="font-mono text-slate-600">{formatCurrency(parseFloat(String(d.amount)), String(d.currency ?? 'INR'))}</span>}
                               <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium capitalize ${STATUS_COLORS[String(d.status ?? 'open')]}`}>
                                 {String(d.status)}
                               </span>
@@ -414,8 +400,6 @@ function PartnerRow({ partner }: { partner: Company }) {
                         { label: 'Referred Leads', value: stats.referredLeads, color: 'text-violet-700', bg: 'bg-violet-50' },
                         { label: 'Open Deals', value: stats.openDeals, color: 'text-blue-700', bg: 'bg-blue-50' },
                         { label: 'Won Deals', value: stats.wonDeals, color: 'text-emerald-700', bg: 'bg-emerald-50' },
-                        { label: 'Pipeline Value', value: formatCurrency(stats.pipeline, String(stats.currency ?? 'INR')), color: 'text-slate-800', bg: 'bg-slate-50' },
-                        { label: 'Won Revenue', value: formatCurrency(stats.wonRevenue, String(stats.currency ?? 'INR')), color: 'text-emerald-700', bg: 'bg-emerald-50' },
                         {
                           label: 'Conversion Rate',
                           value: stats.referredLeads > 0

@@ -28,10 +28,7 @@ const WIDGET_TYPES = [
     description: 'Single KPI number with context',
     icon: TrendingUp,
     configs: [
-      { label: 'Pipeline Value',  metric: 'pipeline_value' },
-      { label: 'Won Revenue',     metric: 'won_value' },
       { label: 'Win Rate',        metric: 'win_rate' },
-      { label: 'Avg Prospect Size', metric: 'avg_deal_size' },
       { label: 'Open Prospects',    metric: 'open_deals' },
       { label: 'Total Contacts',  metric: 'contacts' },
       { label: 'Total Companies', metric: 'companies' },
@@ -39,10 +36,10 @@ const WIDGET_TYPES = [
   },
   {
     type: 'line_chart',
-    label: 'Revenue Trend',
-    description: 'Monthly pipeline & revenue area chart',
+    label: 'Prospect Trend',
+    description: 'Monthly prospect activity chart',
     icon: TrendingDown,
-    configs: [{ label: 'Monthly Revenue Trend' }],
+    configs: [{ label: 'Monthly Prospect Trend' }],
   },
   {
     type: 'funnel_chart',

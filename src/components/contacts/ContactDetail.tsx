@@ -431,11 +431,6 @@ function ContactDeals({ contactId }: { contactId: string }) {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-              {d.amount != null && (
-                <span className="text-[13px] font-semibold text-slate-700 tabular-nums">
-                  {Number(d.amount).toLocaleString('en-IN', { style: 'currency', currency: (d.currency as string) || 'INR', maximumFractionDigits: 0 })}
-                </span>
-              )}
               <Badge variant="secondary" className="capitalize text-[10px]">{d.status as string}</Badge>
             </div>
           </div>

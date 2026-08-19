@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Calendar, CheckSquare, Clock, User, Building2, Briefcase, Users } from 'lucide-react';
+import { CheckSquare, Clock, User, Building2, Briefcase, Users } from 'lucide-react';
 import { formatDate } from '@/lib/formatters';
 import { isDeliveryPipeline } from '@/lib/pipeline-utils';
 
@@ -77,7 +77,6 @@ export function DealCard({ deal, onClick, stageColor }: DealCardProps) {
     borderLeftColor: getStageColor(deal, stageColor),
   } as React.CSSProperties & Record<'--stage-color', string>;
 
-  const expectedCloseDate = deal.expectedCloseDate as string | null | undefined;
   const primaryContactName = deal.primaryContactName as string | null | undefined;
   const companyName = deal.companyName as string | null | undefined;
   const services = Array.isArray(deal.services)
@@ -136,7 +135,6 @@ export function DealCard({ deal, onClick, stageColor }: DealCardProps) {
         {servicesLabel && <MetaRow icon={Briefcase} text={servicesLabel} />}
         {ownerName && <MetaRow icon={User} text={`Owner: ${ownerName}`} muted />}
 
-        {expectedCloseDate && <MetaRow icon={Calendar} text={formatDate(new Date(expectedCloseDate))} muted />}
       </div>
 
       {showProjectFields && (

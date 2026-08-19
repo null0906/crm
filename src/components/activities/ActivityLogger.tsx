@@ -176,16 +176,12 @@ export function ActivityLogger({ contactId, companyId, dealId, onSuccess, onCanc
               className="flex h-8 w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               <option value="">No specific prospect</option>
-              {availableDeals.map((deal) => {
-                const amount = deal.amount ? Number(deal.amount).toLocaleString('en-IN') : null;
-                return (
+              {availableDeals.map((deal) => (
                   <option key={String(deal.id)} value={String(deal.id)}>
                     {String(deal.title ?? 'Untitled prospect')}
                     {deal.stageName ? ` · ${String(deal.stageName)}` : ''}
-                    {amount ? ` · ₹${amount}` : ''}
                   </option>
-                );
-              })}
+                ))}
             </select>
             <p className="text-[11px] text-slate-400">
               Pick a prospect if this activity should appear in that prospect timeline too.

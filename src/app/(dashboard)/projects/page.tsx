@@ -40,16 +40,6 @@ function getSyncedStageLabel(stages: ProjectStageOption[], stage: string | null 
   return getStageOption(stages, stage).label;
 }
 
-function formatINR(value: unknown) {
-  if (value === null || value === undefined) return '—';
-  const amount = Number(value ?? 0);
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
 function formatDate(value: unknown) {
   if (!value) return 'Not set';
   return new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(String(value)));
@@ -151,9 +141,6 @@ function ProjectCard({ project, stages }: { project: ProjectRecord; stages: Proj
       </div>
       <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-[var(--text-tertiary)]">
         <span>{Number(project.completedTaskCount ?? 0)}/{Number(project.taskCount ?? 0)} tasks</span>
-        {Number(project.contractValue ?? 0) > 0 && (
-          <span className="font-mono text-xs font-bold text-[var(--text-primary)]">{formatINR(project.contractValue)}</span>
-        )}
       </div>
       <TeamAvatarStack members={project.members} />
     </div>
@@ -162,8 +149,6 @@ function ProjectCard({ project, stages }: { project: ProjectRecord; stages: Proj
 
 function ProjectColumn({ stage, projects, stages }: { stage: ProjectStageOption; projects: ProjectRecord[]; stages: ProjectStageOption[] }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.key });
-  const total = projects.reduce((sum, project) => sum + Number(project.contractValue ?? 0), 0);
-
   return (
     <section
       ref={setNodeRef}
@@ -175,7 +160,6 @@ function ProjectColumn({ stage, projects, stages }: { stage: ProjectStageOption;
         <span className="h-2 w-2 rounded-full" style={{ background: stage.color, boxShadow: `0 0 0 3px ${stage.color}22` }} />
         <span className="text-[12.5px] font-bold tracking-[-0.01em] text-[var(--text-primary)]">{stage.label}</span>
         <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] font-semibold text-[var(--text-secondary)]">{projects.length}</span>
-        {total > 0 && <span className="ml-auto font-mono text-[11px] font-bold text-[var(--text-secondary)]">{formatINR(total)}</span>}
       </div>
       <div className="min-h-[240px] py-1">
         {projects.map((project) => (
@@ -247,7 +231,6 @@ function ListView({ projects, stages }: { projects: ProjectRecord[]; stages: Pro
             <th className="px-4 py-3">Stage</th>
             <th className="px-4 py-3">Progress</th>
             <th className="px-4 py-3">End Date</th>
-            <th className="px-4 py-3 text-right">Value</th>
           </tr>
         </thead>
         <tbody>
@@ -265,7 +248,6 @@ function ListView({ projects, stages }: { projects: ProjectRecord[]; stages: Pro
                 <div className="w-32"><ProgressBar percent={getProjectStageProgress(project.stage)} delayed={Boolean(project.isDelayed)} /></div>
               </td>
               <td className="px-4 py-3 font-mono text-xs text-[var(--text-tertiary)]">{formatDate(project.revisedEndDate ?? project.endDate)}</td>
-              <td className="px-4 py-3 text-right font-mono text-sm font-bold text-[var(--text-primary)]">{project.contractValue == null ? '—' : formatINR(project.contractValue)}</td>
             </tr>
           ))}
         </tbody>

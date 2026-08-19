@@ -12,9 +12,8 @@ import {
   type VisibilityState,
 } from '@tanstack/react-table';
 import { ChevronUp, ChevronDown, ChevronsUpDown, Trash2, ExternalLink } from 'lucide-react';
-import { useSession } from 'next-auth/react';
 import { trpc } from '@/lib/trpc';
-import { formatCurrency, formatDate, formatRelative } from '@/lib/formatters';
+import { formatRelative } from '@/lib/formatters';
 import { Button } from '@/components/ui/button';
 import { TableSkeleton } from '@/components/shared/LoadingSkeleton';
 import { ColumnVisibilityMenu } from '@/components/shared/ColumnVisibilityMenu';
@@ -23,11 +22,8 @@ import { toast } from 'sonner';
 interface Deal {
   id: string;
   title: string;
-  amount: string | null;
-  currency: string;
   status: string;
   probability: number | null;
-  expectedCloseDate: string | null;
   primaryContactName: string | null;
   companyName: string | null;
   ownerName: string | null;
@@ -82,11 +78,8 @@ function EmptyCell() {
 
 export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSelection, onRowSelectionChange }: DealTableProps) {
   const utils = trpc.useUtils();
-  const { data: session } = useSession();
-  const currentRoleSlug = ((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug;
-  const canViewDealAmounts = currentRoleSlug === 'super_admin' || currentRoleSlug === 'sales_manager';
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({ amount: false });
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
   const [cursor, setCursor] = useState<string | undefined>();
   const limit = 25;
 
@@ -164,16 +157,6 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
         );
       },
     }),
-    ...(canViewDealAmounts ? [
-      columnHelper.accessor('amount', {
-        header: 'Value',
-        cell: (info) => (
-          <span className="font-mono text-base font-semibold text-[var(--color-text-1)]">
-            {formatCurrency(info.getValue(), info.row.original.currency)}
-          </span>
-        ),
-      }),
-    ] : []),
     columnHelper.accessor('status', {
       header: 'Status',
       cell: (info) => {
@@ -219,20 +202,6 @@ export function DealTable({ pipelineId, onDealClick, search, extraFilters, rowSe
     columnHelper.accessor('ownerName', {
       header: 'Owner',
       cell: (info) => info.getValue() ? <span className="text-[var(--color-text-2)]">{info.getValue()}</span> : <EmptyCell />,
-    }),
-    columnHelper.accessor('expectedCloseDate', {
-      header: 'Close Date',
-      cell: (info) => {
-        const val = info.getValue();
-        if (!val) return <EmptyCell />;
-        const date = new Date(val);
-        const isOverdue = date < new Date() && info.row.original.status === 'open';
-        return (
-          <span className={`font-mono text-sm ${isOverdue ? 'font-medium text-[var(--color-danger)]' : 'text-[var(--color-text-2)]'}`}>
-            {formatDate(val)}
-          </span>
-        );
-      },
     }),
     columnHelper.accessor('createdAt', {
       header: 'Created',

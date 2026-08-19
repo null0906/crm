@@ -44,10 +44,7 @@ const DEAL_FIELDS = [
   { value: 'stageName', label: 'Stage Name', mandatory: false },
   { value: 'contactName', label: 'Contact Name', mandatory: false },
   { value: 'companyName', label: 'Company Name', mandatory: false },
-  { value: 'amount', label: 'Amount', mandatory: false },
-  { value: 'currency', label: 'Currency', mandatory: false },
   { value: 'probability', label: 'Probability (%)', mandatory: false },
-  { value: 'expectedCloseDate', label: 'Expected Close Date', mandatory: false },
   { value: 'description', label: 'Notes', mandatory: false },
 ];
 
@@ -94,11 +91,8 @@ function downloadTemplate(entityType: 'contact' | 'company' | 'deal', stages?: s
     source: 'apollo / manual / website / referral / event / cold_outreach',
     companyType: 'prospect / customer / partner / vendor / competitor / other',
     stageName: allowedStages,
-    currency: 'INR / USD / EUR / GBP',
     probability: '0–100 (digits only)',
-    amount: 'digits only e.g. 500000',
     leadScore: '0–100 (integer)',
-    expectedCloseDate: 'YYYY-MM-DD e.g. 2026-06-30',
   };
   const hintsRow = fields.map((f) => csvCell(allowedHints[f.value] ?? ''));
 
@@ -117,9 +111,7 @@ function downloadTemplate(entityType: 'contact' | 'company' | 'deal', stages?: s
       companySize: '51-200', companyType: 'prospect', annualRevenueRange: '10Cr-50Cr',
       twitterUrl: 'https://twitter.com/acmecorp',
       title: 'Acme GRC Platform', stageName: stages?.[0] ?? 'Proposal Sent',
-      contactName: 'John Doe',
-      amount: '500000', currency: 'INR', probability: '40',
-      expectedCloseDate: '2026-06-30',
+      contactName: 'John Doe', probability: '40',
     };
     return csvCell(examples[f.value] ?? '');
   });
