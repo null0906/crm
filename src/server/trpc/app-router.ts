@@ -30,6 +30,9 @@ import { onboardingRouter } from './routers/onboarding.router';
 import { personalTasksRouter } from './routers/personal-tasks.router';
 import { executiveOverviewRouter } from './routers/executive-overview.router';
 import { costModelRouter } from './routers/cost-model.router';
+import { catalogRouter } from './routers/catalog.router';
+import { sizingRouter } from './routers/sizing.router';
+import { estimatesRouter } from './routers/estimates.router';
 
 export const appRouter = router({
   contacts: contactRouter,
@@ -63,6 +66,9 @@ export const appRouter = router({
   personalTasks: personalTasksRouter,
   executiveOverview: executiveOverviewRouter,
   costModel: costModelRouter,
+  catalog: catalogRouter,
+  sizing: sizingRouter,
+  estimates: estimatesRouter,
 });
 
 export type AppRouter = typeof appRouter;

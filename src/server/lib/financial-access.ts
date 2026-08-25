@@ -15,19 +15,40 @@ import { writeAuditLog } from '@/server/services/audit.service';
  * happen. See FR-X-05, FR-X-06 and NFR-SEC-04 through NFR-SEC-09.
  */
 
-/** Fields that must never reach a caller without the financial entitlement. */
+/**
+ * Fields that must never reach a caller without the financial entitlement.
+ *
+ * Margin is on this list because margin plus price gives you cost:
+ * cost = price x (1 - margin). Publishing a margin percentage alongside a
+ * visible price leaks the cost just as surely as printing it.
+ *
+ * `price` is deliberately NOT here. It is the quotable fact — the number the
+ * client is told and that anyone selling needs. Cost and margin are what stay
+ * behind the entitlement.
+ */
 export const FINANCIAL_FIELDS = [
+  // per-resource cost components
   'base',
   'seat',
   'support',
   'loadedWeekly',
   'amountPerWeek',
+  'costPerWeek',
+  'total',
+  // engagement roll-ups
   'labourSubtotal',
+  'nonLabourPassThrough',
+  'nonLabourMarkedUp',
+  'nonLabourTotal',
+  'customTotal',
   'subtotalBeforeGnr',
   'gnrAmount',
+  'basisAmount',
   'totalDeliveryCost',
-  'costPerWeek',
+  // margin, which is a route back to cost
   'marginAmount',
+  'marginPercent',
+  'targetMarginPercent',
   'ratePercent',
 ] as const;
 

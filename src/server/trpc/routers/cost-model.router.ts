@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
-import { protectedProcedure, router } from '../router';
-import { requireFinancialAccess } from '../middleware';
+import { financialProcedure, protectedProcedure, router } from '../router';
 import { db } from '@/server/db';
 import {
   deliveryRoles,
@@ -15,15 +14,13 @@ import { auditFinancialRead } from '@/server/lib/financial-access';
 import { writeAuditLog } from '@/server/services/audit.service';
 import { computeCost, computeMargin } from '@/server/services/cost-engine.service';
 
-/** Cost figures never leave the server without this gate. NFR-SEC-04. */
-const financialProcedure = protectedProcedure.use(requireFinancialAccess);
-
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
 
 const teamMember = z.object({
   deliveryRoleId: z.string().uuid(),
   userId: z.string().uuid().nullish(),
   weeks: z.number().positive().max(520),
+  resourceCount: z.number().int().positive().max(200).default(1),
   overrides: z
     .object({
       base: z.number().nonnegative().optional(),
