@@ -143,6 +143,20 @@ export default function UsersSettingsPage() {
   const [showNewPassword, setShowNewPassword] = useState(false);
 
   const { data: users = [], isLoading } = trpc.users.list.useQuery();
+  // Only super admins may grant the financial entitlement -- costModel
+  // .setFinancialAccess throws FORBIDDEN otherwise, so an entitled non-admin
+  // cannot widen the circle. Mirror that here rather than showing a dead control.
+  const { data: me } = trpc.users.me.useQuery();
+  const isSuperAdmin = me?.role?.slug === 'super_admin';
+  const [financeTarget, setFinanceTarget] = useState<{ id: string; name: string; grant: boolean } | null>(null);
+
+  const setFinancialAccess = trpc.costModel.setFinancialAccess.useMutation({
+    onSuccess: (r) => {
+      toast.success(r.hasFinancialAccess ? 'Financial access granted' : 'Financial access revoked');
+      void utils.users.list.invalidate();
+    },
+    onError: (err) => toast.error('Could not change financial access', { description: err.message }),
+  });
   const { data: roles = [] } = trpc.users.listRoles.useQuery();
 
   const createUser = trpc.users.create.useMutation({
@@ -240,6 +254,32 @@ export default function UsersSettingsPage() {
                 <p className="text-xs text-slate-500 font-mono">{user.email}</p>
               </div>
               <Badge variant="secondary" className="text-xs">{getRoleDisplayName(user.role.name)}</Badge>
+              {isSuperAdmin && (
+                <div className="w-28 text-right">
+                  {user.role.slug === 'super_admin' ? (
+                    <span className="text-[11px] text-slate-400" title="Super admins always have financial access">
+                      always
+                    </span>
+                  ) : user.hasFinancialAccess ? (
+                    <button
+                      onClick={() => setFinanceTarget({ id: user.id, name: `${user.firstName} ${user.lastName}`, grant: false })}
+                      className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 hover:bg-green-100"
+                      title="Revoke financial access"
+                    >
+                      <Check className="h-3 w-3" />
+                      Financial
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setFinanceTarget({ id: user.id, name: `${user.firstName} ${user.lastName}`, grant: true })}
+                      className="rounded-md border border-slate-200 px-2 py-0.5 text-[11px] text-slate-400 hover:border-slate-300 hover:text-slate-600"
+                      title="Grant financial access"
+                    >
+                      Grant
+                    </button>
+                  )}
+                </div>
+              )}
               <span className="text-xs text-slate-400">{formatDate(user.createdAt)}</span>
               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                 <Link
@@ -428,6 +468,24 @@ export default function UsersSettingsPage() {
           </form>
         </div>
       </SlideOverPanel>
+
+      {/* Financial access confirm */}
+      <ConfirmDialog
+        open={!!financeTarget}
+        onOpenChange={(open) => { if (!open) setFinanceTarget(null); }}
+        title={financeTarget?.grant ? `Grant financial access to ${financeTarget?.name}?` : `Revoke financial access from ${financeTarget?.name}?`}
+        description={
+          financeTarget?.grant
+            ? 'They will be able to see delivery cost, cost rates and margin across the platform. Recorded in the audit log.'
+            : 'They lose access to cost, rates and margin on their next request -- no sign-out needed. Recorded in the audit log.'
+        }
+        confirmLabel={financeTarget?.grant ? 'Grant access' : 'Revoke access'}
+        loading={setFinancialAccess.isPending}
+        onConfirm={() => {
+          if (financeTarget) setFinancialAccess.mutate({ userId: financeTarget.id, hasFinancialAccess: financeTarget.grant });
+          setFinanceTarget(null);
+        }}
+      />
 
       {/* Delete confirm */}
       <ConfirmDialog

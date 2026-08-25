@@ -259,7 +259,7 @@ export default function ActivitiesPage() {
   const [selectedActivity, setSelectedActivity] = useState<ActivityItem | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
-  const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: users = [] } = trpc.users.assignable.useQuery();
   const dateRange = getDateRange(datePreset);
 
   const { data, isLoading } = trpc.activities.list.useQuery({

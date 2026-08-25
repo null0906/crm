@@ -247,7 +247,7 @@ export default function TaskReportsPage() {
   const [companyId, setCompanyId] = React.useState('');
   const [exporting, setExporting] = React.useState('');
   const [assignOpen, setAssignOpen] = React.useState(false);
-  const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: users = [] } = trpc.users.assignable.useQuery();
   const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 500 } });
   const reportFilters = {
     userId: userId || undefined,

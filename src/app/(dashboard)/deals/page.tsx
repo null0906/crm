@@ -62,7 +62,7 @@ export default function DealsPage() {
 
   const { data: allPipelines = [], isLoading: pipelinesLoading } = trpc.pipelines.list.useQuery();
   const pipelines = allPipelines.filter((p) => isVisibleProspectPipeline(p as Record<string, unknown>));
-  const { data: usersData } = trpc.users.list.useQuery();
+  const { data: usersData } = trpc.users.assignable.useQuery();
   const { data: contactsData } = trpc.contacts.list.useQuery({ pagination: { limit: 200 } });
   const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 200 } });
   const users = usersData ?? [];

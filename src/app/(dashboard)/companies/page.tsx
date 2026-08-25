@@ -63,7 +63,7 @@ export default function CompaniesPage() {
   const debouncedSearch = useDebounce(search, 300);
   const utils = trpc.useUtils();
 
-  const { data: usersData } = trpc.users.list.useQuery();
+  const { data: usersData } = trpc.users.assignable.useQuery();
   const users = usersData ?? [];
 
   // Reset cursor whenever any filter/search changes

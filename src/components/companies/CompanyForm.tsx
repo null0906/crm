@@ -34,7 +34,7 @@ export function CompanyForm({ onSuccess, onCancel, defaultValues, mode = 'create
   const [tags, setTags] = React.useState<{ id: string; name: string; color: string }[]>(existingTags ?? []);
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
 
-  const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: users = [] } = trpc.users.assignable.useQuery();
   const { data: customFields = [] } = trpc.customFields.list.useQuery({ entityType: 'company' });
 
   const createCompany = trpc.companies.create.useMutation({

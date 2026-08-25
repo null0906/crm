@@ -42,7 +42,37 @@ export const userRouter = router({
       return user;
     }),
 
+  /**
+   * The colleague picker: owner and assignee dropdowns across contacts,
+   * companies, deals, projects and the chat integrations.
+   *
+   * Open to any authenticated user by design — choosing an owner is something
+   * every role does. It returns only what a picker needs, so `phone`, `status`,
+   * `role` and the financial entitlement are not readable by everyone.
+   */
+  assignable: protectedProcedure.query(async () => {
+    return db
+      .select({
+        id: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        avatarUrl: users.avatarUrl,
+      })
+      .from(users)
+      .where(ne(users.status, 'inactive'))
+      .orderBy(asc(users.firstName));
+  }),
+
+  /**
+   * The full administrative listing. Gated to match every mutation in this
+   * router — it was previously the only ungated procedure here, which let any
+   * authenticated user enumerate every colleague's phone number and role.
+   *
+   * Use `assignable` for dropdowns.
+   */
   list: protectedProcedure
+    .use(requirePermission('users', 'manage'))
     .query(async () => {
       return db
         .select({
@@ -54,6 +84,7 @@ export const userRouter = router({
           phone: users.phone,
           status: users.status,
           roleId: users.roleId,
+          hasFinancialAccess: users.hasFinancialAccess,
           role: {
             id: roles.id,
             name: roles.name,

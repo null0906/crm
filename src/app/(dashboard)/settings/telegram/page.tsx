@@ -40,7 +40,7 @@ function AddUserPanel({
   const [username, setUsername] = useState('');
   const [crmUserId, setCrmUserId] = useState('');
 
-  const { data: crmUsers } = trpc.users.list.useQuery();
+  const { data: crmUsers } = trpc.users.assignable.useQuery();
   const addUser = trpc.telegram.addUser.useMutation({
     onSuccess: () => {
       toast.success('Telegram user added');
