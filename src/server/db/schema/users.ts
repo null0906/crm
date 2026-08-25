@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, jsonb, index } from 'drizzle-orm/pg-core';
+import { boolean, index, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 import { roles } from './roles';
 import type { UserStatus } from '@/lib/types';
 
@@ -14,6 +14,9 @@ export const users = pgTable(
     phone: varchar('phone', { length: 20 }),
     roleId: uuid('role_id').notNull().references(() => roles.id),
     status: varchar('status', { length: 20 }).$type<UserStatus>().notNull().default('active'),
+    // Per-user financial entitlement (FR-X-05). Governs cost, margin and
+    // collections data independently of role. Never role-derived.
+    hasFinancialAccess: boolean('has_financial_access').notNull().default(false),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
     preferences: jsonb('preferences').default({}),

@@ -29,6 +29,7 @@ import { complianceRouter } from './routers/compliance.router';
 import { onboardingRouter } from './routers/onboarding.router';
 import { personalTasksRouter } from './routers/personal-tasks.router';
 import { executiveOverviewRouter } from './routers/executive-overview.router';
+import { costModelRouter } from './routers/cost-model.router';
 
 export const appRouter = router({
   contacts: contactRouter,
@@ -61,6 +62,7 @@ export const appRouter = router({
   onboarding: onboardingRouter,
   personalTasks: personalTasksRouter,
   executiveOverview: executiveOverviewRouter,
+  costModel: costModelRouter,
 });
 
 export type AppRouter = typeof appRouter;

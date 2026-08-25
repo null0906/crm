@@ -128,6 +128,11 @@ export interface RolePermissions {
 }
 
 // Session user type
+// ---- Cost engine (Pillar 4) ----
+export type CostScope = 'default' | 'role' | 'employee';
+export type CostComponent = 'base' | 'seat' | 'support';
+export type GnrBasis = 'total' | 'labour_only';
+
 export interface SessionUser {
   id: UUID;
   email: string;
@@ -135,6 +140,8 @@ export interface SessionUser {
   lastName: string;
   avatarUrl?: string | null;
   roleId: UUID;
+  /** Per-user financial entitlement (FR-X-05). Not derived from role. */
+  hasFinancialAccess: boolean;
   role: {
     id: UUID;
     name: string;
