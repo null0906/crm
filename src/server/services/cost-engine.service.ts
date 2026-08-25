@@ -19,6 +19,8 @@ export interface TeamMemberInput {
   /** Optional. When given, the engine costs this named person (FR-P4-18). */
   userId?: string | null;
   weeks: number;
+  /** How many people in this role. Defaults to 1 so a line is one person. */
+  resourceCount?: number;
   /** Per-component overrides. Every figure is editable (FR-P4-55). */
   overrides?: Partial<Record<CostComponent, number>>;
 }
@@ -63,6 +65,7 @@ export interface CostedResource {
   deliveryRoleName: string;
   userId: string | null;
   weeks: number;
+  resourceCount: number;
   base: number;
   seat: number;
   support: number;
@@ -286,22 +289,26 @@ export async function computeCost(
     }
 
     const loadedWeekly = money(amounts.base + amounts.seat + amounts.support);
+    const resourceCount = member.resourceCount ?? 1;
 
     return {
       deliveryRoleId: member.deliveryRoleId,
       deliveryRoleName: roleNames.get(member.deliveryRoleId) ?? 'Unknown role',
       userId: member.userId ?? null,
       weeks: member.weeks,
+      resourceCount,
       base: money(amounts.base),
       seat: money(amounts.seat),
       support: money(amounts.support),
       loadedWeekly,
-      total: money(loadedWeekly * member.weeks),
+      total: money(loadedWeekly * member.weeks * resourceCount),
       resolvedFrom,
     };
   });
 
-  const totalWeeks = resources.reduce((sum, r) => sum + r.weeks, 0);
+  // Resource-weeks, not calendar weeks: two analysts for ten weeks is twenty.
+  // This is what a per-resource-week custom line multiplies against.
+  const totalWeeks = resources.reduce((sum, r) => sum + r.weeks * r.resourceCount, 0);
   const labourSubtotal = money(resources.reduce((sum, r) => sum + r.total, 0));
 
   const nonLabour = input.nonLabour ?? [];
