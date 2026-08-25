@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
@@ -8,16 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useFinancialAccess } from '@/components/shared/FinancialAccessGate';
+import { DriverEditor, type Driver } from './DriverEditor';
+import { NewDriverDialog } from './NewDriverDialog';
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
-
-const APPLIES_LABEL: Record<string, string> = {
-  weeks: 'lengthens the engagement',
-  team: 'enlarges the team',
-  both: 'both',
-};
 
 /**
  * Sizing drivers (FR-P4-08 to FR-P4-10).
@@ -26,13 +23,20 @@ const APPLIES_LABEL: Record<string, string> = {
  * both — those cost differently, so the distinction is not cosmetic. A driver
  * marked "both" is split as the square root across each axis, so its stated
  * effect on total effort is reproduced rather than squared.
+ *
+ * Weights mutate in place rather than being effective-dated like cost rates.
+ * That is safe because every estimate stores the multiplier it actually used
+ * at the moment its questionnaire was answered, so changing a weight today
+ * cannot move an estimate made yesterday.
  */
 export function SizingDriversTab() {
   const utils = trpc.useUtils();
   const { hasAccess } = useFinancialAccess();
-  const { data: drivers = [], isLoading } = trpc.sizing.listDrivers.useQuery();
+  // includeInactive, so deactivated drivers stay visible and reactivatable.
+  const { data: drivers = [], isLoading } = trpc.sizing.listDrivers.useQuery({ includeInactive: true });
   const { data: policy } = trpc.sizing.getPolicy.useQuery();
   const [ceiling, setCeiling] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const setPolicy = trpc.sizing.setPolicy.useMutation({
     onSuccess: () => {
@@ -45,60 +49,51 @@ export function SizingDriversTab() {
 
   const parsed = Number(ceiling);
   const valid = ceiling.trim() !== '' && Number.isFinite(parsed) && parsed >= 1;
+  const active = drivers.filter((d) => d.isActive);
+  const inactive = drivers.filter((d) => !d.isActive);
 
   return (
     <div className="space-y-5">
-      <p className="max-w-2xl text-[11px] leading-relaxed text-slate-400">
-        The questions that genuinely change how much work an engagement is. Answering them in the
-        estimate builder scales the catalog baseline. Each driver records whether it adds weeks,
-        adds people, or both.
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <p className="max-w-xl text-[11px] leading-relaxed text-slate-400">
+          The questions that genuinely change how much work an engagement is. Answering them in the
+          estimate builder scales the catalog baseline. Changing a weight affects the next estimate
+          scoped, never one already built.
+        </p>
+        {hasAccess && (
+          <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
+            <Plus className="mr-1 h-3 w-3" />
+            New driver
+          </Button>
+        )}
+      </div>
+
+      {isLoading && <p className="px-1 text-[12px] text-slate-400">Loading…</p>}
+      {!isLoading && drivers.length === 0 && (
+        <p className="px-1 text-[12px] text-slate-400">No sizing drivers yet.</p>
+      )}
 
       <div className="space-y-2">
-        {isLoading && <p className="px-1 text-[12px] text-slate-400">Loading…</p>}
-        {drivers.map((d) => (
-          <div
-            key={d.id}
-            className="rounded-xl border border-slate-200/80 bg-white px-4 py-3 shadow-[0_1px_4px_rgba(16,24,40,0.04)]"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[13px] font-medium text-slate-800">{d.name}</p>
-                <p className="text-[11px] text-slate-400">
-                  {d.valueType === 'number'
-                    ? `A number — ${Number(d.multiplierPerUnit ?? 0) * 100}% per unit above ${d.unitBaseline}`
-                    : 'Choose one'}
-                </p>
-              </div>
-              <Badge variant="secondary">{APPLIES_LABEL[d.appliesTo] ?? d.appliesTo}</Badge>
-            </div>
-
-            {d.options.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {d.options.map((o) => (
-                  <span
-                    key={o.id}
-                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-0.5 text-[11px] text-slate-600"
-                  >
-                    {o.label}
-                    <span
-                      className={
-                        Number(o.multiplier) > 1
-                          ? 'tabular-nums text-amber-600'
-                          : Number(o.multiplier) < 1
-                            ? 'tabular-nums text-green-600'
-                            : 'tabular-nums text-slate-400'
-                      }
-                    >
-                      ×{Number(o.multiplier)}
-                    </span>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+        {active.map((d) => (
+          <DriverEditor key={d.id} driver={d as unknown as Driver} canEdit={hasAccess} />
         ))}
       </div>
+
+      {inactive.length > 0 && (
+        <div>
+          <h3 className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-slate-400">
+            Inactive
+          </h3>
+          <p className="mb-2 px-1 text-[11px] text-slate-400">
+            Not asked on new estimates. Existing estimates keep the answers they were built with.
+          </p>
+          <div className="space-y-2">
+            {inactive.map((d) => (
+              <DriverEditor key={d.id} driver={d as unknown as Driver} canEdit={hasAccess} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_4px_rgba(16,24,40,0.04)]">
         <h3 className="text-[12px] font-medium text-slate-700">Composition ceiling</h3>
@@ -149,6 +144,12 @@ export function SizingDriversTab() {
           </div>
         )}
       </div>
+
+      <NewDriverDialog
+        open={creating}
+        onOpenChange={setCreating}
+        nextPosition={drivers.length + 1}
+      />
     </div>
   );
 }
