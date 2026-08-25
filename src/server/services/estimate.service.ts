@@ -6,7 +6,12 @@ import {
   estimateTeamLines,
   estimates,
 } from '@/server/db/schema';
-import { computeCost, computeMargin, type CostBreakdown } from './cost-engine.service';
+import {
+  computeCost,
+  computeMargin,
+  resolveMarginTarget,
+  type CostBreakdown,
+} from './cost-engine.service';
 import { applyBaseline, composeMultiplier, type DriverAnswer } from './sizing.service';
 
 type DbClient = typeof defaultDb;
@@ -157,6 +162,24 @@ export async function getEstimateDetail(
 }
 
 /**
+ * Margin for an estimate, using its own frozen target where it has one and
+ * otherwise the configured target for its service line. The floor is always
+ * resolved live — it is a warning threshold, not part of the frozen basis.
+ */
+async function marginFor(
+  estimate: typeof estimates.$inferSelect,
+  totalDeliveryCost: number,
+  db: DbClient
+) {
+  const price = num(estimate.price);
+  if (price === null) return null;
+
+  const configured = await resolveMarginTarget(estimate.serviceLine, estimate.asOfDate, db);
+  const target = num(estimate.targetMarginPercent) ?? configured?.targetMarginPercent ?? null;
+  return computeMargin(totalDeliveryCost, price, target, configured?.floorMarginPercent ?? null);
+}
+
+/**
  * Recomputes without saving.
  *
  * An approved estimate returns its frozen snapshot instead of recomputing, so
@@ -172,14 +195,7 @@ export async function recalculate(
 
   if (estimate.status !== 'draft' && estimate.snapshot) {
     const breakdown = estimate.snapshot as CostBreakdown;
-    const price = num(estimate.price);
-    return {
-      breakdown,
-      margin:
-        price === null
-          ? null
-          : computeMargin(breakdown.totalDeliveryCost, price, num(estimate.targetMarginPercent)),
-    };
+    return { breakdown, margin: await marginFor(estimate, breakdown.totalDeliveryCost, db) };
   }
 
   const breakdown = await computeCost(
@@ -213,14 +229,7 @@ export async function recalculate(
     db
   );
 
-  const price = num(estimate.price);
-  return {
-    breakdown,
-    margin:
-      price === null
-        ? null
-        : computeMargin(breakdown.totalDeliveryCost, price, num(estimate.targetMarginPercent)),
-  };
+  return { breakdown, margin: await marginFor(estimate, breakdown.totalDeliveryCost, db) };
 }
 
 /** Recomputes and writes the totals back onto the draft. */

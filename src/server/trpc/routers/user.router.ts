@@ -21,6 +21,9 @@ export const userRouter = router({
           phone: users.phone,
           status: users.status,
           roleId: users.roleId,
+          // Read live rather than from the JWT: sessions last 7 days, so a
+          // revoked entitlement must not keep working until the token expires.
+          hasFinancialAccess: users.hasFinancialAccess,
           preferences: users.preferences,
           createdAt: users.createdAt,
           role: {

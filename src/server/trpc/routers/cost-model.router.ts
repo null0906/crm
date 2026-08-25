@@ -6,13 +6,18 @@ import { db } from '@/server/db';
 import {
   deliveryRoles,
   gnrPolicies,
+  marginTargets,
   resourceCostComponents,
   userDeliveryRoles,
   users,
 } from '@/server/db/schema';
 import { auditFinancialRead } from '@/server/lib/financial-access';
 import { writeAuditLog } from '@/server/services/audit.service';
-import { computeCost, computeMargin } from '@/server/services/cost-engine.service';
+import {
+  computeCost,
+  computeMargin,
+  resolveMarginTarget,
+} from '@/server/services/cost-engine.service';
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
 
@@ -341,6 +346,107 @@ export const costModelRouter = router({
 
       auditFinancialRead(ctx.user, 'cost_estimate', { priced: true });
       return { breakdown, margin };
+    }),
+
+  // ---------------------------------------------------- margin targets ---
+  // A target margin is aspirational and reveals no cost, so resolving one is
+  // open. The actual margin on an estimate is a different matter: combined with
+  // a visible price it gives you the cost, and is redacted.
+  resolveMarginTarget: protectedProcedure
+    .input(z.object({ serviceLine: z.string().trim().max(50).nullish(), asOf: isoDate.optional() }))
+    .query(async ({ input }) =>
+      resolveMarginTarget(
+        input.serviceLine ?? null,
+        input.asOf ?? new Date().toISOString().slice(0, 10)
+      )
+    ),
+
+  listMarginTargets: financialProcedure
+    .input(z.object({ currentOnly: z.boolean().default(true) }).optional())
+    .query(async ({ input }) => {
+      const asOf = new Date().toISOString().slice(0, 10);
+      return db
+        .select()
+        .from(marginTargets)
+        .where(
+          input?.currentOnly === false
+            ? sql`true`
+            : and(
+                sql`${marginTargets.effectiveFrom} <= ${asOf}`,
+                or(isNull(marginTargets.effectiveTo), sql`${marginTargets.effectiveTo} >= ${asOf}`)
+              )
+        )
+        .orderBy(asc(marginTargets.serviceLine), asc(marginTargets.effectiveFrom));
+    }),
+
+  /**
+   * Append-only, like cost rates: a new target closes the standing row rather
+   * than editing it, so an estimate priced last quarter still explains itself.
+   */
+  setMarginTarget: financialProcedure
+    .input(
+      z
+        .object({
+          // '*' is the company-wide default.
+          serviceLine: z.string().trim().max(50).default('*'),
+          segment: z.string().trim().max(50).default('standard'),
+          targetMarginPercent: z.number().min(0).max(100),
+          floorMarginPercent: z.number().min(0).max(100).nullish(),
+          effectiveFrom: isoDate,
+          notes: z.string().trim().nullish(),
+        })
+        .refine(
+          (v) => v.floorMarginPercent == null || v.floorMarginPercent <= v.targetMarginPercent,
+          {
+            message: 'The floor cannot be above the target, or every compliant price would warn.',
+            path: ['floorMarginPercent'],
+          }
+        )
+    )
+    .mutation(async ({ ctx, input }) => {
+      return db.transaction(async (tx) => {
+        await tx
+          .update(marginTargets)
+          .set({
+            effectiveTo: sql`(${input.effectiveFrom}::date - INTERVAL '1 day')::date`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(marginTargets.serviceLine, input.serviceLine),
+              eq(marginTargets.segment, input.segment),
+              isNull(marginTargets.effectiveTo)
+            )
+          );
+
+        const [created] = await tx
+          .insert(marginTargets)
+          .values({
+            serviceLine: input.serviceLine,
+            segment: input.segment,
+            targetMarginPercent: input.targetMarginPercent.toString(),
+            floorMarginPercent: input.floorMarginPercent?.toString() ?? null,
+            effectiveFrom: input.effectiveFrom,
+            notes: input.notes ?? null,
+            createdBy: ctx.user.id,
+          })
+          .returning();
+
+        await writeAuditLog({
+          userId: ctx.user.id,
+          userEmail: ctx.user.email,
+          action: 'update',
+          entityType: 'margin_target',
+          entityId: created!.id,
+          entityName: input.serviceLine,
+          metadata: {
+            targetMarginPercent: input.targetMarginPercent,
+            floorMarginPercent: input.floorMarginPercent ?? null,
+            financialWrite: true,
+          },
+        });
+        return created;
+      });
     }),
 
   // -------------------------------------------------------- entitlement ---

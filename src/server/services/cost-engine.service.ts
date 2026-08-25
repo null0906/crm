@@ -3,6 +3,7 @@ import { db as defaultDb } from '@/server/db';
 import {
   deliveryRoles,
   gnrPolicies,
+  marginTargets,
   resourceCostComponents,
 } from '@/server/db/schema';
 import type { CostComponent, CostScope, GnrBasis } from '@/lib/types';
@@ -356,6 +357,47 @@ export async function computeCost(
   };
 }
 
+export interface ResolvedMarginTarget {
+  targetMarginPercent: number;
+  floorMarginPercent: number | null;
+  /** Where the target came from, so the builder can say so. */
+  source: 'service_line' | 'company_default';
+}
+
+/**
+ * Resolves the target margin for a service line, falling back to the
+ * company-wide default stored under the '*' sentinel (FR-P4-28).
+ *
+ * Returns null when neither exists — no target has been configured, which the
+ * builder should say plainly rather than implying a target of zero.
+ */
+export async function resolveMarginTarget(
+  serviceLine: string | null | undefined,
+  asOf: string,
+  db: DbClient = defaultDb
+): Promise<ResolvedMarginTarget | null> {
+  const rows = await db
+    .select()
+    .from(marginTargets)
+    .where(
+      and(
+        lte(marginTargets.effectiveFrom, asOf),
+        or(isNull(marginTargets.effectiveTo), sql`${marginTargets.effectiveTo} >= ${asOf}`)
+      )
+    );
+
+  const pick =
+    (serviceLine ? rows.find((r) => r.serviceLine === serviceLine) : undefined) ??
+    rows.find((r) => r.serviceLine === '*');
+  if (!pick) return null;
+
+  return {
+    targetMarginPercent: Number(pick.targetMarginPercent),
+    floorMarginPercent: pick.floorMarginPercent === null ? null : Number(pick.floorMarginPercent),
+    source: pick.serviceLine === '*' ? 'company_default' : 'service_line',
+  };
+}
+
 export interface MarginResult {
   price: number;
   totalDeliveryCost: number;
@@ -364,6 +406,13 @@ export interface MarginResult {
   /** Suggested price at the target margin. Guidance only — FR-P4-28. */
   suggestedPrice: number | null;
   clearsTarget: boolean | null;
+  /**
+   * True when the margin has fallen below the configured floor. A warning, not
+   * a gate: approval is not blocked, because blocking would need an approval
+   * trail and there isn't one (FR-P4-32 is only partly met).
+   */
+  belowFloor: boolean | null;
+  floorMarginPercent: number | null;
 }
 
 /**
@@ -373,12 +422,14 @@ export interface MarginResult {
 export function computeMargin(
   totalDeliveryCost: number,
   price: number,
-  targetMarginPercent?: number | null
+  targetMarginPercent?: number | null,
+  floorMarginPercent?: number | null
 ): MarginResult {
   const marginAmount = money(price - totalDeliveryCost);
   const marginPercent = price > 0 ? money((marginAmount / price) * 100) : 0;
 
   const hasTarget = targetMarginPercent !== undefined && targetMarginPercent !== null;
+  const hasFloor = floorMarginPercent !== undefined && floorMarginPercent !== null;
   const suggestedPrice =
     hasTarget && targetMarginPercent < 100
       ? money(totalDeliveryCost / (1 - targetMarginPercent / 100))
@@ -391,5 +442,7 @@ export function computeMargin(
     marginPercent,
     suggestedPrice,
     clearsTarget: hasTarget ? marginPercent >= targetMarginPercent : null,
+    belowFloor: hasFloor ? marginPercent < floorMarginPercent : null,
+    floorMarginPercent: hasFloor ? floorMarginPercent : null,
   };
 }

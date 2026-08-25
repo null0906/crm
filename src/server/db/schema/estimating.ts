@@ -10,6 +10,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   varchar,
   type AnyPgColumn,
@@ -149,6 +150,61 @@ export const sizingDriverOptions = pgTable(
     unique('uq_driver_option_value').on(t.driverId, t.value),
     index('idx_driver_options_driver').on(t.driverId),
     check('driver_option_multiplier_check', sql`${t.multiplier} > 0`),
+  ]
+);
+
+/**
+ * Target margins and floors (FR-P4-28, FR-P4-32).
+ *
+ * Margin is guidance, not the price: cost sets the floor and the market sets
+ * the number. The target pre-fills an estimate so quotes are consistent; the
+ * floor produces a loud warning when a price drops below it. Nothing here
+ * blocks approval — that would need an approval trail, which does not exist.
+ *
+ * `serviceLine` uses the sentinel '*' for the company-wide default rather than
+ * NULL, so the partial unique index below is straightforward. Postgres treats
+ * NULLs as distinct, which would let two company-wide rows through.
+ */
+export const marginTargets = pgTable(
+  'margin_targets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** A service line slug, or '*' for the company-wide default. */
+    serviceLine: varchar('service_line', { length: 50 }).notNull().default('*'),
+    segment: varchar('segment', { length: 50 }).notNull().default('standard'),
+    targetMarginPercent: decimal('target_margin_percent', { precision: 5, scale: 2 }).notNull(),
+    /** Below this, the builder warns. Optional: no floor means no warning. */
+    floorMarginPercent: decimal('floor_margin_percent', { precision: 5, scale: 2 }),
+    effectiveFrom: date('effective_from').notNull(),
+    effectiveTo: date('effective_to'),
+    notes: text('notes'),
+    createdBy: uuid('created_by').notNull().references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('idx_margin_targets_lookup').on(t.serviceLine, t.segment, t.effectiveFrom),
+    check(
+      'margin_target_percent_check',
+      sql`${t.targetMarginPercent} >= 0 AND ${t.targetMarginPercent} <= 100`
+    ),
+    check(
+      'margin_floor_percent_check',
+      sql`${t.floorMarginPercent} IS NULL OR (${t.floorMarginPercent} >= 0 AND ${t.floorMarginPercent} <= 100)`
+    ),
+    // A floor above the target would warn on every compliant price.
+    check(
+      'margin_floor_below_target_check',
+      sql`${t.floorMarginPercent} IS NULL OR ${t.floorMarginPercent} <= ${t.targetMarginPercent}`
+    ),
+    check(
+      'margin_target_range_check',
+      sql`${t.effectiveTo} IS NULL OR ${t.effectiveTo} >= ${t.effectiveFrom}`
+    ),
+    // One standing target per scope, or resolution is non-deterministic.
+    uniqueIndex('uq_margin_target_open')
+      .on(t.serviceLine, t.segment)
+      .where(sql`${t.effectiveTo} IS NULL`),
   ]
 );
 
@@ -374,3 +430,5 @@ export type NewEstimate = typeof estimates.$inferInsert;
 export type EstimateTeamLine = typeof estimateTeamLines.$inferSelect;
 export type EstimateCostLine = typeof estimateCostLines.$inferSelect;
 export type EstimateDriver = typeof estimateDrivers.$inferSelect;
+export type MarginTarget = typeof marginTargets.$inferSelect;
+export type NewMarginTarget = typeof marginTargets.$inferInsert;
