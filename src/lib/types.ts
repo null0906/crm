@@ -133,6 +133,18 @@ export type CostScope = 'default' | 'role' | 'employee';
 export type CostComponent = 'base' | 'seat' | 'support';
 export type GnrBasis = 'total' | 'labour_only';
 
+// ---- Effort catalog, sizing and estimates (Pillar 4) ----
+export type BaselineConfidence = 'low' | 'medium' | 'high';
+export type SizingValueType = 'select' | 'number';
+/** Whether a driver stretches the schedule, grows the team, or both. */
+export type SizingAppliesTo = 'weeks' | 'team' | 'both';
+export type SizingComposition = 'multiplicative' | 'additive';
+export type EstimateStatus = 'draft' | 'approved' | 'superseded' | 'archived';
+/** Blended costs at role averages; named costs the specific people proposed. */
+export type CostingMode = 'blended' | 'named';
+export type EstimateCostLineKind = 'non_labour' | 'custom';
+export type CostLineBasis = 'engagement' | 'per_resource_week';
+
 export interface SessionUser {
   id: UUID;
   email: string;

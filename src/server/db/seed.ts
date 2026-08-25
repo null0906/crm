@@ -542,6 +542,141 @@ async function seed() {
     },
   ]);
 
+  // ---------------------------------------------------------------- pricing --
+  // Structure only. No cost rates and no GNR rate are seeded: those are
+  // salary-derived figures the business must enter, and a plausible-looking
+  // placeholder would quietly produce wrong margins. The cost engine already
+  // warns when a rate is missing, which is the signal we want people to see.
+  console.log('Creating delivery roles and sizing model...');
+
+  await db
+    .insert(schema.deliveryRoles)
+    .values(
+      [
+        { slug: 'lead_consultant', name: 'Lead Consultant', position: 1 },
+        { slug: 'security_analyst', name: 'Security Analyst', position: 2 },
+        { slug: 'compliance_analyst', name: 'Compliance Analyst', position: 3 },
+        { slug: 'qa_review', name: 'QA & Review', position: 4 },
+        { slug: 'project_manager', name: 'Project Manager', position: 5 },
+      ].map((r) => ({ ...r, createdBy: adminUserId }))
+    )
+    .onConflictDoNothing({ target: schema.deliveryRoles.slug });
+
+  const roleRows = await db.select().from(schema.deliveryRoles);
+  const roleBySlug = new Map(roleRows.map((r) => [r.slug, r.id]));
+
+  // The seven drivers named in the Engagement Pricing source document.
+  // `appliesTo` records whether a driver stretches the schedule or grows the
+  // team — the same multiplier costs differently depending on which.
+  const driverSeed = [
+    {
+      slug: 'headcount_band', name: 'Headcount band', valueType: 'select' as const,
+      appliesTo: 'both' as const, position: 1,
+      options: [
+        { value: 'under_100', label: 'Under 100', multiplier: '0.9000' },
+        { value: '100_250', label: '100 - 250', multiplier: '1.0000' },
+        { value: '251_1000', label: '251 - 1000', multiplier: '1.1500' },
+        { value: 'over_1000', label: 'Over 1000', multiplier: '1.3000' },
+      ],
+    },
+    {
+      slug: 'cloud_environments', name: 'Cloud environments', valueType: 'number' as const,
+      appliesTo: 'weeks' as const, multiplierPerUnit: '0.0500', unitBaseline: 1, position: 2, options: [],
+    },
+    {
+      slug: 'physical_locations', name: 'Physical locations', valueType: 'number' as const,
+      appliesTo: 'weeks' as const, multiplierPerUnit: '0.0500', unitBaseline: 1, position: 3, options: [],
+    },
+    {
+      slug: 'security_maturity', name: 'Existing security maturity', valueType: 'select' as const,
+      appliesTo: 'both' as const, position: 4,
+      options: [
+        { value: 'none', label: 'None', multiplier: '1.2500' },
+        { value: 'basic', label: 'Basic', multiplier: '1.1000' },
+        { value: 'established', label: 'Established', multiplier: '1.0000' },
+        { value: 'mature', label: 'Mature', multiplier: '0.9000' },
+      ],
+    },
+    {
+      slug: 'prior_certification', name: 'Prior certification history', valueType: 'select' as const,
+      appliesTo: 'weeks' as const, position: 5,
+      options: [
+        { value: 'none', label: 'First-time certification', multiplier: '1.1000' },
+        { value: 'expired', label: 'Previously certified, lapsed', multiplier: '1.0500' },
+        { value: 'current', label: 'Currently certified', multiplier: '0.9500' },
+      ],
+    },
+    {
+      slug: 'in_scope_systems', name: 'In-scope systems', valueType: 'number' as const,
+      appliesTo: 'team' as const, multiplierPerUnit: '0.0200', unitBaseline: 10, position: 6, options: [],
+    },
+    {
+      slug: 'parallel_frameworks', name: 'Frameworks running in parallel', valueType: 'number' as const,
+      appliesTo: 'both' as const, multiplierPerUnit: '0.1500', unitBaseline: 1, position: 7, options: [],
+    },
+  ];
+
+  await db
+    .insert(schema.sizingDrivers)
+    .values(driverSeed.map(({ options: _options, ...d }) => ({ ...d, createdBy: adminUserId })))
+    .onConflictDoNothing({ target: schema.sizingDrivers.slug });
+
+  const driverRows = await db.select().from(schema.sizingDrivers);
+  const driverBySlug = new Map(driverRows.map((d) => [d.slug, d.id]));
+
+  const optionValues = driverSeed.flatMap((d) =>
+    d.options.map((o, i) => ({
+      driverId: driverBySlug.get(d.slug)!,
+      label: o.label,
+      value: o.value,
+      multiplier: o.multiplier,
+      position: i,
+    }))
+  );
+  if (optionValues.length) {
+    await db.insert(schema.sizingDriverOptions).values(optionValues).onConflictDoNothing();
+  }
+
+  const [existingSizingPolicy] = await db.select().from(schema.sizingPolicies).limit(1);
+  if (!existingSizingPolicy) {
+    await db.insert(schema.sizingPolicies).values({
+      name: 'Standard sizing policy',
+      version: 1,
+      maxMultiplier: '2.50',
+      composition: 'multiplicative',
+      effectiveFrom: '2026-01-01',
+      notes: 'Composed driver multipliers are capped at 2.5x and the cap is reported, not hidden.',
+      createdBy: adminUserId,
+    });
+  }
+
+  // One worked baseline so the catalog is not empty on first run. Flagged
+  // judgement-based because no delivered effort has been captured yet.
+  const [existingBaseline] = await db.select().from(schema.effortBaselines).limit(1);
+  if (!existingBaseline) {
+    const [baseline] = await db
+      .insert(schema.effortBaselines)
+      .values({
+        serviceLine: 'soc2_type2',
+        segment: 'mid_market_first_time',
+        name: 'SOC 2 Type II — mid-market, first-time',
+        version: 1,
+        confidence: 'low',
+        sampleSize: 0,
+        isJudgementBased: true,
+        notes: 'Starting point only. Revise once delivered effort has been captured.',
+        createdBy: adminUserId,
+      })
+      .returning();
+
+    await db.insert(schema.effortBaselineLines).values([
+      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('lead_consultant')!, resourceCount: 1, weeks: '12.00', position: 0 },
+      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('security_analyst')!, resourceCount: 2, weeks: '8.00', position: 1 },
+      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('compliance_analyst')!, resourceCount: 1, weeks: '6.00', position: 2 },
+      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('qa_review')!, resourceCount: 1, weeks: '2.00', position: 3 },
+    ]);
+  }
+
   console.log('✅ Seed complete!');
   console.log('');
   console.log('Admin credentials:');
