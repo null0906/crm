@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Tag, Users, LayoutGrid, FileText, Shield, ChevronRight, Bot, CalendarClock, BellRing, DatabaseZap, MessageCircle, Key } from 'lucide-react';
+import { Tag, Users, LayoutGrid, FileText, Shield, ChevronRight, Bot, CalendarClock, BellRing, DatabaseZap, MessageCircle, Key, Calculator, Library } from 'lucide-react';
 import Link from 'next/link';
 
 const settingsSections = [
@@ -11,6 +11,13 @@ const settingsSections = [
       { label: 'Tags', description: 'Manage tags and categories', href: '/settings/tags', icon: Tag },
       { label: 'Pipelines', description: 'Configure sales pipelines and stages', href: '/settings/pipelines', icon: LayoutGrid },
       { label: 'Custom Fields', description: 'Add custom fields to contacts, companies, and prospects', href: '/settings/custom-fields', icon: FileText },
+    ],
+  },
+  {
+    title: 'Pricing',
+    items: [
+      { label: 'Cost & Pricing Model', description: 'Delivery roles, cost rates, GNR and margin targets', href: '/settings/cost-model', icon: Calculator },
+      { label: 'Effort Catalog', description: 'Effort baselines per service line and the sizing drivers that scale them', href: '/settings/effort-catalog', icon: Library },
     ],
   },
   {
