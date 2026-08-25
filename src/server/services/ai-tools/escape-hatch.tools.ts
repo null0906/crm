@@ -3,6 +3,7 @@ import { tool, type ToolSet } from 'ai';
 import { db as defaultDb } from '@/server/db';
 import { executeSafeQuery, validateGeneratedSql } from '@/server/services/sql-safety.service';
 import { writeAuditLog } from '@/server/services/audit.service';
+import { canSeeFinancials } from '@/server/lib/financial-access';
 import type { SessionUser } from '@/lib/types';
 
 type DbClient = typeof defaultDb;
@@ -56,6 +57,21 @@ function isForbiddenFinancialQuery(query: string, user: SessionUser): boolean {
   return user.role.slug === 'sales_rep' && FINANCIAL_KEYWORD_PATTERN.test(query);
 }
 
+// Delivery cost is a different sensitivity from deal value, and is gated on the
+// per-user financial entitlement rather than on a role slug. Kept separate from
+// FINANCIAL_KEYWORD_PATTERN above deliberately: folding the two together would
+// start refusing sales managers the pipeline-value questions they can ask today.
+//
+// Deliberately narrow. `rate` alone would catch win_rate and conversion_rate,
+// which carry no cost information.
+const COST_KEYWORD_PATTERN =
+  /[^a-z0-9_](cost|salary|margin|gnr|rate_percent|amount_per_week|loaded_weekly|has_financial_access)[^a-z0-9_]/i;
+
+function isForbiddenCostQuery(query: string, user: SessionUser): boolean {
+  // Padded so a keyword at either end of the statement still matches.
+  return !canSeeFinancials(user) && COST_KEYWORD_PATTERN.test(` ${query} `);
+}
+
 export function createEscapeHatchTools(user: SessionUser, sessionId: string, db: DbClient = defaultDb): ToolSet {
   return {
     run_custom_query: tool({
@@ -66,6 +82,22 @@ ${SCHEMA_REFERENCE}`,
         explanation: z.string().describe('One sentence: what this answers'),
       }),
       execute: async ({ sql, explanation }) => {
+        if (isForbiddenCostQuery(sql, user)) {
+          await writeAuditLog({
+            userId: user.id,
+            action: 'api_access',
+            entityType: 'ai_chat',
+            entityId: sessionId,
+            entityName: 'Blocked cost query without financial access',
+            metadata: { sql },
+          });
+          return {
+            error:
+              'Delivery cost, rates and margin require financial access, which you do not have. Ask a super admin if you need it.',
+            sql,
+          };
+        }
+
         if (isForbiddenFinancialQuery(sql, user)) {
           await writeAuditLog({
             userId: user.id,

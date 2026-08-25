@@ -9,6 +9,28 @@ const parser = new Parser();
 const dangerousKeywords = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT', 'REVOKE'];
 const systemTables = ['pg_', 'information_schema', 'auth.', 'nextauth'];
 
+/**
+ * Salary-derived cost data, blocked outright rather than by entitlement.
+ *
+ * Absorbing the pricing desk into this platform (Decision D-1) put cost rates
+ * in the same database the AI assistant can query. The escape hatch is a
+ * last-resort generic query tool and cost has its own gated API on the
+ * `costModel` router, so nothing the assistant legitimately answers needs to
+ * reach these tables. Blocking unconditionally means the control does not
+ * depend on threading entitlement through a pure validator.
+ *
+ * Matched on word boundaries rather than substring: `estimates` as a column
+ * alias should not look like the `estimates` table.
+ */
+const restrictedTables = [
+  'resource_cost_components',
+  'gnr_policies',
+  'estimates',
+  'estimate_team_lines',
+  'estimate_cost_lines',
+  'estimate_drivers',
+];
+
 function normalizeSql(sql: string): string {
   return sql.trim();
 }
@@ -39,6 +61,15 @@ export function validateGeneratedSql(sql: string): { valid: boolean; reason?: st
   for (const table of systemTables) {
     if (lowerSql.includes(table)) {
       return { valid: false, reason: 'System table access not permitted' };
+    }
+  }
+
+  // Padded so a table name at the very start or end of the statement still has
+  // a non-word character either side to match against.
+  const paddedSql = ` ${lowerSql} `;
+  for (const table of restrictedTables) {
+    if (new RegExp(`[^a-z0-9_]${table}[^a-z0-9_]`, 'i').test(paddedSql)) {
+      return { valid: false, reason: 'Cost and estimate data is not available through raw SQL' };
     }
   }
 
