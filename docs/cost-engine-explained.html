@@ -1,0 +1,1503 @@
+<title>Seccomply Cost Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+  :root {
+    --ground: #FBFBFC;
+    --surface: #FFFFFF;
+    --surface-2: #F2F4F7;
+    --ink: #131922;
+    --ink-2: #414B59;
+    --ink-3: #6B7684;
+    --rule: #E1E4EA;
+    --rule-strong: #C6CCD5;
+    --accent: #1B4D7A;
+    --accent-ink: #1B4D7A;
+    --accent-soft: #E9F0F7;
+    --good: #1F6B4D;
+    --good-soft: #E6F1EC;
+    --warn: #8A5A0B;
+    --warn-soft: #F9F0DD;
+    --bad: #9B2C2C;
+    --bad-soft: #FAEAEA;
+
+    --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+    --f-body: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --f-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --measure: 68ch;
+    --gutter: 2rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0E1218;
+      --surface: #151A22;
+      --surface-2: #1C222C;
+      --ink: #E9ECF0;
+      --ink-2: #B2BAC6;
+      --ink-3: #7E8894;
+      --rule: #262D38;
+      --rule-strong: #39434F;
+      --accent: #82B6E0;
+      --accent-ink: #A8CDEC;
+      --accent-soft: #152634;
+      --good: #71C9A0;
+      --good-soft: #11241C;
+      --warn: #DCAB5E;
+      --warn-soft: #2A2110;
+      --bad: #E28A8A;
+      --bad-soft: #2B1717;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0E1218;
+    --surface: #151A22;
+    --surface-2: #1C222C;
+    --ink: #E9ECF0;
+    --ink-2: #B2BAC6;
+    --ink-3: #7E8894;
+    --rule: #262D38;
+    --rule-strong: #39434F;
+    --accent: #82B6E0;
+    --accent-ink: #A8CDEC;
+    --accent-soft: #152634;
+    --good: #71C9A0;
+    --good-soft: #11241C;
+    --warn: #DCAB5E;
+    --warn-soft: #2A2110;
+    --bad: #E28A8A;
+    --bad-soft: #2B1717;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------------------------------------------------------------- shell */
+
+  .shell {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 var(--gutter);
+  }
+
+  @media (min-width: 1040px) {
+    .shell {
+      grid-template-columns: 232px minmax(0, 1fr);
+      gap: 4rem;
+      padding: 0 3rem;
+    }
+  }
+
+  /* ------------------------------------------------------------------ rail */
+
+  .rail { display: none; }
+
+  @media (min-width: 1040px) {
+    .rail {
+      display: block;
+      position: sticky;
+      top: 0;
+      align-self: start;
+      max-height: 100vh;
+      overflow-y: auto;
+      padding: 4.5rem 0 3rem;
+      font-family: var(--f-display);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+  }
+
+  .rail-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 1rem;
+  }
+
+  .rail ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .rail a {
+    display: grid;
+    grid-template-columns: 1.6rem 1fr;
+    gap: 0.35rem;
+    padding: 0.42rem 0.5rem 0.42rem 0;
+    color: var(--ink-2);
+    text-decoration: none;
+    border-radius: 4px;
+    transition: color 0.14s ease;
+  }
+
+  .rail a:hover { color: var(--accent-ink); }
+  .rail a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .rail .n {
+    font-family: var(--f-data);
+    font-size: 10.5px;
+    color: var(--ink-3);
+    padding-top: 0.15em;
+  }
+
+  .rail .sep {
+    height: 1px;
+    background: var(--rule);
+    margin: 0.75rem 0.5rem 0.75rem 0;
+  }
+
+  /* ------------------------------------------------------------------ main */
+
+  main {
+    min-width: 0;
+    padding: 3.5rem 0 6rem;
+  }
+
+  /* ---------------------------------------------------------------- header */
+
+  .masthead {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 1.5rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .eyebrow {
+    font-family: var(--f-display);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    margin: 0 0 0.9rem;
+  }
+
+  h1 {
+    font-family: var(--f-display);
+    font-size: clamp(2.1rem, 5.5vw, 3.1rem);
+    font-weight: 700;
+    line-height: 1.04;
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+    margin: 0 0 0.85rem;
+  }
+
+  .standfirst {
+    font-size: 1.11rem;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 60ch;
+    margin: 0;
+  }
+
+  .byline {
+    font-family: var(--f-data);
+    font-size: 11.5px;
+    color: var(--ink-3);
+    margin-top: 1.4rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+  }
+
+  /* -------------------------------------------------------------- sections */
+
+  section { margin-bottom: 3.75rem; scroll-margin-top: 1.5rem; }
+
+  h2 {
+    font-family: var(--f-display);
+    font-size: 1.62rem;
+    font-weight: 600;
+    line-height: 1.16;
+    letter-spacing: -0.014em;
+    text-wrap: balance;
+    margin: 0 0 0.4rem;
+    padding-top: 0.5rem;
+  }
+
+  .stage-mark {
+    font-family: var(--f-data);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    display: block;
+    margin-bottom: 0.55rem;
+  }
+
+  h3 {
+    font-family: var(--f-display);
+    font-size: 1.07rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    margin: 2.1rem 0 0.5rem;
+    color: var(--ink);
+  }
+
+  h4 {
+    font-family: var(--f-display);
+    font-size: 0.83rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 1.5rem 0 0.4rem;
+    color: var(--ink-2);
+  }
+
+  p { max-width: var(--measure); margin: 0 0 1.05rem; }
+  p:last-child { margin-bottom: 0; }
+
+  a { color: var(--accent-ink); text-underline-offset: 2px; }
+
+  code {
+    font-family: var(--f-data);
+    font-size: 0.855em;
+    background: var(--surface-2);
+    border-radius: 3px;
+    padding: 0.1em 0.35em;
+    color: var(--ink);
+  }
+
+  strong { font-weight: 600; }
+
+  ul.plain {
+    max-width: var(--measure);
+    margin: 0 0 1.05rem;
+    padding-left: 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  ul.plain li { padding-left: 0.2rem; }
+  ul.plain li::marker { color: var(--ink-3); }
+
+  /* -------------------------------------------------------------- pipeline */
+
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 1.9rem 0;
+  }
+
+  .pipeline div {
+    background: var(--surface);
+    padding: 0.85rem 0.85rem 0.95rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .pipeline .n {
+    font-family: var(--f-data);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--accent-ink);
+    letter-spacing: 0.06em;
+  }
+
+  .pipeline .lbl {
+    font-family: var(--f-display);
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--ink);
+  }
+
+  .pipeline .sub {
+    font-family: var(--f-data);
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--ink-3);
+  }
+
+  /* --------------------------------------------------------------- formula */
+
+  .formula {
+    font-family: var(--f-data);
+    font-size: 13.5px;
+    line-height: 1.85;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 1.1rem 1.25rem;
+    margin: 1.5rem 0;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .formula .c { color: var(--ink-3); }
+  .formula .k { color: var(--accent-ink); font-weight: 500; }
+
+  /* ---------------------------------------------------------------- tables */
+
+  .tw { overflow-x: auto; margin: 1.5rem 0; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 460px;
+    font-family: var(--f-data);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  caption {
+    font-family: var(--f-display);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    text-align: left;
+    padding-bottom: 0.6rem;
+  }
+
+  th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--ink-2);
+    border-bottom: 1.5px solid var(--rule-strong);
+    padding: 0.5rem 0.85rem 0.5rem 0;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0.52rem 0.85rem 0.52rem 0;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-2);
+    vertical-align: top;
+  }
+
+  td:first-child { color: var(--ink); }
+  th.r, td.r { text-align: right; padding-right: 0; }
+  tr.total td {
+    border-top: 1.5px solid var(--rule-strong);
+    border-bottom: none;
+    font-weight: 600;
+    color: var(--ink);
+    padding-top: 0.62rem;
+  }
+  tr.sub td { color: var(--ink); font-weight: 500; }
+
+  /* --------------------------------------------------------------- example */
+
+  .ex {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 1.25rem 1.4rem 1.4rem;
+    margin: 1.9rem 0;
+  }
+
+  .ex-tag {
+    font-family: var(--f-display);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .ex-tag::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--rule);
+  }
+
+  .ex p { font-size: 15.5px; }
+  .ex table { min-width: 380px; }
+  .ex .formula { margin: 1.1rem 0 0; background: var(--surface-2); }
+
+  /* ----------------------------------------------------------------- notes */
+
+  .note {
+    border-left: 3px solid var(--rule-strong);
+    background: var(--surface-2);
+    border-radius: 0 4px 4px 0;
+    padding: 0.9rem 1.15rem;
+    margin: 1.5rem 0;
+    max-width: var(--measure);
+    font-size: 15.5px;
+    line-height: 1.55;
+  }
+
+  .note p { font-size: inherit; }
+
+  .note.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+  .note.bad { border-left-color: var(--bad); background: var(--bad-soft); }
+  .note.good { border-left-color: var(--good); background: var(--good-soft); }
+
+  .note-h {
+    font-family: var(--f-display);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    margin: 0 0 0.35rem;
+    color: var(--ink-2);
+  }
+
+  .note.warn .note-h { color: var(--warn); }
+  .note.bad .note-h { color: var(--bad); }
+  .note.good .note-h { color: var(--good); }
+
+  /* ----------------------------------------------------------------- pills */
+
+  .pill {
+    display: inline-block;
+    font-family: var(--f-data);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    padding: 0.13em 0.5em;
+    border-radius: 3px;
+    background: var(--surface-2);
+    color: var(--ink-2);
+    border: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+
+  .pill.good { background: var(--good-soft); color: var(--good); border-color: transparent; }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+  .pill.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+  .pill.acc { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+
+  /* ------------------------------------------------------------- key-value */
+
+  .kv {
+    display: grid;
+    grid-template-columns: minmax(140px, max-content) 1fr;
+    gap: 0.55rem 1.5rem;
+    margin: 1.4rem 0;
+    max-width: var(--measure);
+    font-size: 15.5px;
+  }
+
+  .kv dt {
+    font-family: var(--f-data);
+    font-size: 12px;
+    color: var(--ink);
+    padding-top: 0.22em;
+  }
+
+  .kv dd { margin: 0; color: var(--ink-2); }
+
+  /* ---------------------------------------------------------------- footer */
+
+  footer {
+    border-top: 1px solid var(--rule);
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    font-family: var(--f-data);
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: var(--ink-3);
+    max-width: var(--measure);
+  }
+
+  hr.div {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 2.5rem 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+
+<div class="shell">
+
+  <nav class="rail" aria-label="Contents">
+    <p class="rail-title">Contents</p>
+    <ol>
+      <li><a href="#shape"><span class="n">—</span><span>The shape of the answer</span></a></li>
+      <div class="sep"></div>
+      <li><a href="#s1"><span class="n">01</span><span>The baseline</span></a></li>
+      <li><a href="#s2"><span class="n">02</span><span>Scoping drivers</span></a></li>
+      <li><a href="#s3"><span class="n">03</span><span>Sizing the team</span></a></li>
+      <li><a href="#s4"><span class="n">04</span><span>Pricing the people</span></a></li>
+      <li><a href="#s5"><span class="n">05</span><span>Everything that isn't people</span></a></li>
+      <li><a href="#s6"><span class="n">06</span><span>GNR</span></a></li>
+      <li><a href="#s7"><span class="n">07</span><span>Price and margin</span></a></li>
+      <div class="sep"></div>
+      <li><a href="#freeze"><span class="n">—</span><span>Freezing an estimate</span></a></li>
+      <li><a href="#access"><span class="n">—</span><span>Who can see cost</span></a></li>
+      <li><a href="#who"><span class="n">—</span><span>Who sets what</span></a></li>
+      <li><a href="#gaps"><span class="n">—</span><span>What isn't built yet</span></a></li>
+    </ol>
+  </nav>
+
+  <main>
+
+    <header class="masthead">
+      <p class="eyebrow">Pillar 4 · Engagement Pricing</p>
+      <h1>How the cost engine works</h1>
+      <p class="standfirst">
+        Turning a scoping conversation into a delivery cost, a defensible price, and a number
+        you can still reproduce eighteen months later when the client disputes the invoice.
+      </p>
+      <p class="byline">
+        <span>Seccomply Client Platform</span>
+        <span>Branch: feat/cost-engine-catalog-estimates</span>
+        <span>Currency: INR</span>
+      </p>
+    </header>
+
+    <!-- ============================================================ SHAPE -->
+
+    <section id="shape">
+      <h2>The shape of the answer</h2>
+
+      <p>
+        Every engagement we cost comes down to one sentence: <strong>a team of certain people,
+        for a certain number of weeks, plus the things that aren't people, plus a percentage for
+        the work we pay for but can't bill.</strong>
+      </p>
+
+      <div class="formula"><span class="c">per resource, per week</span>
+  base + seat + support  <span class="c">=  loaded weekly cost</span>
+
+<span class="c">per engagement</span>
+  ( <span class="k">Σ</span>(loaded weekly <span class="k">×</span> weeks <span class="k">×</span> headcount) + non-labour + custom )  <span class="k">×</span>  (1 + GNR%)</div>
+
+      <p>
+        That is the whole model. Everything else in this document is about where each of those
+        numbers comes from, who is allowed to change it, and how we prove afterwards what it was
+        at the moment we quoted.
+      </p>
+
+      <h3>Why resource-weeks, not hours</h3>
+
+      <p>
+        We do not track hours and we are not going to start. We staff engagements by putting named
+        people on them for stretches of calendar time. The unit that matches how we actually work
+        is the <strong>resource-week</strong>: one person, for one week.
+      </p>
+
+      <p>
+        Two analysts for ten weeks is twenty resource-weeks — not ten. That distinction matters
+        because it is what per-resource-week costs multiply against, and getting it wrong
+        halves or doubles the estimate.
+      </p>
+
+      <h3>The seven stages</h3>
+
+      <div class="pipeline">
+        <div><span class="n">01</span><span class="lbl">Baseline</span><span class="sub">what this service normally takes</span></div>
+        <div><span class="n">02</span><span class="lbl">Scoping</span><span class="sub">how this one differs</span></div>
+        <div><span class="n">03</span><span class="lbl">Sizing</span><span class="sub">the team shape</span></div>
+        <div><span class="n">04</span><span class="lbl">Rates</span><span class="sub">what people cost</span></div>
+        <div><span class="n">05</span><span class="lbl">Non-labour</span><span class="sub">tools, travel, licences</span></div>
+        <div><span class="n">06</span><span class="lbl">GNR</span><span class="sub">the unbillable uplift</span></div>
+        <div><span class="n">07</span><span class="lbl">Margin</span><span class="sub">cost against price</span></div>
+      </div>
+
+      <p>
+        These run in order and each one feeds the next. The numbering is not decoration — a
+        stage cannot be computed before the one to its left has produced its output.
+      </p>
+
+      <div class="ex">
+        <p class="ex-tag">The worked example</p>
+        <p>
+          One engagement runs through this entire document, stage by stage, with real arithmetic
+          at every step. Nothing is rounded away or skipped.
+        </p>
+        <dl class="kv">
+          <dt>Client</dt><dd>Meridian Retail</dd>
+          <dt>Engagement</dt><dd>SOC 2 Type II readiness</dd>
+          <dt>Service line</dt><dd>SOC2</dd>
+          <dt>Quoted</dt><dd>₹62,00,000</dd>
+        </dl>
+      </div>
+    </section>
+
+    <hr class="div">
+
+    <!-- =========================================================== STAGE 1 -->
+
+    <section id="s1">
+      <span class="stage-mark">Stage 01</span>
+      <h2>The baseline — what this service normally takes</h2>
+
+      <p>
+        A baseline is our institutional memory for a service line, written down as a team shape.
+        Not a price, not a duration — a list of roles, how many of each, and for how many weeks.
+      </p>
+
+      <p>
+        Baselines live under <strong>Settings → Effort Catalog</strong>. Each one is scoped to a
+        service line and a segment, so <code>SOC2 / mid-market</code> and
+        <code>SOC2 / enterprise</code> are separate records with separate shapes.
+      </p>
+
+      <div class="ex">
+        <p class="ex-tag">Baseline · SOC 2 mid-market · v3</p>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Delivery role</th><th class="r">People</th><th class="r">Weeks</th><th class="r">Resource-weeks</th></tr></thead>
+            <tbody>
+              <tr><td>Lead Consultant</td><td class="r">1</td><td class="r">6</td><td class="r">6</td></tr>
+              <tr><td>Security Analyst</td><td class="r">2</td><td class="r">8</td><td class="r">16</td></tr>
+              <tr><td>QA Reviewer</td><td class="r">1</td><td class="r">2</td><td class="r">2</td></tr>
+              <tr class="total"><td>Baseline effort</td><td class="r"></td><td class="r"></td><td class="r">24</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <h3>Baselines are versioned, never edited</h3>
+
+      <p>
+        When you correct a baseline you press <strong>Revise</strong>, which writes version N+1 and
+        retires version N. It does not overwrite anything.
+      </p>
+
+      <p>
+        This is deliberate and it is the single most important property of the whole catalog.
+        An estimate stores <em>which version it was built from</em>. So an estimate you built in
+        March still resolves the March baseline in September, after the shape has been corrected
+        twice. Nothing you have already quoted can move underneath you.
+      </p>
+
+      <h3>Judgement-based until proven otherwise</h3>
+
+      <p>
+        Every new baseline starts flagged <span class="pill warn">judgement-based</span> with
+        <span class="pill">confidence: low</span> and a sample size of zero. That flag is not a
+        formality — any estimate built on a judgement-based baseline carries a warning saying the
+        numbers are somebody's opinion, not measured delivery.
+      </p>
+
+      <p>
+        The flag can only be cleared once the sample size is above zero. The system refuses to let
+        you mark a baseline as evidence-backed while claiming zero delivered engagements behind it.
+      </p>
+
+      <div class="note warn">
+        <p class="note-h">Read this one carefully</p>
+        <p>
+          We do not yet capture delivered effort, so nothing raises sample size automatically.
+          Today every baseline is judgement-based unless a human sets the confidence by hand — and
+          a human setting it by hand is still judgement, just with the warning turned off. See
+          <a href="#gaps">what isn't built yet</a>.
+        </p>
+      </div>
+    </section>
+
+    <hr class="div">
+
+    <!-- =========================================================== STAGE 2 -->
+
+    <section id="s2">
+      <span class="stage-mark">Stage 02</span>
+      <h2>Scoping drivers — how this one differs</h2>
+
+      <p>
+        The baseline says what a typical engagement takes. Stage 2 asks what makes <em>this</em>
+        one bigger or smaller. That is the <strong>scoping questionnaire</strong>, and each
+        question is a <strong>sizing driver</strong>.
+      </p>
+
+      <p>
+        Drivers are configured under <strong>Settings → Effort Catalog → Sizing Drivers</strong>.
+        A driver is a question that genuinely changes how much work an engagement is. Anything that
+        doesn't change effort doesn't belong here.
+      </p>
+
+      <h3>Two kinds of question</h3>
+
+      <dl class="kv">
+        <dt>Choose one</dt>
+        <dd>
+          A fixed list of answers, each with its own weight. <em>Regulatory regime: single
+          jurisdiction (×1.0) / multi-jurisdiction (×1.3).</em>
+        </dd>
+        <dt>A number</dt>
+        <dd>
+          A rate per unit, charged only beyond a threshold. <em>Subsidiaries in scope: +10% for
+          each one beyond 1.</em> Units at or below the threshold are already priced into the
+          baseline, so they cost nothing extra.
+        </dd>
+      </dl>
+
+      <h3>What a driver changes matters commercially</h3>
+
+      <p>
+        Every driver declares whether it <strong>adds weeks</strong>, <strong>adds people</strong>,
+        or <strong>both</strong> — because those are not the same money.
+      </p>
+
+      <ul class="plain">
+        <li><strong>Adds weeks</strong> — same team, longer engagement. Three cloud environments the same two analysts have to work through in sequence.</li>
+        <li><strong>Adds people</strong> — same duration, bigger team. A deadline that cannot move, so you parallelise.</li>
+        <li><strong>Both</strong> — the effect splits across the two axes.</li>
+      </ul>
+
+      <p>
+        A <strong>both</strong> driver contributes the <em>square root</em> of its weight to each
+        axis. A 1.44× driver contributes 1.2× to weeks and 1.2× to team — and 1.2 × 1.2 = 1.44, the
+        effect it declared. Applying the full 1.44 to both axes would produce 2.07×, silently
+        squaring the driver's stated effect.
+      </p>
+
+      <div class="ex">
+        <p class="ex-tag">Meridian's answers</p>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Question</th><th>Answer</th><th>Applies to</th><th class="r">Weight</th></tr></thead>
+            <tbody>
+              <tr><td>Subsidiaries in scope</td><td>3</td><td>weeks</td><td class="r">1.20</td></tr>
+              <tr><td>Regulatory regime</td><td>Multi-jurisdiction</td><td>both</td><td class="r">1.30</td></tr>
+              <tr><td>Client security maturity</td><td>None in place</td><td>team</td><td class="r">1.25</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="formula"><span class="c">the "both" driver splits: √1.30 = 1.1402</span>
+
+weeks   =  1.20 <span class="k">×</span> 1.1402  =  <span class="k">1.3682</span>
+team    =  1.25 <span class="k">×</span> 1.1402  =  <span class="k">1.4252</span>
+<span class="c">─────────────────────────────────────</span>
+total   =  1.3682 <span class="k">×</span> 1.4252  =  <span class="k">1.9500×</span></div>
+        <p style="margin-top:1rem">
+          The subsidiaries answer of 3 charges only 2 units — the first is inside the baseline —
+          so 1 + (0.10 × 2) = 1.20.
+        </p>
+      </div>
+
+      <h3>The composition ceiling</h3>
+
+      <p>
+        Drivers <strong>multiply</strong>. That is the right model — a large client
+        <em>and</em> multi-jurisdiction <em>and</em> no existing controls really is worse than any
+        one of those alone. But multiplication has no natural stopping point. Four drivers at 1.4×
+        each compose to 3.8×, and nobody chose 3.8. It fell out of four answers that each looked
+        reasonable in isolation.
+      </p>
+
+      <p>
+        So there is a ceiling, set under <strong>Sizing Drivers → Composition ceiling</strong>.
+        Anything above it is capped — and <strong>the estimate says so</strong>, in three places:
+        an amber panel in the questionnaire naming both the raw and capped figures, a warning on
+        save, and a <code>capped</code> flag stored with the result.
+      </p>
+
+      <div class="ex">
+        <p class="ex-tag">If Meridian had also been rushed</p>
+        <p>Add a fourth driver — <em>Timeline: compressed, ×1.45, adds weeks</em>:</p>
+        <div class="formula">weeks   =  1.20 <span class="k">×</span> 1.45 <span class="k">×</span> 1.1402  =  1.9839
+team    =  1.4252
+<span class="c">─────────────────────────────────────</span>
+raw     =  <span class="k">2.8275×</span>   <span class="c">← above the 2.50 ceiling</span>
+
+<span class="c">scale = √(2.50 / 2.8275) = 0.9403, applied to both axes</span>
+
+weeks   =  1.8655        team  =  1.3402
+total   =  <span class="k">2.5000×</span>   <span class="c">← capped, and flagged</span></div>
+      </div>
+
+      <p>
+        Note the cap scales <em>both axes</em> rather than clamping the total. Weeks and team are
+        used separately in the next stage, so clamping only their product would leave the two
+        inconsistent with the answer.
+      </p>
+
+      <div class="note">
+        <p class="note-h">How to set the ceiling</p>
+        <p>
+          Set it to the largest multiple of a standard engagement you would still quote from a
+          template. Beyond that you are not sizing a template any more — you are scoping a
+          different job, and the estimate should be built from scratch. Too low and every complex
+          deal caps, so the warning becomes noise people click past. If no ceiling is configured,
+          the engine defaults to 2.5× and warns you that it did.
+        </p>
+      </div>
+
+      <h3>Changing a weight can't move a quote you've sent</h3>
+
+      <p>
+        Unlike baselines and rates, driver weights are edited in place — there is no version
+        history. That is safe for exactly one reason: <strong>every estimate stores the multiplier
+        it actually used</strong> at the moment its questionnaire was answered. Change a weight
+        today and it affects the next estimate scoped, never one already built.
+      </p>
+
+      <p>
+        Deleting an answer works the same way. Estimates that used it keep their multiplier; they
+        lose only the record of which label was chosen.
+      </p>
+
+      <p>
+        Each answer also records <strong>who supplied it and how sure they were</strong>. When an
+        estimate turns out badly wrong, that is the trail back to the conversation that caused it.
+      </p>
+    </section>
+
+    <hr class="div">
+
+    <!-- =========================================================== STAGE 3 -->
+
+    <section id="s3">
+      <span class="stage-mark">Stage 03</span>
+      <h2>Sizing the team</h2>
+
+      <p>
+        Now the baseline shape gets stretched by the two multipliers. Headcount goes up by the
+        team multiplier, weeks go up by the weeks multiplier.
+      </p>
+
+      <p>
+        There is one wrinkle: <strong>you cannot staff 2.85 people.</strong> Headcount has to round
+        to a whole number, and rounding it naively would silently change the total effort by up to
+        half a person per line.
+      </p>
+
+      <p>
+        So the engine rounds headcount, then <strong>folds the rounding residue back into
+        weeks</strong>. Total effort comes out exactly equal to baseline effort × multiplier,
+        every time.
+      </p>
+
+      <div class="ex">
+        <p class="ex-tag">Meridian sized · team ×1.4252, weeks ×1.3682</p>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Role</th><th class="r">People</th><th class="r">Weeks</th><th class="r">Resource-weeks</th></tr></thead>
+            <tbody>
+              <tr><td>Lead Consultant</td><td class="r">1</td><td class="r">11.70</td><td class="r">11.70</td></tr>
+              <tr><td>Security Analyst</td><td class="r">3</td><td class="r">10.40</td><td class="r">31.20</td></tr>
+              <tr><td>QA Reviewer</td><td class="r">1</td><td class="r">3.90</td><td class="r">3.90</td></tr>
+              <tr class="total"><td>Sized effort</td><td class="r"></td><td class="r"></td><td class="r">46.80</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="formula"><span class="c">The analyst line is where the correction shows:</span>
+
+target effort  =  2 people <span class="k">×</span> 8 weeks <span class="k">×</span> 1.95   =  31.20
+headcount      =  round(2 <span class="k">×</span> 1.4252)  =  round(2.85)  =  <span class="k">3</span>
+weeks          =  31.20 / 3                =  <span class="k">10.40</span>
+
+<span class="c">naive would have been 8 × 1.95 = 15.60 weeks for 3 people</span>
+<span class="c">= 46.80 resource-weeks on one line alone. 50% over.</span>
+
+<span class="c">check:  24 baseline × 1.95  =  46.80  ✓</span></div>
+      </div>
+
+      <p>
+        Re-answering the questionnaire re-sizes the team from the baseline again — which means
+        <strong>manual edits to the team shape are discarded</strong>. The builder warns before
+        doing it, but it is worth knowing: scope first, hand-tune second.
+      </p>
+    </section>
+
+    <hr class="div">
+
+    <!-- =========================================================== STAGE 4 -->
+
+    <section id="s4">
+      <span class="stage-mark">Stage 04</span>
+      <h2>Pricing the people</h2>
+
+      <p>
+        Every resource costs three things per week, and they are kept separate because they answer
+        to different people and move on different cycles.
+      </p>
+
+      <dl class="kv">
+        <dt>base</dt><dd>Salary cost. What the person is paid, expressed weekly.</dd>
+        <dt>seat</dt><dd>Desk, laptop, licences, insurance — the cost of having them employed at all.</dd>
+        <dt>support</dt><dd>The share of management, admin and internal function that delivery carries.</dd>
+      </dl>
+
+      <div class="formula">loaded weekly cost  =  base + seat + support
+line total          =  loaded weekly <span class="k">×</span> weeks <span class="k">×</span> headcount</div>
+
+      <h3>Most-specific-wins</h3>
+
+      <p>
+        Each of the three components can be set at three levels. When the engine needs a number it
+        takes the most specific one available:
+      </p>
+
+      <div class="tw">
+        <table>
+          <caption>Scope resolution</caption>
+          <thead><tr><th>Scope</th><th>Set on</th><th>Beats</th></tr></thead>
+          <tbody>
+            <tr><td>employee</td><td>One named person</td><td>role, default</td></tr>
+            <tr><td>role</td><td>All Security Analysts</td><td>default</td></tr>
+            <tr><td>default</td><td>Company-wide fallback</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        In practice you set <code>seat</code> and <code>support</code> once at company default and
+        almost never touch them, set <code>base</code> per delivery role, and add employee-scope
+        rows only for people whose cost is genuinely out of line with their role.
+      </p>
+
+      <p>
+        The estimate records <strong>which scope each figure came from</strong>, so any number on
+        screen can be traced to the row that produced it.
+      </p>
+
+      <div class="note bad">
+        <p class="note-h">If a rate is missing</p>
+        <p>
+          The engine treats it as <strong>zero</strong> and raises a warning naming the role and
+          the component. It does not refuse to compute. That is a deliberate trade — a blocked
+          estimate teaches you nothing, an obviously-too-cheap one with a warning attached tells
+          you exactly what to go and configure. But it does mean an ignored warning produces a
+          quote that undercharges.
+        </p>
+      </div>
+
+      <h3>Rates are effective-dated</h3>
+
+      <p>
+        A rate row carries an <strong>effective from</strong> date and an optional
+        <strong>effective to</strong>. Raising a salary does not overwrite the old rate — it closes
+        it and opens a new one.
+      </p>
+
+      <p>
+        Every estimate has an <strong>as-of date</strong>, and rates resolve against that date. An
+        estimate dated March resolves March's rates forever, no matter what has happened since.
+        This is what makes an old quote defensible rather than merely archived.
+      </p>
+
+      <p>
+        The database enforces that only <strong>one open-ended row</strong> can exist per scope and
+        component, because two would make rate resolution non-deterministic — the same estimate
+        could compute differently on two consecutive page loads.
+      </p>
+
+      <h3>Blended or named</h3>
+
+      <p>
+        An estimate is costed one of two ways, and it is a per-estimate switch:
+      </p>
+
+      <ul class="plain">
+        <li><strong>Blended</strong> — everyone in a role costs the role rate. Right for early-stage deals where you don't know who is available.</li>
+        <li><strong>Named</strong> — specific people are attached to lines, and their employee-scope rates apply. Right when the team is decided and you want the real number.</li>
+      </ul>
+
+      <h3>Every figure is overridable</h3>
+
+      <p>
+        Any of the three components can be overridden on a single line of a single estimate. An
+        override does not touch the rate table — it applies to that line only, and the estimate
+        records that the figure was overridden rather than resolved.
+      </p>
+
+      <div class="ex">
+        <p class="ex-tag">Meridian labour · blended, as of the quote date</p>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Role</th><th class="r">base</th><th class="r">seat</th><th class="r">support</th><th class="r">loaded/wk</th><th class="r">Line total</th></tr></thead>
+            <tbody>
+              <tr><td>Lead Consultant</td><td class="r">95,000</td><td class="r">6,000</td><td class="r">4,500</td><td class="r">1,05,500</td><td class="r">12,34,350</td></tr>
+              <tr><td>Security Analyst ×3</td><td class="r">52,000</td><td class="r">6,000</td><td class="r">4,500</td><td class="r">62,500</td><td class="r">19,50,000</td></tr>
+              <tr><td>QA Reviewer</td><td class="r">44,000</td><td class="r">6,000</td><td class="r">4,500</td><td class="r">54,500</td><td class="r">2,12,550</td></tr>
+              <tr class="total"><td>Labour subtotal</td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r">33,96,900</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="margin-top:0.9rem">
+          <code>seat</code> and <code>support</code> resolved from company default;
+          <code>base</code> from role scope. The analyst line is 62,500 × 10.40 weeks × 3 people.
+        </p>
+      </div>
+    </section>
+
+    <hr class="div">
+
+    <!-- =========================================================== STAGE 5 -->
+
+    <section id="s5">
+      <span class="stage-mark">Stage 05</span>
+      <h2>Everything that isn't people</h2>
+
+      <p>Two kinds of line, and the difference between them is commercial, not technical.</p>
+
+      <h3>Non-labour</h3>
+
+      <p>
+        Tooling licences, travel, third-party testing, certification fees. Each line is marked
+        either <strong>pass-through</strong> or not.
+      </p>
+
+      <ul class="plain">
+        <li><strong>Pass-through</strong> — quoted to the client at exactly what it cost us. Never marked up. Airfare, statutory fees, anything where a markup would be indefensible if the client saw the invoice.</li>
+        <li><strong>Marked up</strong> — carried like any other cost and priced into the engagement.</li>
+      </ul>
+
+      <p>
+        Both are tracked separately all the way through, so the split is visible on the breakdown
+        rather than buried in a single total.
+      </p>
+
+      <h3>Custom lines</h3>
+
+      <p>
+        The escape hatch. Anything an estimator needs that isn't in the model, on one of two bases:
+      </p>
+
+      <dl class="kv">
+        <dt>engagement</dt><dd>A flat amount, once.</dd>
+        <dt>per_resource_week</dt><dd>Multiplied by total resource-weeks across the whole team.</dd>
+      </dl>
+
+      <p>
+        The per-resource-week basis is the one that scales properly with the size of the job — an
+        evidence-platform seat, a per-head client security clearance.
+      </p>
+
+      <div class="ex">
+        <p class="ex-tag">Meridian · non-labour and custom</p>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Line</th><th>Treatment</th><th class="r">Amount</th></tr></thead>
+            <tbody>
+              <tr><td>Pen-test tooling licence</td><td><span class="pill">marked up</span></td><td class="r">85,000</td></tr>
+              <tr><td>Client-site travel, 2 trips</td><td><span class="pill acc">pass-through</span></td><td class="r">64,000</td></tr>
+              <tr><td>Evidence platform seat</td><td><span class="pill">₹1,200 × 46.80 rw</span></td><td class="r">56,160</td></tr>
+              <tr class="total"><td>Non-labour + custom</td><td></td><td class="r">2,05,160</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="formula">labour subtotal      33,96,900
+non-labour            1,49,000
+custom                  56,160
+<span class="c">──────────────────────────────</span>
+subtotal before GNR  <span class="k">36,02,060</span></div>
+      </div>
+    </section>
+
+    <hr class="div">
+
+    <!-- =========================================================== STAGE 6 -->
+
+    <section id="s6">
+      <span class="stage-mark">Stage 06</span>
+      <h2>GNR — the work we pay for but can't bill</h2>
+
+      <p>
+        <strong>Gross Non-Recoverable.</strong> A single percentage uplift covering the delivery
+        cost that exists but never appears on an invoice:
+      </p>
+
+      <ul class="plain">
+        <li><strong>Bench time</strong> — the gap between one engagement ending and the next starting.</li>
+        <li><strong>Rework</strong> — the second pass we didn't quote for.</li>
+        <li><strong>Unbilled travel and admin</strong> — the hours that go into delivery but not onto a bill.</li>
+      </ul>
+
+      <p>
+        This is the number that separates an estimate that looks profitable from a business that
+        is profitable. Costing an engagement at the raw sum of its people assumes those people are
+        billable 100% of the year. Nobody is.
+      </p>
+
+      <h3>Two bases</h3>
+
+      <dl class="kv">
+        <dt>total</dt>
+        <dd>Applied to labour + non-labour + custom. The default.</dd>
+        <dt>labour_only</dt>
+        <dd>
+          Applied to labour alone. The stricter reading: bench time is a property of employing
+          people, and a tooling licence doesn't sit on the bench.
+        </dd>
+      </dl>
+
+      <div class="ex">
+        <p class="ex-tag">Meridian · GNR at 18%, basis: total</p>
+        <div class="formula">basis              36,02,060
+GNR @ 18%           6,48,371
+<span class="c">──────────────────────────────</span>
+<span class="k">total delivery cost   42,50,431</span>
+
+<span class="c">on labour_only the basis would be 33,96,900,</span>
+<span class="c">GNR 6,11,442, total 42,13,502 — about ₹37,000 less</span></div>
+      </div>
+
+      <p>
+        GNR policies are <strong>versioned and effective-dated</strong>, same as rates. An estimate
+        stores the policy, the rate and the basis it used, so a historic quote reproduces under the
+        GNR that applied to it — not today's.
+      </p>
+
+      <div class="note warn">
+        <p class="note-h">If no policy is configured</p>
+        <p>
+          GNR is applied at <strong>0%</strong> with a warning. An estimate with no GNR policy is
+          understating true cost by whatever the real figure should be — which for most consulting
+          businesses is somewhere between 15% and 25%. Setting this is the highest-leverage
+          configuration decision in the system.
+        </p>
+      </div>
+    </section>
+
+    <hr class="div">
+
+    <!-- =========================================================== STAGE 7 -->
+
+    <section id="s7">
+      <span class="stage-mark">Stage 07</span>
+      <h2>Price and margin</h2>
+
+      <p>
+        The engine has now produced <strong>total delivery cost</strong>. It has not produced a
+        price, and it never will.
+      </p>
+
+      <div class="note good">
+        <p class="note-h">The principle</p>
+        <p>
+          <strong>Cost sets the floor. The market sets the price.</strong> Margin is advisory
+          throughout — the system tells you where you stand and does not decide for you.
+        </p>
+      </div>
+
+      <p>
+        Margin is calculated <strong>on price</strong>, the consulting convention:
+      </p>
+
+      <div class="formula">margin %  =  (price − cost) / price  <span class="k">×</span> 100</div>
+
+      <p>
+        Note this is not markup. A 40% margin is a 67% markup. Mixing the two up is how a quote
+        that looks healthy turns out not to be, so the system consistently uses margin-on-price and
+        labels it that way.
+      </p>
+
+      <h3>Targets and floors</h3>
+
+      <p>
+        Under <strong>Settings → Cost Model → Margin Targets</strong> you set a target per service
+        line, with an optional floor beneath it. A company-wide default catches anything without
+        its own target.
+      </p>
+
+      <dl class="kv">
+        <dt>Target</dt>
+        <dd>What you're aiming for. Drives the <strong>suggested price</strong> the builder shows.</dd>
+        <dt>Floor</dt>
+        <dd>Below this, the builder warns loudly. Optional — no floor means no warning.</dd>
+      </dl>
+
+      <p>
+        The database refuses a floor above its target, since that would warn on every compliant
+        price.
+      </p>
+
+      <div class="ex">
+        <p class="ex-tag">Meridian · quoted ₹62,00,000 against a 38% target, 30% floor</p>
+        <div class="tw">
+          <table>
+            <tbody>
+              <tr><td>Price</td><td class="r">62,00,000</td></tr>
+              <tr><td>Total delivery cost</td><td class="r">42,50,431</td></tr>
+              <tr class="sub"><td>Margin</td><td class="r">19,49,569</td></tr>
+              <tr class="sub"><td>Margin %</td><td class="r">31.44%</td></tr>
+              <tr><td>Clears target (38%)</td><td class="r"><span class="pill bad">no</span></td></tr>
+              <tr><td>Below floor (30%)</td><td class="r"><span class="pill good">no</span></td></tr>
+              <tr class="total"><td>Suggested price at target</td><td class="r">68,55,534</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="margin-top:0.9rem">
+          Suggested price is <code>cost / (1 − 0.38)</code>. The deal is under target but above
+          floor: worth a conversation, not a refusal. That is exactly the case the tool exists
+          to surface.
+        </p>
+      </div>
+
+      <div class="note warn">
+        <p class="note-h">The floor does not block approval</p>
+        <p>
+          A price below the floor produces a warning and nothing more. Blocking approval would
+          need an exception-approval trail — who overrode it, on what authority, when — and that
+          does not exist yet. A block with no way to escalate past it just teaches people to work
+          around the system.
+        </p>
+      </div>
+
+      <h3>Scenarios</h3>
+
+      <p>
+        Any estimate can be <strong>duplicated</strong> into a fresh draft, which copies the team,
+        the cost lines and the questionnaire answers, and records what it came from. Build the
+        aggressive version and the safe version side by side, then compare them on cost,
+        multiplier, price and margin in one view.
+      </p>
+    </section>
+
+    <hr class="div">
+
+    <!-- ============================================================ FREEZE -->
+
+    <section id="freeze">
+      <h2>Freezing an estimate</h2>
+
+      <p>
+        A draft recalculates every time you open it. That is correct while you are still working
+        on it, and completely wrong once you have quoted a client.
+      </p>
+
+      <p>
+        So <strong>approving an estimate freezes it.</strong> The full breakdown — every resolved
+        rate, every line, the GNR policy, the multiplier — is written to the estimate as a
+        snapshot, and the record becomes immutable. Opening it afterwards returns the snapshot
+        rather than recomputing.
+      </p>
+
+      <p>Three things enforce this, deliberately layered:</p>
+
+      <ol class="plain">
+        <li>The builder's write controls disappear on a non-draft estimate.</li>
+        <li>Every mutating operation on the server checks the status first and refuses.</li>
+        <li>A database constraint refuses to store an approved estimate that has no snapshot and no freeze timestamp — so a status change cannot skip the freeze even if the application code is bypassed entirely.</li>
+      </ol>
+
+      <p>
+        Want to change an approved estimate? You duplicate it. The original stands as the record of
+        what was actually quoted.
+      </p>
+
+      <div class="note">
+        <p class="note-h">Why this matters commercially</p>
+        <p>
+          An estimate that could be edited after approval would destroy the only signal that tells
+          you your estimates were wrong. If the number can move retroactively, you can never
+          compare what you quoted against what it cost — and estimation never improves.
+        </p>
+      </div>
+
+      <h3>What reproduces, and what doesn't</h3>
+
+      <p>
+        Everything that goes into cost is frozen. The <strong>margin floor is deliberately
+        resolved live</strong>, because it is a present-day warning threshold rather than part of
+        the historical basis. If you raise the floor next quarter, last quarter's approved
+        estimates will start showing as below it — which is the correct behaviour, not a bug.
+      </p>
+    </section>
+
+    <hr class="div">
+
+    <!-- ============================================================ ACCESS -->
+
+    <section id="access">
+      <h2>Who can see cost</h2>
+
+      <p>
+        Cost rates are salary-derived. A base rate for a named person is that person's pay,
+        expressed weekly. This is the most sensitive data in the platform and it is treated that
+        way.
+      </p>
+
+      <h3>Granted to a person, not a job title</h3>
+
+      <p>
+        Financial access is a <strong>per-user entitlement</strong>, not a role permission. Being a
+        sales manager does not grant it. It is switched on for named individuals under
+        <strong>Settings → Users</strong>, and only a super admin can grant it — an entitled person
+        cannot widen the circle. Every grant and revoke is audited with before and after values.
+      </p>
+
+      <p>
+        The entitlement is read <strong>live on every request</strong>, not from the login token.
+        Sessions last seven days; a revoked entitlement stops working immediately rather than
+        surviving until the token expires.
+      </p>
+
+      <h3>Default-deny redaction</h3>
+
+      <p>
+        There is one gate that every cost-bearing response passes through. It nulls a registry of
+        known financial fields rather than accepting a per-endpoint allow-list — so a newly added
+        cost field is protected the moment its name is registered, not whenever someone remembers
+        to update a call site.
+      </p>
+
+      <div class="note bad">
+        <p class="note-h">Margin is treated as cost, and this is not paranoia</p>
+        <p>
+          <code>cost = price × (1 − margin)</code>. Showing a margin percentage next to a visible
+          price leaks the cost exactly as surely as printing it. Margin fields are therefore
+          redacted alongside cost fields. <strong>Price is not</strong> — it is the quotable fact,
+          the number the client is told, and anyone selling needs it.
+        </p>
+      </div>
+
+      <h3>The other surfaces</h3>
+
+      <ul class="plain">
+        <li><strong>The AI assistant</strong> — cost-related keywords are blocked for users without the entitlement, and the underlying cost tables are unconditionally excluded from any generated SQL.</li>
+        <li><strong>Reads are audited</strong> — every read of an individual cost rate is written to the audit log.</li>
+        <li><strong>Reference data stays open</strong> — delivery roles, baselines and driver definitions are readable by everyone. Only money is gated. A salesperson can see that SOC 2 mid-market normally takes 24 resource-weeks without seeing what a resource-week costs.</li>
+      </ul>
+    </section>
+
+    <hr class="div">
+
+    <!-- =============================================================== WHO -->
+
+    <section id="who">
+      <h2>Who sets what</h2>
+
+      <div class="tw">
+        <table>
+          <caption>Configuration ownership</caption>
+          <thead><tr><th>What</th><th>Where</th><th>Owner</th><th>Cadence</th></tr></thead>
+          <tbody>
+            <tr><td>Delivery roles</td><td>Cost Model</td><td>Delivery lead</td><td>Rarely</td></tr>
+            <tr><td>base / seat / support</td><td>Cost Model</td><td>Founder / finance</td><td>Annual, or on a hire</td></tr>
+            <tr><td>GNR policy</td><td>Cost Model</td><td>Founder</td><td>Annual review</td></tr>
+            <tr><td>Margin targets &amp; floors</td><td>Cost Model</td><td>Founder</td><td>Per planning cycle</td></tr>
+            <tr><td>Effort baselines</td><td>Effort Catalog</td><td>Delivery lead</td><td>As delivery evidence lands</td></tr>
+            <tr><td>Sizing drivers</td><td>Effort Catalog</td><td>Delivery lead</td><td>When scoping misses something</td></tr>
+            <tr><td>Composition ceiling</td><td>Effort Catalog</td><td>Founder / delivery lead</td><td>Rarely</td></tr>
+            <tr><td>Financial access</td><td>Users</td><td>Super admin only</td><td>On joining / leaving</td></tr>
+            <tr><td>Estimates</td><td>Deal → Estimates</td><td>Whoever owns the deal</td><td>Per opportunity</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Order of setup</h3>
+
+      <p>
+        The stages depend on each other, so configuration has an order. Skipping ahead produces
+        estimates full of warnings:
+      </p>
+
+      <ol class="plain">
+        <li><strong>Delivery roles</strong> — nothing else can reference a role that doesn't exist.</li>
+        <li><strong>Cost components</strong> — company defaults for seat and support, then base per role.</li>
+        <li><strong>GNR policy</strong> — until this exists every estimate understates cost.</li>
+        <li><strong>Margin targets</strong> — at minimum the company-wide default.</li>
+        <li><strong>Composition ceiling</strong> — or accept the 2.5× default.</li>
+        <li><strong>Baselines and drivers</strong> — one service line at a time; there is a coverage view showing which lines have no baseline.</li>
+      </ol>
+    </section>
+
+    <hr class="div">
+
+    <!-- ============================================================== GAPS -->
+
+    <section id="gaps">
+      <h2>What isn't built yet</h2>
+
+      <p>
+        Stated plainly, because a founder deciding whether to rely on this needs to know where the
+        edges are.
+      </p>
+
+      <div class="note bad">
+        <p class="note-h">1 · Delivered effort is never captured</p>
+        <p>
+          Nothing feeds actual delivery back into the catalog. Sample size stays at zero, so every
+          baseline stays judgement-based unless someone sets confidence by hand. Until this closes,
+          the catalog is a well-structured record of our opinions — which is genuinely better than
+          a spreadsheet of the same opinions, but is not evidence.
+        </p>
+      </div>
+
+      <div class="note warn">
+        <p class="note-h">2 · No exception-approval trail</p>
+        <p>
+          The margin floor warns; it cannot block. Blocking needs a record of who authorised the
+          exception, which does not exist.
+        </p>
+      </div>
+
+      <div class="note warn">
+        <p class="note-h">3 · No automated test suite for the engine</p>
+        <p>
+          The arithmetic was verified with throwaway scripts against a local database during
+          development — which did catch two real bugs, including one that would have broken every
+          multi-role estimate. But those scripts were not kept, and the repository has no committed
+          tests covering cost computation. A regression here would be silent and expensive.
+        </p>
+      </div>
+
+      <div class="note warn">
+        <p class="note-h">4 · Not yet exercised by a human</p>
+        <p>
+          The estimate builder has not been clicked through end to end in a browser by anyone. It
+          type-checks and builds; that is not the same as working.
+        </p>
+      </div>
+
+      <div class="note">
+        <p class="note-h">5 · Older deal-amount masking not yet consolidated</p>
+        <p>
+          Deal-value masking predates the cost engine and is still duplicated across seven files.
+          The new gate does not yet cover them. Cost and margin are gated correctly; this is about
+          tidying an older pattern before it drifts further.
+        </p>
+      </div>
+
+      <h3>What is solid</h3>
+
+      <ul class="plain">
+        <li>The arithmetic — the formulas above are what the code does, verified line by line against this worked example.</li>
+        <li>Reproducibility — effective dating, versioning and the approval freeze are enforced in the database, not just in application code.</li>
+        <li>The access gate — default-deny, read live, audited, with margin correctly treated as a route back to cost.</li>
+        <li>Every figure is overridable, and every override is recorded as an override.</li>
+      </ul>
+    </section>
+
+    <footer>
+      <p>
+        Seccomply Client Platform · Pillar 4, Engagement Pricing &amp; Quotation.<br>
+        Figures throughout are a worked illustration, not real rates.<br>
+        Requirements reference: FR-P4-01 to FR-P4-56, FR-X-05, NFR-SEC-04 to NFR-SEC-09, NFR-REP-01.
+      </p>
+    </footer>
+
+  </main>
+</div>
