@@ -169,6 +169,13 @@
       "when": 1787657620222,
       "tag": "0023_margin_targets",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787729376832,
+      "tag": "0024_widen_margin_and_multiplier",
+      "breakpoints": true
     }
   ]
 }

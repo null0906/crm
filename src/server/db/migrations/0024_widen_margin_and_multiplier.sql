@@ -1,0 +1,2 @@
+ALTER TABLE "estimate_drivers" ALTER COLUMN "multiplier_applied" SET DATA TYPE numeric(12, 4);--> statement-breakpoint
+ALTER TABLE "estimates" ALTER COLUMN "margin_percent" SET DATA TYPE numeric(9, 2);

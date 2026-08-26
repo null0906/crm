@@ -37,6 +37,28 @@ function num(value: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** The widest value estimates.margin_percent can hold — numeric(9, 2). */
+const MARGIN_PERCENT_LIMIT = 9_999_999.99;
+
+/**
+ * Bounds the stored margin to what the column can hold.
+ *
+ * Margin on price is unbounded below — quoting 0.01 against a cost of 832,600
+ * is -8,325,999,900%. Widening the column alone cannot fix that, and an
+ * overflow here does not merely fail to save the margin: it rejects the whole
+ * UPDATE, which strands the estimate because every mutation calls persistTotals.
+ *
+ * Clamping the stored copy loses nothing. This column is a denormalised
+ * convenience for the list and comparison views; `recalculate` returns the
+ * exact figure from `computeMargin` on every read, so the builder still shows
+ * the true number. Do not push this clamp down into computeMargin, which is the
+ * source of truth for `belowFloor` and everything on screen.
+ */
+function clampStoredMargin(marginPercent: number): number {
+  if (!Number.isFinite(marginPercent)) return 0;
+  return Math.max(-MARGIN_PERCENT_LIMIT, Math.min(MARGIN_PERCENT_LIMIT, marginPercent));
+}
+
 /**
  * The immutability control (FR-P4-47, NFR-AUD-04).
  *
@@ -140,23 +162,25 @@ export async function getEstimateDetail(
   const [estimate] = await db.select().from(estimates).where(eq(estimates.id, estimateId)).limit(1);
   if (!estimate) return null;
 
-  const [teamLines, costLines, drivers] = await Promise.all([
-    db
-      .select()
-      .from(estimateTeamLines)
-      .where(eq(estimateTeamLines.estimateId, estimateId))
-      .orderBy(asc(estimateTeamLines.position)),
-    db
-      .select()
-      .from(estimateCostLines)
-      .where(eq(estimateCostLines.estimateId, estimateId))
-      .orderBy(asc(estimateCostLines.position)),
-    db
-      .select()
-      .from(estimateDrivers)
-      .where(eq(estimateDrivers.estimateId, estimateId))
-      .orderBy(asc(estimateDrivers.position)),
-  ]);
+  // Sequential, not Promise.all: `db` here may be a transaction client, which is
+  // a single connection. Concurrent queries on one connection are deprecated in
+  // node-postgres and break outright in pg@9. These are three small indexed
+  // lookups, so the extra round trips cost nothing worth having a footgun for.
+  const teamLines = await db
+    .select()
+    .from(estimateTeamLines)
+    .where(eq(estimateTeamLines.estimateId, estimateId))
+    .orderBy(asc(estimateTeamLines.position));
+  const costLines = await db
+    .select()
+    .from(estimateCostLines)
+    .where(eq(estimateCostLines.estimateId, estimateId))
+    .orderBy(asc(estimateCostLines.position));
+  const drivers = await db
+    .select()
+    .from(estimateDrivers)
+    .where(eq(estimateDrivers.estimateId, estimateId))
+    .orderBy(asc(estimateDrivers.position));
 
   return { estimate, teamLines, costLines, drivers };
 }
@@ -253,7 +277,7 @@ export async function persistTotals(
       gnrPolicyId: breakdown.gnr.policyId,
       gnrRatePercent: breakdown.gnr.ratePercent.toString(),
       gnrAppliesTo: breakdown.gnr.appliesTo,
-      marginPercent: margin ? margin.marginPercent.toString() : null,
+      marginPercent: margin ? clampStoredMargin(margin.marginPercent).toString() : null,
       updatedAt: new Date(),
     })
     .where(eq(estimates.id, estimateId));
@@ -411,22 +435,29 @@ export async function saveCommercials(
   db: DbClient = defaultDb
 ): Promise<void> {
   await assertDraft(estimateId, db);
-  await db
-    .update(estimates)
-    .set({
-      ...(input.title !== undefined ? { title: input.title } : {}),
-      ...(input.price !== undefined ? { price: input.price?.toString() ?? null } : {}),
-      ...(input.targetMarginPercent !== undefined
-        ? { targetMarginPercent: input.targetMarginPercent?.toString() ?? null }
-        : {}),
-      ...(input.asOfDate !== undefined ? { asOfDate: input.asOfDate } : {}),
-      ...(input.gnrPolicyId !== undefined ? { gnrPolicyId: input.gnrPolicyId } : {}),
-      ...(input.costingMode !== undefined ? { costingMode: input.costingMode } : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(estimates.id, estimateId));
 
-  await persistTotals(estimateId, db);
+  // One transaction, because these two writes were previously independent: a
+  // failure in persistTotals left the new price committed against stale totals,
+  // and since every mutation recomputes totals, the estimate could no longer be
+  // edited at all — not even to undo the price that broke it.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(estimates)
+      .set({
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.price !== undefined ? { price: input.price?.toString() ?? null } : {}),
+        ...(input.targetMarginPercent !== undefined
+          ? { targetMarginPercent: input.targetMarginPercent?.toString() ?? null }
+          : {}),
+        ...(input.asOfDate !== undefined ? { asOfDate: input.asOfDate } : {}),
+        ...(input.gnrPolicyId !== undefined ? { gnrPolicyId: input.gnrPolicyId } : {}),
+        ...(input.costingMode !== undefined ? { costingMode: input.costingMode } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(estimates.id, estimateId));
+
+    await persistTotals(estimateId, tx as unknown as DbClient);
+  });
 }
 
 /**

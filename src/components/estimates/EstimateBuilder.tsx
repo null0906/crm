@@ -306,7 +306,9 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
               <div className="ml-auto text-right">
                 <p
                   className={
-                    margin.belowFloor
+                    // A negative margin is a loss whether or not anyone has
+                    // configured a floor, so it does not wait for one to turn red.
+                    margin.belowFloor || margin.marginPercent < 0
                       ? 'text-[20px] font-semibold tabular-nums text-red-600'
                       : 'text-[20px] font-semibold tabular-nums text-slate-900'
                   }

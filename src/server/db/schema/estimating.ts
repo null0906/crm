@@ -291,7 +291,12 @@ export const estimates = pgTable(
     // --- commercial. Margin is guidance; the price is set against the market ---
     price: decimal('price', { precision: 15, scale: 2 }),
     targetMarginPercent: decimal('target_margin_percent', { precision: 5, scale: 2 }),
-    marginPercent: decimal('margin_percent', { precision: 5, scale: 2 }),
+    // Wider than a percentage looks like it needs, because margin on price is
+    // unbounded below: as price falls toward zero, (price - cost) / price goes
+    // to negative infinity. A quote at a tenth of cost is already past 999.99.
+    // Under-pricing is the case this column exists to record, so it must not be
+    // the case that overflows. persistTotals clamps to this range.
+    marginPercent: decimal('margin_percent', { precision: 9, scale: 2 }),
 
     // --- freeze ---
     /** The full CostBreakdown as computed at approval. The immutable record. */
@@ -403,7 +408,12 @@ export const estimateDrivers = pgTable(
       .references(() => sizingDrivers.id, { onDelete: 'restrict' }),
     optionId: uuid('option_id').references(() => sizingDriverOptions.id, { onDelete: 'set null' }),
     numericValue: decimal('numeric_value', { precision: 10, scale: 2 }),
-    multiplierApplied: decimal('multiplier_applied', { precision: 6, scale: 4 }).notNull(),
+    // This is one driver's raw contribution, before the composition ceiling —
+    // the ceiling caps the composed total, not the parts. A numeric driver
+    // computes 1 + perUnit x units, which at the permitted bounds (perUnit 10,
+    // units 1,000,000) reaches ~10 million. Even a mundane +5%/unit driver
+    // passes 99.9999 at an answer of 1,981.
+    multiplierApplied: decimal('multiplier_applied', { precision: 12, scale: 4 }).notNull(),
     source: varchar('source', { length: 60 }),
     answerConfidence: varchar('answer_confidence', { length: 10 }).$type<BaselineConfidence>(),
     position: integer('position').notNull().default(0),
