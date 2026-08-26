@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { SupportCostCard } from './SupportCostCard';
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -145,6 +146,8 @@ export function GnrPolicyTab() {
           </Button>
         </div>
       </div>
+
+      <SupportCostCard />
 
       {policies.length > 1 && (
         <div>

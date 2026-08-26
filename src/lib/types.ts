@@ -130,20 +130,28 @@ export interface RolePermissions {
 // Session user type
 // ---- Cost engine (Pillar 4) ----
 export type CostScope = 'default' | 'role' | 'employee';
-export type CostComponent = 'base' | 'seat' | 'support';
+/**
+ * Support is deliberately absent: it is no longer a per-resource component but
+ * an ordinary cost line seeded onto each estimate, so an estimator can see and
+ * argue with it rather than inheriting it inside an opaque loaded rate.
+ * Seat resolves at employee scope only — it belongs to a person, not a role.
+ */
+export type CostComponent = 'base' | 'seat';
 export type GnrBasis = 'total' | 'labour_only';
+/** How a company-wide support default is applied to an estimate. */
+export type SupportBasis = 'engagement' | 'per_resource_hour';
 
 // ---- Effort catalog, sizing and estimates (Pillar 4) ----
 export type BaselineConfidence = 'low' | 'medium' | 'high';
 export type SizingValueType = 'select' | 'number';
 /** Whether a driver stretches the schedule, grows the team, or both. */
-export type SizingAppliesTo = 'weeks' | 'team' | 'both';
+export type SizingAppliesTo = 'hours' | 'team' | 'both';
 export type SizingComposition = 'multiplicative' | 'additive';
 export type EstimateStatus = 'draft' | 'approved' | 'superseded' | 'archived';
 /** Blended costs at role averages; named costs the specific people proposed. */
 export type CostingMode = 'blended' | 'named';
 export type EstimateCostLineKind = 'non_labour' | 'custom';
-export type CostLineBasis = 'engagement' | 'per_resource_week';
+export type CostLineBasis = 'engagement' | 'per_resource_hour';
 
 export interface SessionUser {
   id: UUID;

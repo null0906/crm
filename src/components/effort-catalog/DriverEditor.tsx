@@ -23,7 +23,7 @@ export interface Driver {
   name: string;
   description: string | null;
   valueType: 'select' | 'number';
-  appliesTo: 'weeks' | 'team' | 'both';
+  appliesTo: 'hours' | 'team' | 'both';
   multiplierPerUnit: string | null;
   unitBaseline: number;
   position: number;
@@ -32,8 +32,8 @@ export interface Driver {
 }
 
 const APPLIES_HINT: Record<string, string> = {
-  weeks: 'Same team, longer engagement.',
-  team: 'Same duration, more people.',
+  hours: 'Same team, more hours each.',
+  team: 'Same hours each, more people.',
   both: 'Split across both, so total effort matches the multiplier rather than squaring it.',
 };
 
@@ -145,7 +145,7 @@ export function DriverEditor({ driver, canEdit }: { driver: Driver; canEdit: boo
               onChange={(e) => setAppliesTo(e.target.value as Driver['appliesTo'])}
               className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700"
             >
-              <option value="weeks">Adds weeks</option>
+              <option value="hours">Adds hours</option>
               <option value="team">Adds people</option>
               <option value="both">Both</option>
             </select>

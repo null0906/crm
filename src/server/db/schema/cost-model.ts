@@ -15,7 +15,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users';
-import type { CostComponent, CostScope, GnrBasis } from '@/lib/types';
+import type { CostComponent, CostScope, GnrBasis, SupportBasis } from '@/lib/types';
 
 /**
  * Delivery roles (FR-P4-54).
@@ -57,13 +57,25 @@ export const userDeliveryRoles = pgTable('user_delivery_roles', {
 });
 
 /**
- * Per-resource weekly cost components (FR-P4-14).
+ * Per-resource hourly cost components (FR-P4-14).
  *
- * Three components — base, seat, support — each effective-dated so a historic
- * estimate resolves the value that applied on its own date (NFR-REP-01).
+ * Two components remain, and they behave differently on purpose:
  *
- * Scope resolution is most-specific-wins: employee > role > default.
- * A `default` row is the company-wide fallback for that component.
+ *   base — what the person is paid. Resolves most-specific-wins across
+ *          employee > role > default, so an estimate can be costed before the
+ *          team is decided.
+ *   seat — desk, laptop, licences, insurance. Belongs to a person, not a role,
+ *          so it resolves at employee scope ONLY. A blended estimate names
+ *          nobody and therefore carries no seat cost; the engine says so.
+ *
+ * Support is no longer here. It became an ordinary cost line on the estimate.
+ *
+ * Amounts are per hour at scale 4: an hourly figure derived from an annual or
+ * weekly salary rarely lands on a whole rupee, and rounding it away would drift
+ * across thousands of hours.
+ *
+ * Every row is effective-dated so a historic estimate resolves the value that
+ * applied on its own date (NFR-REP-01).
  *
  * SECURITY: salary-derived. Never leaves the server without passing through
  * `financial-access.ts`. See NFR-SEC-04 and NFR-SEC-07.
@@ -78,7 +90,7 @@ export const resourceCostComponents = pgTable(
     }),
     userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
     component: varchar('component', { length: 20 }).$type<CostComponent>().notNull(),
-    amountPerWeek: decimal('amount_per_week', { precision: 15, scale: 2 }).notNull(),
+    amountPerHour: decimal('amount_per_hour', { precision: 15, scale: 4 }).notNull(),
     currency: varchar('currency', { length: 3 }).notNull().default('INR'),
     effectiveFrom: date('effective_from').notNull(),
     effectiveTo: date('effective_to'),
@@ -95,11 +107,15 @@ export const resourceCostComponents = pgTable(
     // by the TypeScript union. Most of this schema does not do this; new cost
     // tables must not repeat that.
     check('cost_components_scope_check', sql`${t.scope} IN ('default', 'role', 'employee')`),
+    check('cost_components_component_check', sql`${t.component} IN ('base', 'seat')`),
+    // Seat is a property of employing a specific person, so a role-wide or
+    // company-wide seat rate is meaningless. Enforced here rather than only in
+    // the router, because the router is not the only way rows arrive.
     check(
-      'cost_components_component_check',
-      sql`${t.component} IN ('base', 'seat', 'support')`
+      'cost_components_seat_is_employee_check',
+      sql`${t.component} <> 'seat' OR ${t.scope} = 'employee'`
     ),
-    check('cost_components_amount_check', sql`${t.amountPerWeek} >= 0`),
+    check('cost_components_amount_check', sql`${t.amountPerHour} >= 0`),
     check(
       'cost_components_range_check',
       sql`${t.effectiveTo} IS NULL OR ${t.effectiveTo} >= ${t.effectiveFrom}`
@@ -152,6 +168,51 @@ export const gnrPolicies = pgTable(
   ]
 );
 
+/**
+ * The company-wide support default (FR-P4-17).
+ *
+ * Support — the share of management, admin and internal function that delivery
+ * carries — used to be a per-resource cost component, which meant it reached
+ * the total without anyone seeing it. It is now seeded as a cost line on each
+ * new estimate, so an estimator can see the figure, argue with it, and adjust
+ * it for an engagement that genuinely differs.
+ *
+ * Versioned and effective-dated like the GNR policy. Reproducibility does not
+ * strictly require it — the seeded amount is copied onto the estimate — but a
+ * record of what the default was when a quote went out is worth keeping.
+ */
+export const supportCostPolicies = pgTable(
+  'support_cost_policies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: varchar('name', { length: 100 }).notNull(),
+    version: integer('version').notNull().default(1),
+    /** Read against `basis`: a flat engagement amount, or a rate per resource-hour. */
+    amount: decimal('amount', { precision: 15, scale: 4 }).notNull(),
+    basis: varchar('basis', { length: 30 })
+      .$type<SupportBasis>()
+      .notNull()
+      .default('engagement'),
+    label: varchar('label', { length: 150 }).notNull().default('Support & overhead'),
+    effectiveFrom: date('effective_from').notNull(),
+    effectiveTo: date('effective_to'),
+    notes: text('notes'),
+    createdBy: uuid('created_by').notNull().references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('uq_support_policy_name_version').on(t.name, t.version),
+    index('idx_support_policy_effective').on(t.effectiveFrom),
+    check('support_policy_basis_check', sql`${t.basis} IN ('engagement', 'per_resource_hour')`),
+    check('support_policy_amount_check', sql`${t.amount} >= 0`),
+    check(
+      'support_policy_range_check',
+      sql`${t.effectiveTo} IS NULL OR ${t.effectiveTo} >= ${t.effectiveFrom}`
+    ),
+  ]
+);
+
 export type DeliveryRole = typeof deliveryRoles.$inferSelect;
 export type NewDeliveryRole = typeof deliveryRoles.$inferInsert;
 export type UserDeliveryRole = typeof userDeliveryRoles.$inferSelect;
@@ -159,3 +220,5 @@ export type ResourceCostComponent = typeof resourceCostComponents.$inferSelect;
 export type NewResourceCostComponent = typeof resourceCostComponents.$inferInsert;
 export type GnrPolicy = typeof gnrPolicies.$inferSelect;
 export type NewGnrPolicy = typeof gnrPolicies.$inferInsert;
+export type SupportCostPolicy = typeof supportCostPolicies.$inferSelect;
+export type NewSupportCostPolicy = typeof supportCostPolicies.$inferInsert;

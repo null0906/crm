@@ -176,6 +176,27 @@
       "when": 1787729376832,
       "tag": "0024_widen_margin_and_multiplier",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787732605192,
+      "tag": "0025_hourly_costing_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1787732630816,
+      "tag": "0026_hourly_costing_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1787732744090,
+      "tag": "0027_backfill_support_lines",
+      "breakpoints": true
     }
   ]
 }

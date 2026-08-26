@@ -173,7 +173,7 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
           lines={teamLines.map((l) => ({
             deliveryRoleId: l.deliveryRoleId,
             resourceCount: String(l.resourceCount),
-            weeks: String(Number(l.weeks)),
+            hours: String(Number(l.hours)),
           }))}
           readOnly={readOnly}
           isSaving={updateTeam.isPending}
@@ -183,7 +183,7 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
               lines: lines.map((l) => ({
                 deliveryRoleId: l.deliveryRoleId,
                 resourceCount: Number(l.resourceCount),
-                weeks: Number(l.weeks),
+                hours: Number(l.hours),
               })),
             })
           }
@@ -194,7 +194,7 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
             kind: l.kind as 'non_labour' | 'custom',
             label: l.label,
             amount: String(Number(l.amount)),
-            basis: l.basis as 'engagement' | 'per_resource_week',
+            basis: l.basis as 'engagement' | 'per_resource_hour',
             passThrough: l.passThrough,
           }))}
           readOnly={readOnly}
@@ -220,16 +220,22 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
                       {r.resourceCount} × {r.deliveryRoleName}
                     </p>
                     <p className="text-[10px] text-slate-400">
-                      base {formatCurrency(r.base, currency)} + seat{' '}
-                      {formatCurrency(r.seat, currency)} + support{' '}
-                      {formatCurrency(r.support, currency)}
+                      base {formatCurrency(r.base, currency)}
+                      {' + seat '}
+                      {/* Seat only resolves for a named person, so say which it
+                          is rather than showing a bare zero that reads as free. */}
+                      {r.userId ? (
+                        formatCurrency(r.seat, currency)
+                      ) : (
+                        <span className="text-slate-300">not named</span>
+                      )}
                       {' · from '}
                       {SCOPE_LABEL[r.resolvedFrom.base.scope]}
                       {r.resolvedFrom.base.overridden ? ' (overridden)' : ''}
                     </p>
                   </td>
                   <td className="py-1.5 text-right text-[11px] tabular-nums text-slate-400">
-                    {formatCurrency(r.loadedWeekly, currency)}/w × {r.weeks}w
+                    {formatCurrency(r.loadedHourly, currency)}/h × {r.hours}h
                   </td>
                   <td className="w-32 py-1.5 text-right text-[12px] tabular-nums text-slate-700">
                     {formatCurrency(r.total, currency)}

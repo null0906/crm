@@ -566,7 +566,7 @@ async function seed() {
   const roleBySlug = new Map(roleRows.map((r) => [r.slug, r.id]));
 
   // The seven drivers named in the Engagement Pricing source document.
-  // `appliesTo` records whether a driver stretches the schedule or grows the
+  // `appliesTo` records whether a driver adds hours to each person or grows the
   // team — the same multiplier costs differently depending on which.
   const driverSeed = [
     {
@@ -581,11 +581,11 @@ async function seed() {
     },
     {
       slug: 'cloud_environments', name: 'Cloud environments', valueType: 'number' as const,
-      appliesTo: 'weeks' as const, multiplierPerUnit: '0.0500', unitBaseline: 1, position: 2, options: [],
+      appliesTo: 'hours' as const, multiplierPerUnit: '0.0500', unitBaseline: 1, position: 2, options: [],
     },
     {
       slug: 'physical_locations', name: 'Physical locations', valueType: 'number' as const,
-      appliesTo: 'weeks' as const, multiplierPerUnit: '0.0500', unitBaseline: 1, position: 3, options: [],
+      appliesTo: 'hours' as const, multiplierPerUnit: '0.0500', unitBaseline: 1, position: 3, options: [],
     },
     {
       slug: 'security_maturity', name: 'Existing security maturity', valueType: 'select' as const,
@@ -599,7 +599,7 @@ async function seed() {
     },
     {
       slug: 'prior_certification', name: 'Prior certification history', valueType: 'select' as const,
-      appliesTo: 'weeks' as const, position: 5,
+      appliesTo: 'hours' as const, position: 5,
       options: [
         { value: 'none', label: 'First-time certification', multiplier: '1.1000' },
         { value: 'expired', label: 'Previously certified, lapsed', multiplier: '1.0500' },
@@ -670,10 +670,10 @@ async function seed() {
       .returning();
 
     await db.insert(schema.effortBaselineLines).values([
-      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('lead_consultant')!, resourceCount: 1, weeks: '12.00', position: 0 },
-      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('security_analyst')!, resourceCount: 2, weeks: '8.00', position: 1 },
-      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('compliance_analyst')!, resourceCount: 1, weeks: '6.00', position: 2 },
-      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('qa_review')!, resourceCount: 1, weeks: '2.00', position: 3 },
+      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('lead_consultant')!, resourceCount: 1, hours: '480.00', position: 0 },
+      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('security_analyst')!, resourceCount: 2, hours: '320.00', position: 1 },
+      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('compliance_analyst')!, resourceCount: 1, hours: '240.00', position: 2 },
+      { baselineId: baseline!.id, deliveryRoleId: roleBySlug.get('qa_review')!, resourceCount: 1, hours: '80.00', position: 3 },
     ]);
   }
 

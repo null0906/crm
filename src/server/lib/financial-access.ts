@@ -31,6 +31,12 @@ export const FINANCIAL_FIELDS = [
   'base',
   'seat',
   'support',
+  'loadedHourly',
+  'amountPerHour',
+  'costPerHour',
+  // The week-named fields are gone from the schema. They stay listed because
+  // this is a default-deny registry: a name that matches nothing costs nothing,
+  // and one that is missing is a leak.
   'loadedWeekly',
   'amountPerWeek',
   'costPerWeek',

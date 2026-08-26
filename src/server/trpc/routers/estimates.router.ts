@@ -143,7 +143,7 @@ export const estimatesRouter = router({
             userId: z.string().uuid().nullish(),
             deliveryStage: z.string().trim().max(40).nullish(),
             resourceCount: z.number().int().positive().max(200),
-            weeks: z.number().positive().max(520),
+            hours: z.number().positive().max(20800),
             overrideBase: z.number().nonnegative().nullish(),
             overrideSeat: z.number().nonnegative().nullish(),
             overrideSupport: z.number().nonnegative().nullish(),
@@ -167,7 +167,7 @@ export const estimatesRouter = router({
             kind: z.enum(['non_labour', 'custom']),
             label: z.string().trim().min(1).max(150),
             amount: z.number(),
-            basis: z.enum(['engagement', 'per_resource_week']).default('engagement'),
+            basis: z.enum(['engagement', 'per_resource_hour']).default('engagement'),
             passThrough: z.boolean().default(false),
           })
         ),

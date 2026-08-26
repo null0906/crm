@@ -10,16 +10,19 @@ import type { CostComponent, CostScope, GnrBasis } from '@/lib/types';
 
 type DbClient = typeof defaultDb;
 
-const COMPONENTS: CostComponent[] = ['base', 'seat', 'support'];
+const COMPONENTS: CostComponent[] = ['base', 'seat'];
 
 /** Most-specific-wins. A higher number beats a lower one. */
 const SCOPE_RANK: Record<CostScope, number> = { default: 0, role: 1, employee: 2 };
 
 export interface TeamMemberInput {
   deliveryRoleId: string;
-  /** Optional. When given, the engine costs this named person (FR-P4-18). */
+  /**
+   * Optional. When given, the engine costs this named person (FR-P4-18) — and
+   * only then can a seat cost resolve, because seat belongs to a person.
+   */
   userId?: string | null;
-  weeks: number;
+  hours: number;
   /** How many people in this role. Defaults to 1 so a line is one person. */
   resourceCount?: number;
   /** Per-component overrides. Every figure is editable (FR-P4-55). */
@@ -37,8 +40,8 @@ export interface NonLabourLineInput {
 export interface CustomLineInput {
   label: string;
   amount: number;
-  /** 'per_resource_week' multiplies by total team weeks; 'engagement' is flat. */
-  basis: 'per_resource_week' | 'engagement';
+  /** 'per_resource_hour' multiplies by total team hours; 'engagement' is flat. */
+  basis: 'per_resource_hour' | 'engagement';
   passThrough?: boolean;
 }
 
@@ -65,12 +68,11 @@ export interface CostedResource {
   deliveryRoleId: string;
   deliveryRoleName: string;
   userId: string | null;
-  weeks: number;
+  hours: number;
   resourceCount: number;
   base: number;
   seat: number;
-  support: number;
-  loadedWeekly: number;
+  loadedHourly: number;
   total: number;
   /** Which scope each component resolved from, so the number is explainable. */
   resolvedFrom: Record<CostComponent, { scope: CostScope; overridden: boolean }>;
@@ -80,7 +82,7 @@ export interface CostBreakdown {
   currency: string;
   asOf: string;
   resources: CostedResource[];
-  totalWeeks: number;
+  totalHours: number;
   labourSubtotal: number;
   nonLabourPassThrough: number;
   nonLabourMarkedUp: number;
@@ -127,7 +129,7 @@ async function resolveComponents(
       deliveryRoleId: resourceCostComponents.deliveryRoleId,
       userId: resourceCostComponents.userId,
       component: resourceCostComponents.component,
-      amountPerWeek: resourceCostComponents.amountPerWeek,
+      amountPerHour: resourceCostComponents.amountPerHour,
       effectiveFrom: resourceCostComponents.effectiveFrom,
     })
     .from(resourceCostComponents)
@@ -161,7 +163,7 @@ async function resolveComponents(
         // Later effective_from wins within a scope; rows arrive ascending.
         if (!winner || SCOPE_RANK[row.scope] >= SCOPE_RANK[winner.scope]) {
           winner = {
-            amount: Number(row.amountPerWeek ?? 0),
+            amount: Number(row.amountPerHour ?? 0),
             scope: row.scope,
             overridden: false,
           };
@@ -236,8 +238,11 @@ async function resolveGnr(
 /**
  * The cost engine (FR-P4-15 to FR-P4-18).
  *
- *   per resource, per week: base + seat + support = loaded weekly cost
- *   engagement: Σ(loaded weekly × weeks) + non-labour, × (1 + GNR%)
+ *   per resource, per hour: base + seat = loaded hourly cost
+ *   engagement: Σ(loaded hourly × hours × headcount) + non-labour, × (1 + GNR%)
+ *
+ * Support is no longer a component here. It arrives as a cost line seeded onto
+ * the estimate, so an estimator can see the figure rather than inherit it.
  *
  * Returns raw cost. Callers are responsible for gating the result through
  * `financial-access.ts` before it leaves the server.
@@ -277,10 +282,16 @@ export async function computeCost(
       if (!hit) {
         amounts[component] = 0;
         resolvedFrom[component] = { scope: 'default', overridden: false };
+        const roleName = roleNames.get(member.deliveryRoleId) ?? member.deliveryRoleId;
+        // Seat gets its own wording. "No seat rate for Security Analyst" would
+        // send someone to the role rates looking for a field that no longer
+        // exists there, when what is missing is a rate on a person.
         warnings.push(
-          `No ${component} rate effective on ${asOf} for role ${
-            roleNames.get(member.deliveryRoleId) ?? member.deliveryRoleId
-          }. Treated as zero.`
+          component === 'seat'
+            ? member.userId
+              ? `No seat cost is set for the person on the ${roleName} line. Set it against them in Delivery Roles.`
+              : `${roleName} is costed blended, so no seat cost applies. Name the person to include it.`
+            : `No ${component} rate effective on ${asOf} for role ${roleName}. Treated as zero.`
         );
         continue;
       }
@@ -289,27 +300,26 @@ export async function computeCost(
       resolvedFrom[component] = { scope: hit.scope, overridden: false };
     }
 
-    const loadedWeekly = money(amounts.base + amounts.seat + amounts.support);
+    const loadedHourly = money(amounts.base + amounts.seat);
     const resourceCount = member.resourceCount ?? 1;
 
     return {
       deliveryRoleId: member.deliveryRoleId,
       deliveryRoleName: roleNames.get(member.deliveryRoleId) ?? 'Unknown role',
       userId: member.userId ?? null,
-      weeks: member.weeks,
+      hours: member.hours,
       resourceCount,
       base: money(amounts.base),
       seat: money(amounts.seat),
-      support: money(amounts.support),
-      loadedWeekly,
-      total: money(loadedWeekly * member.weeks * resourceCount),
+      loadedHourly,
+      total: money(loadedHourly * member.hours * resourceCount),
       resolvedFrom,
     };
   });
 
-  // Resource-weeks, not calendar weeks: two analysts for ten weeks is twenty.
-  // This is what a per-resource-week custom line multiplies against.
-  const totalWeeks = resources.reduce((sum, r) => sum + r.weeks * r.resourceCount, 0);
+  // Resource-hours: two analysts for 200 hours each is 400, not 200. This is
+  // what a per-resource-hour line multiplies against, support included.
+  const totalHours = resources.reduce((sum, r) => sum + r.hours * r.resourceCount, 0);
   const labourSubtotal = money(resources.reduce((sum, r) => sum + r.total, 0));
 
   const nonLabour = input.nonLabour ?? [];
@@ -324,7 +334,7 @@ export async function computeCost(
   const customTotal = money(
     (input.customLines ?? []).reduce(
       (sum, line) =>
-        sum + (line.basis === 'per_resource_week' ? line.amount * totalWeeks : line.amount),
+        sum + (line.basis === 'per_resource_hour' ? line.amount * totalHours : line.amount),
       0
     )
   );
@@ -344,7 +354,7 @@ export async function computeCost(
     currency,
     asOf,
     resources,
-    totalWeeks,
+    totalHours,
     labourSubtotal,
     nonLabourPassThrough,
     nonLabourMarkedUp,

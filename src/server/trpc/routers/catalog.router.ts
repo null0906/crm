@@ -22,7 +22,7 @@ const baselineLine = z.object({
   deliveryRoleId: z.string().uuid(),
   deliveryStage: z.string().trim().max(40).nullish(),
   resourceCount: z.number().int().positive().max(200),
-  weeks: z.number().positive().max(520),
+  hours: z.number().positive().max(20800),
 });
 
 async function loadLines(baselineIds: string[]) {
@@ -35,7 +35,7 @@ async function loadLines(baselineIds: string[]) {
       deliveryRoleName: deliveryRoles.name,
       deliveryStage: effortBaselineLines.deliveryStage,
       resourceCount: effortBaselineLines.resourceCount,
-      weeks: effortBaselineLines.weeks,
+      hours: effortBaselineLines.hours,
       position: effortBaselineLines.position,
     })
     .from(effortBaselineLines)
@@ -121,7 +121,7 @@ export const catalogRouter = router({
             deliveryRoleId: line.deliveryRoleId,
             deliveryStage: line.deliveryStage ?? null,
             resourceCount: line.resourceCount,
-            weeks: line.weeks.toString(),
+            hours: line.hours.toString(),
             position: i,
           }))
         );
@@ -183,7 +183,7 @@ export const catalogRouter = router({
             deliveryRoleId: line.deliveryRoleId,
             deliveryStage: line.deliveryStage ?? null,
             resourceCount: line.resourceCount,
-            weeks: line.weeks.toString(),
+            hours: line.hours.toString(),
             position: i,
           }))
         );

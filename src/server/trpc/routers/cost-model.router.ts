@@ -8,6 +8,7 @@ import {
   gnrPolicies,
   marginTargets,
   resourceCostComponents,
+  supportCostPolicies,
   userDeliveryRoles,
   users,
 } from '@/server/db/schema';
@@ -24,7 +25,7 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
 const teamMember = z.object({
   deliveryRoleId: z.string().uuid(),
   userId: z.string().uuid().nullish(),
-  weeks: z.number().positive().max(520),
+  hours: z.number().positive().max(20800),
   resourceCount: z.number().int().positive().max(200).default(1),
   overrides: z
     .object({
@@ -51,7 +52,7 @@ const costInput = z.object({
       z.object({
         label: z.string().trim().min(1),
         amount: z.number(),
-        basis: z.enum(['per_resource_week', 'engagement']),
+        basis: z.enum(['per_resource_hour', 'engagement']),
         passThrough: z.boolean().optional(),
       })
     )
@@ -162,7 +163,7 @@ export const costModelRouter = router({
           deliveryRoleName: deliveryRoles.name,
           userId: resourceCostComponents.userId,
           component: resourceCostComponents.component,
-          amountPerWeek: resourceCostComponents.amountPerWeek,
+          amountPerHour: resourceCostComponents.amountPerHour,
           currency: resourceCostComponents.currency,
           effectiveFrom: resourceCostComponents.effectiveFrom,
           effectiveTo: resourceCostComponents.effectiveTo,
@@ -195,8 +196,8 @@ export const costModelRouter = router({
           scope: z.enum(['default', 'role', 'employee']),
           deliveryRoleId: z.string().uuid().nullish(),
           userId: z.string().uuid().nullish(),
-          component: z.enum(['base', 'seat', 'support']),
-          amountPerWeek: z.number().nonnegative(),
+          component: z.enum(['base', 'seat']),
+          amountPerHour: z.number().nonnegative(),
           currency: z.string().length(3).default('INR'),
           effectiveFrom: isoDate,
           notes: z.string().trim().nullish(),
@@ -212,6 +213,13 @@ export const costModelRouter = router({
         .refine((v) => v.scope !== 'default' || (!v.deliveryRoleId && !v.userId), {
           message: 'A default rate applies company-wide and must not name a role or user.',
           path: ['scope'],
+        })
+        // Mirrors cost_components_seat_is_employee_check. Seat is the cost of
+        // employing a particular person, so a role-wide seat rate is a category
+        // error rather than a permissive default.
+        .refine((v) => v.component !== 'seat' || v.scope === 'employee', {
+          message: 'Seat cost belongs to a person. Set it against an employee, not a role.',
+          path: ['component'],
         })
     )
     .mutation(async ({ ctx, input }) => {
@@ -245,7 +253,7 @@ export const costModelRouter = router({
             deliveryRoleId: input.deliveryRoleId ?? null,
             userId: input.userId ?? null,
             component: input.component,
-            amountPerWeek: input.amountPerWeek.toString(),
+            amountPerHour: input.amountPerHour.toString(),
             currency: input.currency,
             effectiveFrom: input.effectiveFrom,
             notes: input.notes ?? null,
@@ -265,6 +273,76 @@ export const costModelRouter = router({
 
         return created;
       });
+    }),
+
+  // --------------------------------------------------------- support ------
+  /** The overhead default seeded onto each new estimate as a cost line. */
+  getSupportPolicy: financialProcedure
+    .input(z.object({ asOf: isoDate.optional() }).optional())
+    .query(async ({ input }) => {
+      const asOf = input?.asOf ?? new Date().toISOString().slice(0, 10);
+      const [policy] = await db
+        .select()
+        .from(supportCostPolicies)
+        .where(
+          and(
+            sql`${supportCostPolicies.effectiveFrom} <= ${asOf}`,
+            or(
+              isNull(supportCostPolicies.effectiveTo),
+              sql`${supportCostPolicies.effectiveTo} >= ${asOf}`
+            )
+          )
+        )
+        .orderBy(
+          sql`${supportCostPolicies.effectiveFrom} DESC`,
+          sql`${supportCostPolicies.version} DESC`
+        )
+        .limit(1);
+      return policy ?? null;
+    }),
+
+  /** A new amount is a new version, so estimates already built are unaffected. */
+  setSupportPolicy: financialProcedure
+    .input(
+      z.object({
+        name: z.string().trim().min(2).max(100).default('Standard support'),
+        label: z.string().trim().min(2).max(150).default('Support & overhead'),
+        amount: z.number().nonnegative(),
+        basis: z.enum(['engagement', 'per_resource_hour']).default('engagement'),
+        effectiveFrom: isoDate,
+        notes: z.string().trim().nullish(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [{ maxVersion } = { maxVersion: 0 }] = await db
+        .select({ maxVersion: sql<number>`COALESCE(MAX(${supportCostPolicies.version}), 0)::int` })
+        .from(supportCostPolicies)
+        .where(eq(supportCostPolicies.name, input.name));
+
+      const [created] = await db
+        .insert(supportCostPolicies)
+        .values({
+          name: input.name,
+          version: Number(maxVersion) + 1,
+          label: input.label,
+          amount: input.amount.toString(),
+          basis: input.basis,
+          effectiveFrom: input.effectiveFrom,
+          notes: input.notes ?? null,
+          createdBy: ctx.user.id,
+        })
+        .returning();
+
+      await writeAuditLog({
+        userId: ctx.user.id,
+        userEmail: ctx.user.email,
+        action: 'update',
+        entityType: 'support_cost_policy',
+        entityId: created!.id,
+        entityName: `${created!.name} v${created!.version}`,
+        metadata: { amount: input.amount, basis: input.basis, financialWrite: true },
+      });
+      return created;
     }),
 
   // ------------------------------------------------------------- GNR ------
@@ -323,7 +401,7 @@ export const costModelRouter = router({
     const breakdown = await computeCost(input);
     auditFinancialRead(ctx.user, 'cost_estimate', {
       resources: input.team.length,
-      totalWeeks: breakdown.totalWeeks,
+      totalHours: breakdown.totalHours,
     });
     return breakdown;
   }),

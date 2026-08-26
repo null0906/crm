@@ -37,7 +37,7 @@ type Baseline = {
     deliveryRoleId: string;
     deliveryRoleName: string | null;
     resourceCount: number;
-    weeks: string;
+    hours: string;
   }[];
 };
 
@@ -82,20 +82,20 @@ export function BaselinesTab() {
   });
 
   const totalEffort = (b: Baseline) =>
-    b.lines.reduce((sum, l) => sum + l.resourceCount * Number(l.weeks), 0);
+    b.lines.reduce((sum, l) => sum + l.resourceCount * Number(l.hours), 0);
 
   const toLines = (v: BaselineFormValue) =>
     v.lines.map((l) => ({
       deliveryRoleId: l.deliveryRoleId,
       resourceCount: Number(l.resourceCount),
-      weeks: Number(l.weeks),
+      hours: Number(l.hours),
     }));
 
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4">
         <p className="max-w-xl text-[11px] leading-relaxed text-slate-400">
-          What a service line normally takes, as a team over weeks. Sizing drivers scale this into
+          What a service line normally takes, as a team over hours. Sizing drivers scale this into
           an estimate. Revising creates a new version, so estimates keep resolving the version they
           were built from.
         </p>
@@ -149,7 +149,7 @@ export function BaselinesTab() {
             lines: revising.lines.map((l) => ({
               deliveryRoleId: l.deliveryRoleId,
               resourceCount: String(l.resourceCount),
-              weeks: String(Number(l.weeks)),
+              hours: String(Number(l.hours)),
             })),
           }}
           onCancel={() => setRevising(null)}
@@ -182,7 +182,7 @@ export function BaselinesTab() {
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-medium text-slate-800">{b.name}</p>
                   <p className="text-[11px] text-slate-400">
-                    {b.serviceLine} · {b.segment} · v{b.version} · {totalEffort(b)} resource-weeks
+                    {b.serviceLine} · {b.segment} · v{b.version} · {totalEffort(b)} resource-hours
                   </p>
                 </div>
                 <Badge variant={CONFIDENCE_VARIANT[b.confidence as 'low' | 'medium' | 'high']}>
@@ -205,10 +205,10 @@ export function BaselinesTab() {
                         <tr key={l.id} className="border-b border-slate-50 last:border-0">
                           <td className="py-1.5 text-[12px] text-slate-700">{l.deliveryRoleName}</td>
                           <td className="py-1.5 text-right text-[12px] tabular-nums text-slate-500">
-                            {l.resourceCount} × {Number(l.weeks)}w
+                            {l.resourceCount} × {Number(l.hours)}h
                           </td>
                           <td className="w-24 py-1.5 text-right text-[12px] tabular-nums text-slate-400">
-                            {l.resourceCount * Number(l.weeks)} rw
+                            {l.resourceCount * Number(l.hours)} rh
                           </td>
                         </tr>
                       ))}

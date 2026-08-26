@@ -9,7 +9,7 @@ export interface CostLineDraft {
   kind: 'non_labour' | 'custom';
   label: string;
   amount: string;
-  basis: 'engagement' | 'per_resource_week';
+  basis: 'engagement' | 'per_resource_hour';
   passThrough: boolean;
 }
 
@@ -58,8 +58,8 @@ export function CostLinesEditor({
       <div className="mb-3">
         <h2 className="text-[13px] font-medium text-slate-800">Other costs</h2>
         <p className="mt-0.5 text-[11px] text-slate-400">
-          External auditor fees, tooling, travel — plus any variable of your own. Pass-through lines
-          are quoted at cost and earn no margin.
+          Support and overhead, external auditor fees, tooling, travel — plus any variable of your
+          own. Pass-through lines are quoted at cost and earn no margin.
         </p>
       </div>
 
@@ -88,12 +88,12 @@ export function CostLinesEditor({
                 disabled={readOnly}
                 value={line.basis}
                 onChange={(e) =>
-                  update(i, { basis: e.target.value as 'engagement' | 'per_resource_week' })
+                  update(i, { basis: e.target.value as 'engagement' | 'per_resource_hour' })
                 }
                 className="h-8 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 disabled:bg-slate-50"
               >
                 <option value="engagement">per engagement</option>
-                <option value="per_resource_week">per resource-week</option>
+                <option value="per_resource_hour">per resource-hour</option>
               </select>
             )}
             <label className="flex items-center gap-1 text-[11px] text-slate-500">

@@ -11,7 +11,7 @@ import { DEAL_SERVICE_OPTIONS } from '@/lib/constants';
 export interface DraftLine {
   deliveryRoleId: string;
   resourceCount: string;
-  weeks: string;
+  hours: string;
 }
 
 export interface BaselineFormValue {
@@ -48,10 +48,10 @@ export function BaselineForm({
   const [lines, setLines] = useState<DraftLine[]>(initial?.lines ?? []);
 
   const validLines = lines.filter(
-    (l) => l.deliveryRoleId && Number(l.resourceCount) > 0 && Number(l.weeks) > 0
+    (l) => l.deliveryRoleId && Number(l.resourceCount) > 0 && Number(l.hours) > 0
   );
   const canSubmit = serviceLine && name.trim().length > 1 && validLines.length > 0;
-  const effort = validLines.reduce((s, l) => s + Number(l.resourceCount) * Number(l.weeks), 0);
+  const effort = validLines.reduce((s, l) => s + Number(l.resourceCount) * Number(l.hours), 0);
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_4px_rgba(16,24,40,0.04)]">
@@ -105,13 +105,13 @@ export function BaselineForm({
           <Label className="text-[11px]">
             Team shape
             {effort > 0 && (
-              <span className="ml-2 text-slate-400">{effort} resource-weeks</span>
+              <span className="ml-2 text-slate-400">{effort} resource-hours</span>
             )}
           </Label>
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => setLines((l) => [...l, { deliveryRoleId: '', resourceCount: '1', weeks: '' }])}
+            onClick={() => setLines((l) => [...l, { deliveryRoleId: '', resourceCount: '1', hours: '' }])}
           >
             <Plus className="mr-1 h-3 w-3" />
             Add role
@@ -149,12 +149,12 @@ export function BaselineForm({
                 type="number"
                 min={0}
                 step="any"
-                value={line.weeks}
+                value={line.hours}
                 onChange={(e) =>
-                  setLines((ls) => ls.map((l, j) => (j === i ? { ...l, weeks: e.target.value } : l)))
+                  setLines((ls) => ls.map((l, j) => (j === i ? { ...l, hours: e.target.value } : l)))
                 }
                 className="w-24"
-                placeholder="weeks"
+                placeholder="hours"
               />
               <button
                 type="button"

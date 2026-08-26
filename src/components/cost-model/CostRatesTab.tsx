@@ -3,7 +3,6 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
-import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/formatters';
 import {
   COMPONENT_LABEL,
@@ -12,14 +11,16 @@ import {
   type RateTarget,
 } from './RateEditDialog';
 
-const COMPONENTS: CostComponent[] = ['base', 'seat', 'support'];
+// Base only. Seat is set against a person in Delivery Roles, and support is a
+// cost line on the estimate — neither belongs in a role-by-component matrix.
+const COMPONENTS: CostComponent[] = ['base'];
 
 interface ComponentRow {
   id: string;
   scope: 'default' | 'role' | 'employee';
   deliveryRoleId: string | null;
   component: CostComponent;
-  amountPerWeek: string;
+  amountPerHour: string;
   effectiveFrom: string;
 }
 
@@ -72,7 +73,7 @@ export function CostRatesTab() {
       component,
       deliveryRoleId: role?.id ?? null,
       label: scope === 'default' ? 'Company default' : role!.name,
-      currentAmount: shown ? Number(shown.amountPerWeek) : null,
+      currentAmount: shown ? Number(shown.amountPerHour) : null,
       currentSince: shown?.effectiveFrom ?? null,
       isInherited: !own && !!fallback,
     });
@@ -101,7 +102,7 @@ export function CostRatesTab() {
           {shown ? (
             <>
               <span className="text-[13px] tabular-nums text-slate-800">
-                {formatCurrency(Number(shown.amountPerWeek))}
+                {formatCurrency(Number(shown.amountPerHour))}
               </span>
               {!own && (
                 <span className="ml-1.5 text-[10px] text-slate-400">inherited</span>
@@ -118,10 +119,10 @@ export function CostRatesTab() {
   return (
     <div className="space-y-4">
       <p className="text-[11px] leading-relaxed text-slate-400">
-        Cost builds up per resource per week: base + seat + support = loaded weekly cost. A role
-        without its own figure inherits the company default. Editing a rate closes the current one
-        and opens a new one from a date — nothing is overwritten, so historic estimates still
-        reproduce.
+        The hourly salary-derived cost of each delivery role. A role without its own figure
+        inherits the company default, and a person whose cost is genuinely out of line with their
+        role can be given their own rate. Editing a rate closes the current one and opens a new one
+        from a date — nothing is overwritten, so historic estimates still reproduce.
       </p>
 
       {!isLoading && rows.length === 0 && (
@@ -155,12 +156,9 @@ export function CostRatesTab() {
               <th className="px-4 py-3 text-left text-xs font-medium text-slate-500">Role</th>
               {COMPONENTS.map((c) => (
                 <th key={c} className="px-4 py-3 text-left text-xs font-medium text-slate-500">
-                  {COMPONENT_LABEL[c]}
+                  {COMPONENT_LABEL[c]} / hour
                 </th>
               ))}
-              <th className="px-4 py-3 text-left text-xs font-medium text-slate-500">
-                Loaded / week
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -172,14 +170,9 @@ export function CostRatesTab() {
               {COMPONENTS.map((c) => (
                 <Cell key={c} scope="default" component={c} />
               ))}
-              <td className="px-4 py-2.5 text-[12px] text-slate-400">—</td>
             </tr>
 
             {roles.map((role) => {
-              const loaded = COMPONENTS.reduce((sum, c) => {
-                const hit = byRole.get(role.id)?.get(c) ?? defaults.get(c);
-                return sum + (hit ? Number(hit.amountPerWeek) : 0);
-              }, 0);
               return (
                 <tr key={role.id} className="border-b border-slate-100 last:border-0">
                   <td className="px-4 py-2.5">
@@ -188,15 +181,6 @@ export function CostRatesTab() {
                   {COMPONENTS.map((c) => (
                     <Cell key={c} scope="role" component={c} role={role} />
                   ))}
-                  <td className="px-4 py-2.5">
-                    {loaded > 0 ? (
-                      <Badge variant="secondary" className="tabular-nums">
-                        {formatCurrency(loaded)}
-                      </Badge>
-                    ) : (
-                      <span className="text-[12px] text-slate-300">—</span>
-                    )}
-                  </td>
                 </tr>
               );
             })}

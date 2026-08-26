@@ -32,9 +32,9 @@ export interface DriverContribution {
 }
 
 export interface SizingResult {
-  /** Total effort multiplier: weeksMultiplier x teamMultiplier. */
+  /** Total effort multiplier: hoursMultiplier x teamMultiplier. */
   multiplier: number;
-  weeksMultiplier: number;
+  hoursMultiplier: number;
   teamMultiplier: number;
   /** What the drivers composed to before the policy ceiling was applied. */
   rawMultiplier: number;
@@ -72,10 +72,11 @@ async function resolveSizingPolicy(asOf: string, db: DbClient) {
 /**
  * Composes driver answers into a single effort multiplier (FR-P4-09, FR-P4-10).
  *
- * A driver states whether it lengthens the engagement, enlarges the team, or
- * both, because those cost differently. `both` is split as the square root
- * across each axis, so that weeksMultiplier x teamMultiplier reproduces the
- * driver's stated effect on total effort rather than squaring it.
+ * A driver states whether it adds hours to each person's workload, enlarges the
+ * team, or both — the same effort, but a different engagement to staff.
+ * `both` is split as the square root across each axis, so that
+ * hoursMultiplier x teamMultiplier reproduces the driver's stated effect on
+ * total effort rather than squaring it.
  *
  * The policy ceiling is applied to the composed total and reported rather than
  * hidden — a capped estimate is a signal that the drivers disagree with
@@ -95,7 +96,7 @@ export async function composeMultiplier(
   const contributions: DriverContribution[] = [];
   if (!answers.length) {
     return {
-      multiplier: 1, weeksMultiplier: 1, teamMultiplier: 1, rawMultiplier: 1,
+      multiplier: 1, hoursMultiplier: 1, teamMultiplier: 1, rawMultiplier: 1,
       capped: false, maxMultiplier, composition, policyId: policy?.id ?? null,
       contributions, warnings,
     };
@@ -160,23 +161,23 @@ export async function composeMultiplier(
       ? 1 + values.reduce((sum, m) => sum + (m - 1), 0)
       : values.reduce((product, m) => product * m, 1);
 
-  const weeksValues = contributions
-    .filter((c) => c.appliesTo === 'weeks' || c.appliesTo === 'both')
+  const hoursValues = contributions
+    .filter((c) => c.appliesTo === 'hours' || c.appliesTo === 'both')
     .map((c) => (c.appliesTo === 'both' ? Math.sqrt(c.multiplier) : c.multiplier));
   const teamValues = contributions
     .filter((c) => c.appliesTo === 'team' || c.appliesTo === 'both')
     .map((c) => (c.appliesTo === 'both' ? Math.sqrt(c.multiplier) : c.multiplier));
 
-  let weeksMultiplier = combine(weeksValues);
+  let hoursMultiplier = combine(hoursValues);
   let teamMultiplier = combine(teamValues);
-  const rawMultiplier = weeksMultiplier * teamMultiplier;
+  const rawMultiplier = hoursMultiplier * teamMultiplier;
 
   let capped = false;
   let multiplier = rawMultiplier;
   if (rawMultiplier > maxMultiplier) {
     capped = true;
     const scale = Math.sqrt(maxMultiplier / rawMultiplier);
-    weeksMultiplier *= scale;
+    hoursMultiplier *= scale;
     teamMultiplier *= scale;
     multiplier = maxMultiplier;
     warnings.push(
@@ -186,7 +187,7 @@ export async function composeMultiplier(
 
   return {
     multiplier: round4(multiplier),
-    weeksMultiplier: round4(weeksMultiplier),
+    hoursMultiplier: round4(hoursMultiplier),
     teamMultiplier: round4(teamMultiplier),
     rawMultiplier: round4(rawMultiplier),
     capped,
@@ -202,7 +203,7 @@ export interface SizedTeamLine {
   deliveryRoleId: string;
   deliveryStage: string | null;
   resourceCount: number;
-  weeks: number;
+  hours: number;
   position: number;
 }
 
@@ -220,13 +221,13 @@ export interface SizedBaseline {
  * Expands a catalog baseline into a sized team shape (FR-P4-01, FR-P4-13).
  *
  * Headcount is a whole number of people, so the team multiplier is rounded and
- * the rounding residue is folded back into weeks. That keeps total effort equal
+ * the rounding residue is folded back into hours. That keeps total effort equal
  * to baseline effort x multiplier instead of silently drifting by up to half a
  * person per line.
  */
 export async function applyBaseline(
   baselineId: string,
-  sizing: Pick<SizingResult, 'weeksMultiplier' | 'teamMultiplier'>,
+  sizing: Pick<SizingResult, 'hoursMultiplier' | 'teamMultiplier'>,
   db: DbClient = defaultDb
 ): Promise<SizedBaseline> {
   const [baseline] = await db
@@ -252,18 +253,18 @@ export async function applyBaseline(
 
   const sized = lines.map((line) => {
     const baseCount = line.resourceCount;
-    const baseWeeks = Number(line.weeks);
-    const targetEffort = baseCount * baseWeeks * sizing.teamMultiplier * sizing.weeksMultiplier;
+    const baseHours = Number(line.hours);
+    const targetEffort = baseCount * baseHours * sizing.teamMultiplier * sizing.hoursMultiplier;
 
     const resourceCount = Math.max(1, Math.round(baseCount * sizing.teamMultiplier));
-    // Residue from rounding headcount goes into weeks so effort is preserved.
-    const weeks = round2(targetEffort / resourceCount);
+    // Residue from rounding headcount goes into hours so effort is preserved.
+    const hours = round2(targetEffort / resourceCount);
 
     return {
       deliveryRoleId: line.deliveryRoleId,
       deliveryStage: line.deliveryStage,
       resourceCount,
-      weeks,
+      hours,
       position: line.position,
     };
   });

@@ -589,15 +589,15 @@
 
       <p>
         Every engagement we cost comes down to one sentence: <strong>a team of certain people,
-        for a certain number of weeks, plus the things that aren't people, plus a percentage for
+        for a certain number of hours, plus the things that aren't people, plus a percentage for
         the work we pay for but can't bill.</strong>
       </p>
 
-      <div class="formula"><span class="c">per resource, per week</span>
-  base + seat + support  <span class="c">=  loaded weekly cost</span>
+      <div class="formula"><span class="c">per resource, per hour</span>
+  base + seat  <span class="c">=  loaded hourly cost</span>
 
 <span class="c">per engagement</span>
-  ( <span class="k">Σ</span>(loaded weekly <span class="k">×</span> weeks <span class="k">×</span> headcount) + non-labour + custom )  <span class="k">×</span>  (1 + GNR%)</div>
+  ( <span class="k">Σ</span>(loaded hourly <span class="k">×</span> hours <span class="k">×</span> headcount) + support + non-labour )  <span class="k">×</span>  (1 + GNR%)</div>
 
       <p>
         That is the whole model. Everything else in this document is about where each of those
@@ -605,19 +605,27 @@
         at the moment we quoted.
       </p>
 
-      <h3>Why resource-weeks, not hours</h3>
+      <h3>The unit is the resource-hour</h3>
 
       <p>
-        We do not track hours and we are not going to start. We staff engagements by putting named
-        people on them for stretches of calendar time. The unit that matches how we actually work
-        is the <strong>resource-week</strong>: one person, for one week.
+        Everything is priced per hour: one person, for one hour. Rates are hourly, baselines are
+        hourly, and the questionnaire scales hours.
       </p>
 
       <p>
-        Two analysts for ten weeks is twenty resource-weeks — not ten. That distinction matters
-        because it is what per-resource-week costs multiply against, and getting it wrong
-        halves or doubles the estimate.
+        Two analysts for 200 hours each is <strong>400 resource-hours, not 200</strong>. That
+        distinction matters because it is what per-resource-hour costs multiply against — support
+        among them — and getting it wrong halves or doubles the estimate.
       </p>
+
+      <div class="note">
+        <p class="note-h">If you are used to the old weekly figures</p>
+        <p>
+          The system used to price per resource-week. Everything converted at <strong>40 hours per
+          week</strong>: rates divided by 40, effort multiplied by 40. No total moved. A rate of
+          ₹80,000 a week is ₹2,000 an hour, and a 14-week line is 560 hours.
+        </p>
+      </div>
 
       <h3>The seven stages</h3>
 
@@ -626,7 +634,7 @@
         <div><span class="n">02</span><span class="lbl">Scoping</span><span class="sub">how this one differs</span></div>
         <div><span class="n">03</span><span class="lbl">Sizing</span><span class="sub">the team shape</span></div>
         <div><span class="n">04</span><span class="lbl">Rates</span><span class="sub">what people cost</span></div>
-        <div><span class="n">05</span><span class="lbl">Non-labour</span><span class="sub">tools, travel, licences</span></div>
+        <div><span class="n">05</span><span class="lbl">Other costs</span><span class="sub">support, tools, travel</span></div>
         <div><span class="n">06</span><span class="lbl">GNR</span><span class="sub">the unbillable uplift</span></div>
         <div><span class="n">07</span><span class="lbl">Margin</span><span class="sub">cost against price</span></div>
       </div>
@@ -661,7 +669,7 @@
 
       <p>
         A baseline is our institutional memory for a service line, written down as a team shape.
-        Not a price, not a duration — a list of roles, how many of each, and for how many weeks.
+        Not a price, not a duration — a list of roles, how many of each, and for how many hours.
       </p>
 
       <p>
@@ -674,12 +682,12 @@
         <p class="ex-tag">Baseline · SOC 2 mid-market · v3</p>
         <div class="tw">
           <table>
-            <thead><tr><th>Delivery role</th><th class="r">People</th><th class="r">Weeks</th><th class="r">Resource-weeks</th></tr></thead>
+            <thead><tr><th>Delivery role</th><th class="r">People</th><th class="r">Hours each</th><th class="r">Resource-hours</th></tr></thead>
             <tbody>
-              <tr><td>Lead Consultant</td><td class="r">1</td><td class="r">6</td><td class="r">6</td></tr>
-              <tr><td>Security Analyst</td><td class="r">2</td><td class="r">8</td><td class="r">16</td></tr>
-              <tr><td>QA Reviewer</td><td class="r">1</td><td class="r">2</td><td class="r">2</td></tr>
-              <tr class="total"><td>Baseline effort</td><td class="r"></td><td class="r"></td><td class="r">24</td></tr>
+              <tr><td>Lead Consultant</td><td class="r">1</td><td class="r">240</td><td class="r">240</td></tr>
+              <tr><td>Security Analyst</td><td class="r">2</td><td class="r">320</td><td class="r">640</td></tr>
+              <tr><td>QA Reviewer</td><td class="r">1</td><td class="r">80</td><td class="r">80</td></tr>
+              <tr class="total"><td>Baseline effort</td><td class="r"></td><td class="r"></td><td class="r">960</td></tr>
             </tbody>
           </table>
         </div>
@@ -763,19 +771,19 @@
       <h3>What a driver changes matters commercially</h3>
 
       <p>
-        Every driver declares whether it <strong>adds weeks</strong>, <strong>adds people</strong>,
-        or <strong>both</strong> — because those are not the same money.
+        Every driver declares whether it <strong>adds hours</strong>, <strong>adds people</strong>,
+        or <strong>both</strong> — the same effort, but a different engagement to staff and schedule.
       </p>
 
       <ul class="plain">
-        <li><strong>Adds weeks</strong> — same team, longer engagement. Three cloud environments the same two analysts have to work through in sequence.</li>
-        <li><strong>Adds people</strong> — same duration, bigger team. A deadline that cannot move, so you parallelise.</li>
+        <li><strong>Adds hours</strong> — same team, more work each. Three cloud environments the same two analysts have to work through in sequence.</li>
+        <li><strong>Adds people</strong> — same hours each, bigger team. A deadline that cannot move, so you parallelise.</li>
         <li><strong>Both</strong> — the effect splits across the two axes.</li>
       </ul>
 
       <p>
         A <strong>both</strong> driver contributes the <em>square root</em> of its weight to each
-        axis. A 1.44× driver contributes 1.2× to weeks and 1.2× to team — and 1.2 × 1.2 = 1.44, the
+        axis. A 1.44× driver contributes 1.2× to hours and 1.2× to team — and 1.2 × 1.2 = 1.44, the
         effect it declared. Applying the full 1.44 to both axes would produce 2.07×, silently
         squaring the driver's stated effect.
       </p>
@@ -786,7 +794,7 @@
           <table>
             <thead><tr><th>Question</th><th>Answer</th><th>Applies to</th><th class="r">Weight</th></tr></thead>
             <tbody>
-              <tr><td>Subsidiaries in scope</td><td>3</td><td>weeks</td><td class="r">1.20</td></tr>
+              <tr><td>Subsidiaries in scope</td><td>3</td><td>hours</td><td class="r">1.20</td></tr>
               <tr><td>Regulatory regime</td><td>Multi-jurisdiction</td><td>both</td><td class="r">1.30</td></tr>
               <tr><td>Client security maturity</td><td>None in place</td><td>team</td><td class="r">1.25</td></tr>
             </tbody>
@@ -794,7 +802,7 @@
         </div>
         <div class="formula"><span class="c">the "both" driver splits: √1.30 = 1.1402</span>
 
-weeks   =  1.20 <span class="k">×</span> 1.1402  =  <span class="k">1.3682</span>
+hours   =  1.20 <span class="k">×</span> 1.1402  =  <span class="k">1.3682</span>
 team    =  1.25 <span class="k">×</span> 1.1402  =  <span class="k">1.4252</span>
 <span class="c">─────────────────────────────────────</span>
 total   =  1.3682 <span class="k">×</span> 1.4252  =  <span class="k">1.9500×</span></div>
@@ -823,20 +831,20 @@ total   =  1.3682 <span class="k">×</span> 1.4252  =  <span class="k">1.9500×<
 
       <div class="ex">
         <p class="ex-tag">If Meridian had also been rushed</p>
-        <p>Add a fourth driver — <em>Timeline: compressed, ×1.45, adds weeks</em>:</p>
-        <div class="formula">weeks   =  1.20 <span class="k">×</span> 1.45 <span class="k">×</span> 1.1402  =  1.9839
+        <p>Add a fourth driver — <em>Timeline: compressed, ×1.45, adds hours</em>:</p>
+        <div class="formula">hours   =  1.20 <span class="k">×</span> 1.45 <span class="k">×</span> 1.1402  =  1.9839
 team    =  1.4252
 <span class="c">─────────────────────────────────────</span>
 raw     =  <span class="k">2.8275×</span>   <span class="c">← above the 2.50 ceiling</span>
 
 <span class="c">scale = √(2.50 / 2.8275) = 0.9403, applied to both axes</span>
 
-weeks   =  1.8655        team  =  1.3402
+hours   =  1.8655        team  =  1.3402
 total   =  <span class="k">2.5000×</span>   <span class="c">← capped, and flagged</span></div>
       </div>
 
       <p>
-        Note the cap scales <em>both axes</em> rather than clamping the total. Weeks and team are
+        Note the cap scales <em>both axes</em> rather than clamping the total. Hours and team are
         used separately in the next stage, so clamping only their product would leave the two
         inconsistent with the answer.
       </p>
@@ -882,7 +890,7 @@ total   =  <span class="k">2.5000×</span>   <span class="c">← capped, and fla
 
       <p>
         Now the baseline shape gets stretched by the two multipliers. Headcount goes up by the
-        team multiplier, weeks go up by the weeks multiplier.
+        team multiplier, hours go up by the hours multiplier.
       </p>
 
       <p>
@@ -893,33 +901,33 @@ total   =  <span class="k">2.5000×</span>   <span class="c">← capped, and fla
 
       <p>
         So the engine rounds headcount, then <strong>folds the rounding residue back into
-        weeks</strong>. Total effort comes out exactly equal to baseline effort × multiplier,
+        hours</strong>. Total effort comes out exactly equal to baseline effort × multiplier,
         every time.
       </p>
 
       <div class="ex">
-        <p class="ex-tag">Meridian sized · team ×1.4252, weeks ×1.3682</p>
+        <p class="ex-tag">Meridian sized · team ×1.4252, hours ×1.3682</p>
         <div class="tw">
           <table>
-            <thead><tr><th>Role</th><th class="r">People</th><th class="r">Weeks</th><th class="r">Resource-weeks</th></tr></thead>
+            <thead><tr><th>Role</th><th class="r">People</th><th class="r">Hours each</th><th class="r">Resource-hours</th></tr></thead>
             <tbody>
-              <tr><td>Lead Consultant</td><td class="r">1</td><td class="r">11.70</td><td class="r">11.70</td></tr>
-              <tr><td>Security Analyst</td><td class="r">3</td><td class="r">10.40</td><td class="r">31.20</td></tr>
-              <tr><td>QA Reviewer</td><td class="r">1</td><td class="r">3.90</td><td class="r">3.90</td></tr>
-              <tr class="total"><td>Sized effort</td><td class="r"></td><td class="r"></td><td class="r">46.80</td></tr>
+              <tr><td>Lead Consultant</td><td class="r">1</td><td class="r">468</td><td class="r">468</td></tr>
+              <tr><td>Security Analyst</td><td class="r">3</td><td class="r">416</td><td class="r">1,248</td></tr>
+              <tr><td>QA Reviewer</td><td class="r">1</td><td class="r">156</td><td class="r">156</td></tr>
+              <tr class="total"><td>Sized effort</td><td class="r"></td><td class="r"></td><td class="r">1,872</td></tr>
             </tbody>
           </table>
         </div>
         <div class="formula"><span class="c">The analyst line is where the correction shows:</span>
 
-target effort  =  2 people <span class="k">×</span> 8 weeks <span class="k">×</span> 1.95   =  31.20
+target effort  =  2 people <span class="k">×</span> 320 hours <span class="k">×</span> 1.95   =  1,248
 headcount      =  round(2 <span class="k">×</span> 1.4252)  =  round(2.85)  =  <span class="k">3</span>
-weeks          =  31.20 / 3                =  <span class="k">10.40</span>
+hours each     =  1,248 / 3                  =  <span class="k">416</span>
 
-<span class="c">naive would have been 8 × 1.95 = 15.60 weeks for 3 people</span>
-<span class="c">= 46.80 resource-weeks on one line alone. 50% over.</span>
+<span class="c">naive would have been 320 × 1.95 = 624 hours for 3 people</span>
+<span class="c">= 1,872 resource-hours on one line alone. 50% over.</span>
 
-<span class="c">check:  24 baseline × 1.95  =  46.80  ✓</span></div>
+<span class="c">check:  960 baseline × 1.95  =  1,872  ✓</span></div>
       </div>
 
       <p>
@@ -938,18 +946,30 @@ weeks          =  31.20 / 3                =  <span class="k">10.40</span>
       <h2>Pricing the people</h2>
 
       <p>
-        Every resource costs three things per week, and they are kept separate because they answer
-        to different people and move on different cycles.
+        Two things make up what a person costs per hour, and they behave differently on purpose.
       </p>
 
       <dl class="kv">
-        <dt>base</dt><dd>Salary cost. What the person is paid, expressed weekly.</dd>
-        <dt>seat</dt><dd>Desk, laptop, licences, insurance — the cost of having them employed at all.</dd>
-        <dt>support</dt><dd>The share of management, admin and internal function that delivery carries.</dd>
+        <dt>base</dt>
+        <dd>Salary cost. What the person is paid, expressed hourly. Falls back to the role when
+        nobody is named yet.</dd>
+        <dt>seat</dt>
+        <dd>Desk, laptop, licences, insurance — the cost of having <em>that person</em> employed.
+        Set against the individual, never the role.</dd>
       </dl>
 
-      <div class="formula">loaded weekly cost  =  base + seat + support
-line total          =  loaded weekly <span class="k">×</span> weeks <span class="k">×</span> headcount</div>
+      <div class="formula">loaded hourly cost  =  base + seat
+line total          =  loaded hourly <span class="k">×</span> hours <span class="k">×</span> headcount</div>
+
+      <div class="note">
+        <p class="note-h">Seat needs a name</p>
+        <p>
+          Because seat belongs to a person, a <strong>blended</strong> estimate — one that names
+          nobody — carries no seat cost at all, and the engine says so rather than costing it at
+          zero in silence. Switch the estimate to <strong>named</strong> and attach people to get
+          the real number.
+        </p>
+      </div>
 
       <h3>Most-specific-wins</h3>
 
@@ -960,7 +980,7 @@ line total          =  loaded weekly <span class="k">×</span> weeks <span class
 
       <div class="tw">
         <table>
-          <caption>Scope resolution</caption>
+          <caption>Scope resolution — base</caption>
           <thead><tr><th>Scope</th><th>Set on</th><th>Beats</th></tr></thead>
           <tbody>
             <tr><td>employee</td><td>One named person</td><td>role, default</td></tr>
@@ -971,9 +991,14 @@ line total          =  loaded weekly <span class="k">×</span> weeks <span class
       </div>
 
       <p>
-        In practice you set <code>seat</code> and <code>support</code> once at company default and
-        almost never touch them, set <code>base</code> per delivery role, and add employee-scope
-        rows only for people whose cost is genuinely out of line with their role.
+        <strong>Seat has no such ladder.</strong> It exists at employee scope or not at all — a
+        role-wide seat rate is a category error, and the database refuses one.
+      </p>
+
+      <p>
+        In practice you set <code>base</code> per delivery role, add an employee-scope base only
+        for people whose cost is genuinely out of line with their role, and set <code>seat</code>
+        once per person when they join.
       </p>
 
       <p>
@@ -1019,34 +1044,34 @@ line total          =  loaded weekly <span class="k">×</span> weeks <span class
       </p>
 
       <ul class="plain">
-        <li><strong>Blended</strong> — everyone in a role costs the role rate. Right for early-stage deals where you don't know who is available.</li>
-        <li><strong>Named</strong> — specific people are attached to lines, and their employee-scope rates apply. Right when the team is decided and you want the real number.</li>
+        <li><strong>Blended</strong> — everyone in a role costs the role rate, and no seat cost applies. Right for early-stage deals where nobody is picked yet, but it understates cost by the seat.</li>
+        <li><strong>Named</strong> — specific people are attached to lines, so their own base and their seat both apply. Right when the team is decided and you want the real number.</li>
       </ul>
 
       <h3>Every figure is overridable</h3>
 
       <p>
-        Any of the three components can be overridden on a single line of a single estimate. An
-        override does not touch the rate table — it applies to that line only, and the estimate
-        records that the figure was overridden rather than resolved.
+        Either component can be overridden on a single line of a single estimate. An override does
+        not touch the rate table — it applies to that line only, and the estimate records that the
+        figure was overridden rather than resolved.
       </p>
 
       <div class="ex">
-        <p class="ex-tag">Meridian labour · blended, as of the quote date</p>
+        <p class="ex-tag">Meridian labour · named, as of the quote date</p>
         <div class="tw">
           <table>
-            <thead><tr><th>Role</th><th class="r">base</th><th class="r">seat</th><th class="r">support</th><th class="r">loaded/wk</th><th class="r">Line total</th></tr></thead>
+            <thead><tr><th>Role</th><th class="r">base/hr</th><th class="r">seat/hr</th><th class="r">loaded/hr</th><th class="r">Hours</th><th class="r">Line total</th></tr></thead>
             <tbody>
-              <tr><td>Lead Consultant</td><td class="r">95,000</td><td class="r">6,000</td><td class="r">4,500</td><td class="r">1,05,500</td><td class="r">12,34,350</td></tr>
-              <tr><td>Security Analyst ×3</td><td class="r">52,000</td><td class="r">6,000</td><td class="r">4,500</td><td class="r">62,500</td><td class="r">19,50,000</td></tr>
-              <tr><td>QA Reviewer</td><td class="r">44,000</td><td class="r">6,000</td><td class="r">4,500</td><td class="r">54,500</td><td class="r">2,12,550</td></tr>
-              <tr class="total"><td>Labour subtotal</td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r">33,96,900</td></tr>
+              <tr><td>Lead Consultant</td><td class="r">2,375</td><td class="r">150</td><td class="r">2,525</td><td class="r">468</td><td class="r">11,81,700</td></tr>
+              <tr><td>Security Analyst ×3</td><td class="r">1,300</td><td class="r">150</td><td class="r">1,450</td><td class="r">1,248</td><td class="r">18,09,600</td></tr>
+              <tr><td>QA Reviewer</td><td class="r">1,100</td><td class="r">150</td><td class="r">1,250</td><td class="r">156</td><td class="r">1,95,000</td></tr>
+              <tr class="total"><td>Labour subtotal</td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r">1,872</td><td class="r">31,86,300</td></tr>
             </tbody>
           </table>
         </div>
         <p style="margin-top:0.9rem">
-          <code>seat</code> and <code>support</code> resolved from company default;
-          <code>base</code> from role scope. The analyst line is 62,500 × 10.40 weeks × 3 people.
+          <code>base</code> resolved from role scope, <code>seat</code> from each named person. The
+          analyst line is 1,450 × 416 hours × 3 people = 1,450 × 1,248.
         </p>
       </div>
     </section>
@@ -1059,13 +1084,39 @@ line total          =  loaded weekly <span class="k">×</span> weeks <span class
       <span class="stage-mark">Stage 05</span>
       <h2>Everything that isn't people</h2>
 
-      <p>Two kinds of line, and the difference between them is commercial, not technical.</p>
+      <p>
+        Three kinds of line. The difference between them is commercial, not technical.
+      </p>
+
+      <h3>Support &amp; overhead</h3>
+
+      <p>
+        The share of management, admin and internal function that delivery carries. It used to be
+        folded into every hourly rate, which meant it reached the total without anyone seeing it.
+        It is now a line like any other, <strong>added automatically to every new estimate</strong>
+        from a configured default.
+      </p>
+
+      <p>
+        That change is the point. A retainer that runs itself and a first-of-its-kind audit that
+        eats management attention should not inherit identical overhead just because nobody looked
+        at it. Now the figure is on screen and can be argued with — or removed, if the engagement
+        genuinely warrants it.
+      </p>
+
+      <p>
+        The default carries a basis of its own: <strong>per resource-hour</strong>, so it scales
+        with the size of the job the way it did when it lived in the rate, or <strong>per
+        engagement</strong> for a flat figure. Changing the default writes a new version, so
+        estimates already built keep the amount they were built with.
+      </p>
 
       <h3>Non-labour</h3>
 
       <p>
-        Tooling licences, travel, third-party testing, certification fees. Each line is marked
-        either <strong>pass-through</strong> or not.
+        Tooling licences, travel, third-party testing, certification fees — real money leaving the
+        business for this engagement. Each line is marked either <strong>pass-through</strong> or
+        not.
       </p>
 
       <ul class="plain">
@@ -1086,32 +1137,32 @@ line total          =  loaded weekly <span class="k">×</span> weeks <span class
 
       <dl class="kv">
         <dt>engagement</dt><dd>A flat amount, once.</dd>
-        <dt>per_resource_week</dt><dd>Multiplied by total resource-weeks across the whole team.</dd>
+        <dt>per_resource_hour</dt><dd>Multiplied by total resource-hours across the whole team.</dd>
       </dl>
 
       <p>
-        The per-resource-week basis is the one that scales properly with the size of the job — an
-        evidence-platform seat, a per-head client security clearance.
+        The per-resource-hour basis is the one that scales properly with the size of the job — an
+        evidence-platform licence, a per-head client security clearance. Support uses it too.
       </p>
 
       <div class="ex">
-        <p class="ex-tag">Meridian · non-labour and custom</p>
+        <p class="ex-tag">Meridian · support and non-labour</p>
         <div class="tw">
           <table>
             <thead><tr><th>Line</th><th>Treatment</th><th class="r">Amount</th></tr></thead>
             <tbody>
+              <tr><td>Support &amp; overhead</td><td><span class="pill">₹125 × 1,872 rh</span></td><td class="r">2,34,000</td></tr>
               <tr><td>Pen-test tooling licence</td><td><span class="pill">marked up</span></td><td class="r">85,000</td></tr>
               <tr><td>Client-site travel, 2 trips</td><td><span class="pill acc">pass-through</span></td><td class="r">64,000</td></tr>
-              <tr><td>Evidence platform seat</td><td><span class="pill">₹1,200 × 46.80 rw</span></td><td class="r">56,160</td></tr>
-              <tr class="total"><td>Non-labour + custom</td><td></td><td class="r">2,05,160</td></tr>
+              <tr class="total"><td>Other costs</td><td></td><td class="r">3,83,000</td></tr>
             </tbody>
           </table>
         </div>
-        <div class="formula">labour subtotal      33,96,900
+        <div class="formula">labour subtotal      31,86,300
+support               2,34,000
 non-labour            1,49,000
-custom                  56,160
 <span class="c">──────────────────────────────</span>
-subtotal before GNR  <span class="k">36,02,060</span></div>
+subtotal before GNR  <span class="k">35,69,300</span></div>
       </div>
     </section>
 
@@ -1134,17 +1185,27 @@ subtotal before GNR  <span class="k">36,02,060</span></div>
         <li><strong>Unbilled travel and admin</strong> — the hours that go into delivery but not onto a bill.</li>
       </ul>
 
+      <div class="note">
+        <p class="note-h">GNR is not support</p>
+        <p>
+          Support is overhead we <em>can</em> attribute to an engagement — the management and admin
+          it actually consumes. GNR is the time we pay for and cannot attribute to anything:
+          the analyst between jobs, the week spent redoing work. Different money, and the reason
+          they are separate lines rather than one blended uplift.
+        </p>
+      </div>
+
       <p>
         This is the number that separates an estimate that looks profitable from a business that
         is profitable. Costing an engagement at the raw sum of its people assumes those people are
-        billable 100% of the year. Nobody is.
+        billable every hour of the year. Nobody is.
       </p>
 
       <h3>Two bases</h3>
 
       <dl class="kv">
         <dt>total</dt>
-        <dd>Applied to labour + non-labour + custom. The default.</dd>
+        <dd>Applied to labour + support + non-labour. The default.</dd>
         <dt>labour_only</dt>
         <dd>
           Applied to labour alone. The stricter reading: bench time is a property of employing
@@ -1154,13 +1215,13 @@ subtotal before GNR  <span class="k">36,02,060</span></div>
 
       <div class="ex">
         <p class="ex-tag">Meridian · GNR at 18%, basis: total</p>
-        <div class="formula">basis              36,02,060
-GNR @ 18%           6,48,371
+        <div class="formula">basis              35,69,300
+GNR @ 18%           6,42,474
 <span class="c">──────────────────────────────</span>
-<span class="k">total delivery cost   42,50,431</span>
+<span class="k">total delivery cost   42,11,774</span>
 
-<span class="c">on labour_only the basis would be 33,96,900,</span>
-<span class="c">GNR 6,11,442, total 42,13,502 — about ₹37,000 less</span></div>
+<span class="c">on labour_only the basis would be 31,86,300,</span>
+<span class="c">GNR 5,73,534, total 41,42,834 — about ₹69,000 less</span></div>
       </div>
 
       <p>
@@ -1239,12 +1300,12 @@ GNR @ 18%           6,48,371
           <table>
             <tbody>
               <tr><td>Price</td><td class="r">62,00,000</td></tr>
-              <tr><td>Total delivery cost</td><td class="r">42,50,431</td></tr>
-              <tr class="sub"><td>Margin</td><td class="r">19,49,569</td></tr>
-              <tr class="sub"><td>Margin %</td><td class="r">31.44%</td></tr>
+              <tr><td>Total delivery cost</td><td class="r">42,11,774</td></tr>
+              <tr class="sub"><td>Margin</td><td class="r">19,88,226</td></tr>
+              <tr class="sub"><td>Margin %</td><td class="r">32.07%</td></tr>
               <tr><td>Clears target (38%)</td><td class="r"><span class="pill bad">no</span></td></tr>
               <tr><td>Below floor (30%)</td><td class="r"><span class="pill good">no</span></td></tr>
-              <tr class="total"><td>Suggested price at target</td><td class="r">68,55,534</td></tr>
+              <tr class="total"><td>Suggested price at target</td><td class="r">67,93,184</td></tr>
             </tbody>
           </table>
         </div>
@@ -1335,7 +1396,7 @@ GNR @ 18%           6,48,371
 
       <p>
         Cost rates are salary-derived. A base rate for a named person is that person's pay,
-        expressed weekly. This is the most sensitive data in the platform and it is treated that
+        expressed hourly. This is the most sensitive data in the platform and it is treated that
         way.
       </p>
 
@@ -1378,7 +1439,7 @@ GNR @ 18%           6,48,371
       <ul class="plain">
         <li><strong>The AI assistant</strong> — cost-related keywords are blocked for users without the entitlement, and the underlying cost tables are unconditionally excluded from any generated SQL.</li>
         <li><strong>Reads are audited</strong> — every read of an individual cost rate is written to the audit log.</li>
-        <li><strong>Reference data stays open</strong> — delivery roles, baselines and driver definitions are readable by everyone. Only money is gated. A salesperson can see that SOC 2 mid-market normally takes 24 resource-weeks without seeing what a resource-week costs.</li>
+        <li><strong>Reference data stays open</strong> — delivery roles, baselines and driver definitions are readable by everyone. Only money is gated. A salesperson can see that SOC 2 mid-market normally takes 960 resource-hours without seeing what a resource-hour costs.</li>
       </ul>
     </section>
 
@@ -1395,8 +1456,10 @@ GNR @ 18%           6,48,371
           <thead><tr><th>What</th><th>Where</th><th>Owner</th><th>Cadence</th></tr></thead>
           <tbody>
             <tr><td>Delivery roles</td><td>Cost Model</td><td>Delivery lead</td><td>Rarely</td></tr>
-            <tr><td>base / seat / support</td><td>Cost Model</td><td>Founder / finance</td><td>Annual, or on a hire</td></tr>
-            <tr><td>GNR policy</td><td>Cost Model</td><td>Founder</td><td>Annual review</td></tr>
+            <tr><td>Hourly base rates</td><td>Cost Model → Cost Rates</td><td>Founder / finance</td><td>Annual</td></tr>
+            <tr><td>Seat cost, per person</td><td>Cost Model → Delivery Roles</td><td>Founder / finance</td><td>On a hire</td></tr>
+            <tr><td>Support default</td><td>Cost Model → Overheads</td><td>Founder</td><td>Annual review</td></tr>
+            <tr><td>GNR policy</td><td>Cost Model → Overheads</td><td>Founder</td><td>Annual review</td></tr>
             <tr><td>Margin targets &amp; floors</td><td>Cost Model</td><td>Founder</td><td>Per planning cycle</td></tr>
             <tr><td>Effort baselines</td><td>Effort Catalog</td><td>Delivery lead</td><td>As delivery evidence lands</td></tr>
             <tr><td>Sizing drivers</td><td>Effort Catalog</td><td>Delivery lead</td><td>When scoping misses something</td></tr>
@@ -1416,8 +1479,9 @@ GNR @ 18%           6,48,371
 
       <ol class="plain">
         <li><strong>Delivery roles</strong> — nothing else can reference a role that doesn't exist.</li>
-        <li><strong>Cost components</strong> — company defaults for seat and support, then base per role.</li>
-        <li><strong>GNR policy</strong> — until this exists every estimate understates cost.</li>
+        <li><strong>Hourly base rates</strong> — a company default, then a rate per delivery role.</li>
+        <li><strong>Seat cost per person</strong> — otherwise named estimates carry no seat and warn.</li>
+        <li><strong>Support default and GNR policy</strong> — until these exist every estimate understates cost.</li>
         <li><strong>Margin targets</strong> — at minimum the company-wide default.</li>
         <li><strong>Composition ceiling</strong> — or accept the 2.5× default.</li>
         <li><strong>Baselines and drivers</strong> — one service line at a time; there is a coverage view showing which lines have no baseline.</li>
@@ -1472,8 +1536,18 @@ GNR @ 18%           6,48,371
         </p>
       </div>
 
+      <div class="note warn">
+        <p class="note-h">5 · Seat cost has to be entered per person</p>
+        <p>
+          Seat used to be one company-wide figure. It is now set against each individual, and
+          nobody has one until somebody enters it. Until then, <strong>named estimates carry no
+          seat cost</strong> — the engine warns, but the estimate is cheap. Setting a delivery role
+          and a seat rate for each person is the first thing to do after this change.
+        </p>
+      </div>
+
       <div class="note">
-        <p class="note-h">5 · Older deal-amount masking not yet consolidated</p>
+        <p class="note-h">6 · Older deal-amount masking not yet consolidated</p>
         <p>
           Deal-value masking predates the cost engine and is still duplicated across seven files.
           The new gate does not yet cover them. Cost and margin are gated correctly; this is about
@@ -1485,6 +1559,7 @@ GNR @ 18%           6,48,371
 
       <ul class="plain">
         <li>The arithmetic — the formulas above are what the code does, verified line by line against this worked example.</li>
+        <li>The move to hourly preserved every existing figure: rates divided by 40, effort multiplied by 40, and the support component became a support line at the same rate.</li>
         <li>Reproducibility — effective dating, versioning and the approval freeze are enforced in the database, not just in application code.</li>
         <li>The access gate — default-deny, read live, audited, with margin correctly treated as a route back to cost.</li>
         <li>Every figure is overridable, and every override is recorded as an override.</li>

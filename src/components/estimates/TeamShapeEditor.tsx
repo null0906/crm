@@ -9,10 +9,10 @@ import { trpc } from '@/lib/trpc';
 export interface TeamLineDraft {
   deliveryRoleId: string;
   resourceCount: string;
-  weeks: string;
+  hours: string;
 }
 
-/** The team shape: which roles, how many people, for how many weeks. */
+/** The team shape: which roles, how many people, for how many hours. */
 export function TeamShapeEditor({
   lines,
   readOnly,
@@ -41,25 +41,25 @@ export function TeamShapeEditor({
   }
 
   const totalEffort = draft.reduce(
-    (sum, l) => sum + (Number(l.resourceCount) || 0) * (Number(l.weeks) || 0),
+    (sum, l) => sum + (Number(l.resourceCount) || 0) * (Number(l.hours) || 0),
     0
   );
   const valid = draft.every(
-    (l) => l.deliveryRoleId && Number(l.resourceCount) > 0 && Number(l.weeks) > 0
+    (l) => l.deliveryRoleId && Number(l.resourceCount) > 0 && Number(l.hours) > 0
   );
 
   return (
     <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_4px_rgba(16,24,40,0.04)]">
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-[13px] font-medium text-slate-800">Team &amp; weeks</h2>
+          <h2 className="text-[13px] font-medium text-slate-800">Team &amp; hours</h2>
           <p className="mt-0.5 text-[11px] text-slate-400">
-            Who is on it and for how long. Cost is charged per person per week.
+            Who is on it and for how long. Cost is charged per person per hour.
           </p>
         </div>
         <div className="text-right">
           <p className="text-[18px] font-semibold tabular-nums text-slate-900">{totalEffort}</p>
-          <p className="text-[10px] text-slate-400">resource-weeks</p>
+          <p className="text-[10px] text-slate-400">resource-hours</p>
         </div>
       </div>
 
@@ -98,11 +98,11 @@ export function TeamShapeEditor({
               type="number"
               min={0}
               step="any"
-              value={line.weeks}
-              onChange={(e) => update(i, { weeks: e.target.value })}
+              value={line.hours}
+              onChange={(e) => update(i, { hours: e.target.value })}
               className="h-8 w-20"
             />
-            <span className="w-10 text-[11px] text-slate-400">weeks</span>
+            <span className="w-10 text-[11px] text-slate-400">hours</span>
             {!readOnly && (
               <button
                 type="button"
@@ -125,7 +125,7 @@ export function TeamShapeEditor({
             size="sm"
             variant="ghost"
             onClick={() => {
-              setDraft((d) => [...d, { deliveryRoleId: '', resourceCount: '1', weeks: '' }]);
+              setDraft((d) => [...d, { deliveryRoleId: '', resourceCount: '1', hours: '' }]);
               setDirty(true);
             }}
           >

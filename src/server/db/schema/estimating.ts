@@ -37,7 +37,7 @@ import type {
 /**
  * Effort baselines (FR-P4-01 to FR-P4-04).
  *
- * What a service line normally takes, expressed as a team shape over weeks.
+ * What a service line normally takes, expressed as a team shape over hours.
  * Versioned rather than edited so an estimate built six months ago still
  * resolves the baseline it was actually built from (NFR-REP-01).
  */
@@ -74,7 +74,7 @@ export const effortBaselines = pgTable(
   ]
 );
 
-/** One role's presence on a baseline: how many people, for how many weeks. */
+/** One role's presence on a baseline: how many people, for how many hours. */
 export const effortBaselineLines = pgTable(
   'effort_baseline_lines',
   {
@@ -87,13 +87,15 @@ export const effortBaselineLines = pgTable(
       .references(() => deliveryRoles.id, { onDelete: 'restrict' }),
     deliveryStage: varchar('delivery_stage', { length: 40 }),
     resourceCount: integer('resource_count').notNull().default(1),
-    weeks: decimal('weeks', { precision: 6, scale: 2 }).notNull(),
+    // Wider than weeks was: the router permits the equivalent of 520 weeks,
+    // which is 20,800 hours and overflows numeric(6,2).
+    hours: decimal('hours', { precision: 8, scale: 2 }).notNull(),
     position: integer('position').notNull().default(0),
   },
   (t) => [
     index('idx_baseline_lines_baseline').on(t.baselineId),
     check('baseline_line_count_check', sql`${t.resourceCount} > 0`),
-    check('baseline_line_weeks_check', sql`${t.weeks} > 0`),
+    check('baseline_line_hours_check', sql`${t.hours} > 0`),
   ]
 );
 
@@ -102,8 +104,9 @@ export const effortBaselineLines = pgTable(
 /**
  * The drivers that genuinely change effort (FR-P4-08).
  *
- * `appliesTo` matters commercially: three cloud environments might add weeks to
- * the schedule or add an analyst to the team, and those cost differently.
+ * `appliesTo` matters for the shape of the team: three cloud environments might
+ * add hours to each person's workload or add an analyst alongside them, which
+ * are the same effort but a different engagement to staff and to schedule.
  */
 export const sizingDrivers = pgTable(
   'sizing_drivers',
@@ -116,7 +119,7 @@ export const sizingDrivers = pgTable(
     appliesTo: varchar('applies_to', { length: 20 })
       .$type<SizingAppliesTo>()
       .notNull()
-      .default('weeks'),
+      .default('hours'),
     /** For numeric drivers: multiplier added per unit above `unitBaseline`. */
     multiplierPerUnit: decimal('multiplier_per_unit', { precision: 6, scale: 4 }),
     unitBaseline: integer('unit_baseline').notNull().default(0),
@@ -129,7 +132,7 @@ export const sizingDrivers = pgTable(
   (t) => [
     index('idx_sizing_drivers_active').on(t.isActive, t.position),
     check('sizing_driver_value_type_check', sql`${t.valueType} IN ('select', 'number')`),
-    check('sizing_driver_applies_to_check', sql`${t.appliesTo} IN ('weeks', 'team', 'both')`),
+    check('sizing_driver_applies_to_check', sql`${t.appliesTo} IN ('hours', 'team', 'both')`),
   ]
 );
 
@@ -330,7 +333,7 @@ export const estimates = pgTable(
   ]
 );
 
-/** The team shape on this estimate: role, headcount, weeks, optional person. */
+/** The team shape on this estimate: role, headcount, hours, optional person. */
 export const estimateTeamLines = pgTable(
   'estimate_team_lines',
   {
@@ -344,17 +347,17 @@ export const estimateTeamLines = pgTable(
     userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
     deliveryStage: varchar('delivery_stage', { length: 40 }),
     resourceCount: integer('resource_count').notNull().default(1),
-    weeks: decimal('weeks', { precision: 6, scale: 2 }).notNull(),
-    // Per-component overrides (FR-P4-55). Null means "use the resolved rate".
-    overrideBase: decimal('override_base', { precision: 15, scale: 2 }),
-    overrideSeat: decimal('override_seat', { precision: 15, scale: 2 }),
-    overrideSupport: decimal('override_support', { precision: 15, scale: 2 }),
+    hours: decimal('hours', { precision: 8, scale: 2 }).notNull(),
+    // Per-component hourly overrides (FR-P4-55). Null means "use the resolved
+    // rate". There is no support override any more — support is a cost line.
+    overrideBase: decimal('override_base', { precision: 15, scale: 4 }),
+    overrideSeat: decimal('override_seat', { precision: 15, scale: 4 }),
     position: integer('position').notNull().default(0),
   },
   (t) => [
     index('idx_estimate_team_estimate').on(t.estimateId),
     check('estimate_team_count_check', sql`${t.resourceCount} > 0`),
-    check('estimate_team_weeks_check', sql`${t.weeks} > 0`),
+    check('estimate_team_hours_check', sql`${t.hours} > 0`),
   ]
 );
 
@@ -385,7 +388,7 @@ export const estimateCostLines = pgTable(
     check('estimate_cost_line_kind_check', sql`${t.kind} IN ('non_labour', 'custom')`),
     check(
       'estimate_cost_line_basis_check',
-      sql`${t.basis} IN ('engagement', 'per_resource_week')`
+      sql`${t.basis} IN ('engagement', 'per_resource_hour')`
     ),
   ]
 );

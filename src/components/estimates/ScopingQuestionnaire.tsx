@@ -65,7 +65,7 @@ export function ScopingQuestionnaire({
               ×{preview.multiplier}
             </p>
             <p className="text-[10px] text-slate-400">
-              weeks ×{preview.weeksMultiplier} · team ×{preview.teamMultiplier}
+              hours ×{preview.hoursMultiplier} · team ×{preview.teamMultiplier}
             </p>
           </div>
         )}
@@ -91,8 +91,8 @@ export function ScopingQuestionnaire({
               <div className="sm:col-span-4">
                 <p className="text-[12px] text-slate-700">{d.name}</p>
                 <p className="text-[10px] text-slate-400">
-                  {d.appliesTo === 'weeks'
-                    ? 'adds weeks'
+                  {d.appliesTo === 'hours'
+                    ? 'adds hours'
                     : d.appliesTo === 'team'
                       ? 'adds people'
                       : 'adds both'}

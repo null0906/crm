@@ -1,10 +1,11 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db as defaultDb } from '@/server/db';
 import {
   estimateCostLines,
   estimateDrivers,
   estimateTeamLines,
   estimates,
+  supportCostPolicies,
 } from '@/server/db/schema';
 import {
   computeCost,
@@ -90,8 +91,36 @@ export interface CreateEstimateInput {
 }
 
 /**
+ * Resolves the support default effective on a date.
+ *
+ * Support used to be a per-resource cost component, which meant it reached the
+ * total without anyone seeing it. It is now seeded as an ordinary cost line so
+ * an estimator can see the figure and adjust it for an engagement that really
+ * does carry more or less overhead than usual.
+ */
+async function resolveSupportPolicy(asOf: string, db: DbClient) {
+  const [policy] = await db
+    .select()
+    .from(supportCostPolicies)
+    .where(
+      and(
+        lte(supportCostPolicies.effectiveFrom, asOf),
+        or(
+          isNull(supportCostPolicies.effectiveTo),
+          sql`${supportCostPolicies.effectiveTo} >= ${asOf}`
+        )
+      )
+    )
+    .orderBy(sql`${supportCostPolicies.effectiveFrom} DESC`, sql`${supportCostPolicies.version} DESC`)
+    .limit(1);
+  return policy ?? null;
+}
+
+/**
  * Creates a draft. When a baseline is given the team shape is seeded from it,
- * otherwise the estimator starts from an empty sheet.
+ * otherwise the estimator starts from an empty sheet. Either way the support
+ * line is seeded, so overhead is on the estimate from the start rather than
+ * remembered by whoever happens to be building it.
  */
 export async function createEstimate(
   input: CreateEstimateInput,
@@ -107,7 +136,7 @@ export async function createEstimate(
     if (input.baselineId) {
       const sized = await applyBaseline(
         input.baselineId,
-        { weeksMultiplier: 1, teamMultiplier: 1 },
+        { hoursMultiplier: 1, teamMultiplier: 1 },
         tx as unknown as DbClient
       );
       baselineVersion = sized.baselineVersion;
@@ -138,9 +167,28 @@ export async function createEstimate(
           deliveryRoleId: line.deliveryRoleId,
           deliveryStage: line.deliveryStage,
           resourceCount: line.resourceCount,
-          weeks: line.weeks.toString(),
+          hours: line.hours.toString(),
           position: line.position,
         }))
+      );
+    }
+
+    const support = await resolveSupportPolicy(asOfDate, tx as unknown as DbClient);
+    if (support) {
+      await tx.insert(estimateCostLines).values({
+        estimateId: created!.id,
+        kind: 'custom',
+        label: support.label,
+        amount: support.amount,
+        basis: support.basis,
+        // Overhead is ours, not the client's disbursement, so it is never
+        // quoted at cost the way a pass-through line is.
+        passThrough: false,
+        position: 0,
+      });
+    } else {
+      warnings.push(
+        'No support cost is configured, so nothing was added for overhead. Set one in Settings under Cost Model.'
       );
     }
 
@@ -227,12 +275,11 @@ export async function recalculate(
       team: teamLines.map((line) => ({
         deliveryRoleId: line.deliveryRoleId,
         userId: estimate.costingMode === 'named' ? line.userId : null,
-        weeks: Number(line.weeks),
+        hours: Number(line.hours),
         resourceCount: line.resourceCount,
         overrides: {
           ...(line.overrideBase !== null ? { base: Number(line.overrideBase) } : {}),
           ...(line.overrideSeat !== null ? { seat: Number(line.overrideSeat) } : {}),
-          ...(line.overrideSupport !== null ? { support: Number(line.overrideSupport) } : {}),
         },
       })),
       nonLabour: costLines
@@ -292,10 +339,9 @@ export async function replaceTeamLines(
     userId?: string | null;
     deliveryStage?: string | null;
     resourceCount: number;
-    weeks: number;
+    hours: number;
     overrideBase?: number | null;
     overrideSeat?: number | null;
-    overrideSupport?: number | null;
   }[],
   db: DbClient = defaultDb
 ): Promise<void> {
@@ -310,10 +356,9 @@ export async function replaceTeamLines(
           userId: line.userId ?? null,
           deliveryStage: line.deliveryStage ?? null,
           resourceCount: line.resourceCount,
-          weeks: line.weeks.toString(),
+          hours: line.hours.toString(),
           overrideBase: line.overrideBase?.toString() ?? null,
           overrideSeat: line.overrideSeat?.toString() ?? null,
-          overrideSupport: line.overrideSupport?.toString() ?? null,
           position: i,
         }))
       );
@@ -328,7 +373,7 @@ export async function replaceCostLines(
     kind: 'non_labour' | 'custom';
     label: string;
     amount: number;
-    basis: 'engagement' | 'per_resource_week';
+    basis: 'engagement' | 'per_resource_hour';
     passThrough: boolean;
   }[],
   db: DbClient = defaultDb
@@ -410,7 +455,7 @@ export async function applyDriverAnswers(
         deliveryRoleId: l.deliveryRoleId,
         deliveryStage: l.deliveryStage,
         resourceCount: l.resourceCount,
-        weeks: l.weeks,
+        hours: l.hours,
       })),
       db
     );

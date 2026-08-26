@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { formatCurrency } from '@/lib/formatters';
+import { RateEditDialog, type RateTarget } from './RateEditDialog';
 
 function slugify(name: string): string {
   return name
@@ -26,6 +28,20 @@ export function DeliveryRolesTab() {
   const utils = trpc.useUtils();
   const { data: roles = [], isLoading } = trpc.costModel.listRoles.useQuery({ includeInactive: true });
   const { data: staff = [] } = trpc.costModel.listStaffWithRoles.useQuery();
+  const { data: components = [] } = trpc.costModel.listComponents.useQuery();
+  const [editingSeat, setEditingSeat] = useState<RateTarget | null>(null);
+
+  /**
+   * Seat cost is set against a person, not a role: it is the cost of employing
+   * that individual — their laptop, licences, desk. A blended estimate names
+   * nobody and so carries no seat cost, which the engine reports rather than
+   * quietly costing at zero.
+   */
+  const seatByUser = new Map(
+    (components as { scope: string; userId: string | null; component: string; amountPerHour: string; effectiveFrom: string }[])
+      .filter((c) => c.component === 'seat' && c.scope === 'employee' && c.userId)
+      .map((c) => [c.userId!, c])
+  );
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
 
@@ -146,8 +162,9 @@ export function DeliveryRolesTab() {
           Who does what
         </h3>
         <p className="mb-2 px-1 text-[11px] text-slate-400">
-          A person&apos;s default delivery role. Used when an estimate is costed against named
-          people rather than role averages.
+          A person&apos;s default delivery role, and what their seat costs per hour. The role is
+          used when an estimate is costed against named people rather than role averages; the seat
+          cost only ever applies to a named person.
         </p>
         <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_4px_rgba(16,24,40,0.04)]">
           <table className="w-full">
@@ -159,6 +176,35 @@ export function DeliveryRolesTab() {
                       {person.firstName} {person.lastName}
                     </p>
                     <p className="text-[11px] text-slate-400">{person.email}</p>
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditingSeat({
+                          scope: 'employee',
+                          component: 'seat',
+                          deliveryRoleId: null,
+                          userId: person.userId,
+                          label: `${person.firstName} ${person.lastName}`,
+                          currentAmount: seatByUser.get(person.userId)
+                            ? Number(seatByUser.get(person.userId)!.amountPerHour)
+                            : null,
+                          currentSince: seatByUser.get(person.userId)?.effectiveFrom ?? null,
+                          isInherited: false,
+                        })
+                      }
+                      className="rounded-md px-2 py-1 text-[12px] tabular-nums text-slate-700 hover:bg-slate-50"
+                    >
+                      {seatByUser.has(person.userId) ? (
+                        <>
+                          {formatCurrency(Number(seatByUser.get(person.userId)!.amountPerHour))}
+                          <span className="ml-1 text-[10px] text-slate-400">seat / hr</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-300">No seat cost</span>
+                      )}
+                    </button>
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <select
@@ -185,6 +231,14 @@ export function DeliveryRolesTab() {
           </table>
         </div>
       </div>
+
+      <RateEditDialog
+        target={editingSeat}
+        onClose={(changed) => {
+          setEditingSeat(null);
+          if (changed) void utils.costModel.listComponents.invalidate();
+        }}
+      />
     </div>
   );
 }

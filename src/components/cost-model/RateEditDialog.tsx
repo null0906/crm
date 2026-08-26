@@ -17,18 +17,16 @@ import {
 } from '@/components/ui/dialog';
 import { formatCurrency } from '@/lib/formatters';
 
-export type CostComponent = 'base' | 'seat' | 'support';
+export type CostComponent = 'base' | 'seat';
 
 export const COMPONENT_LABEL: Record<CostComponent, string> = {
   base: 'Base cost',
   seat: 'Seat cost',
-  support: 'Support cost',
 };
 
 export const COMPONENT_HINT: Record<CostComponent, string> = {
-  base: 'Salary-derived cost of this role, per week.',
-  seat: 'Laptop, infrastructure and tooling for one person, per week.',
-  support: 'HR, admin and internal functions allocated per person, per week.',
+  base: 'Salary-derived cost of this role, per hour.',
+  seat: 'Laptop, infrastructure and tooling for one person, per hour. Set against a person, not a role.',
 };
 
 function today(): string {
@@ -36,10 +34,12 @@ function today(): string {
 }
 
 export interface RateTarget {
-  scope: 'default' | 'role';
+  scope: 'default' | 'role' | 'employee';
   component: CostComponent;
   deliveryRoleId?: string | null;
-  /** Shown in the heading — "Security Analyst" or "Company default". */
+  /** Set for employee scope — seat cost belongs to a person. */
+  userId?: string | null;
+  /** Shown in the heading — "Security Analyst", "Priya Nair", "Company default". */
   label: string;
   currentAmount: number | null;
   currentSince: string | null;
@@ -118,7 +118,7 @@ export function RateEditDialog({
 
           <div>
             <Label htmlFor="rate-amount" className="text-[11px]">
-              New amount per week
+              New amount per hour
             </Label>
             <Input
               id="rate-amount"
@@ -184,8 +184,9 @@ export function RateEditDialog({
               setComponent.mutate({
                 scope: target.scope,
                 deliveryRoleId: target.scope === 'role' ? target.deliveryRoleId : null,
+                userId: target.scope === 'employee' ? target.userId : null,
                 component: target.component,
-                amountPerWeek: parsed,
+                amountPerHour: parsed,
                 effectiveFrom,
               })
             }

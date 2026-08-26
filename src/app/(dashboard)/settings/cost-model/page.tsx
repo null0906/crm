@@ -34,7 +34,7 @@ export default function CostModelSettingsPage() {
           <TabsList>
             <TabsTrigger value="rates">Cost Rates</TabsTrigger>
             <TabsTrigger value="roles">Delivery Roles</TabsTrigger>
-            <TabsTrigger value="gnr">GNR</TabsTrigger>
+            <TabsTrigger value="gnr">Overheads</TabsTrigger>
             <TabsTrigger value="margin">Margin Targets</TabsTrigger>
           </TabsList>
 

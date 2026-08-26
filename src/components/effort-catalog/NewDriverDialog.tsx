@@ -35,7 +35,7 @@ export function NewDriverDialog({
   const utils = trpc.useUtils();
   const [name, setName] = useState('');
   const [valueType, setValueType] = useState<'select' | 'number'>('select');
-  const [appliesTo, setAppliesTo] = useState<'weeks' | 'team' | 'both'>('weeks');
+  const [appliesTo, setAppliesTo] = useState<'hours' | 'team' | 'both'>('hours');
   const [perUnit, setPerUnit] = useState('');
   const [baseline, setBaseline] = useState('0');
 
@@ -112,10 +112,10 @@ export function NewDriverDialog({
               <select
                 id="nd-applies"
                 value={appliesTo}
-                onChange={(e) => setAppliesTo(e.target.value as 'weeks' | 'team' | 'both')}
+                onChange={(e) => setAppliesTo(e.target.value as 'hours' | 'team' | 'both')}
                 className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700"
               >
-                <option value="weeks">Adds weeks</option>
+                <option value="hours">Adds hours</option>
                 <option value="team">Adds people</option>
                 <option value="both">Both</option>
               </select>
