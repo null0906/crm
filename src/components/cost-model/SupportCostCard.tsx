@@ -6,7 +6,6 @@ import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/formatters';
 
 function today(): string {
@@ -22,6 +21,10 @@ function today(): string {
  * argue with it — a retainer carrying almost no admin and a first-of-its-kind
  * audit should not inherit the same overhead just because nobody looked.
  *
+ * Charged per engagement, always. It was briefly settable per resource-hour;
+ * that choice is gone because we do not price overhead that way, and a dropdown
+ * with one real answer is only a chance to pick the wrong one.
+ *
  * Saving writes a new version rather than editing in place, so estimates
  * already built keep the amount they were built with.
  */
@@ -29,17 +32,11 @@ export function SupportCostCard() {
   const utils = trpc.useUtils();
   const { data: policy } = trpc.costModel.getSupportPolicy.useQuery();
   const [amount, setAmount] = useState('');
-  const [basis, setBasis] = useState<'engagement' | 'per_resource_hour'>('per_resource_hour');
-  const [touched, setTouched] = useState(false);
-
-  // Until someone edits, mirror what is configured rather than a guess.
-  const effectiveBasis = touched ? basis : ((policy?.basis ?? 'engagement') as typeof basis);
 
   const save = trpc.costModel.setSupportPolicy.useMutation({
     onSuccess: () => {
       toast.success('Support cost updated', { description: 'Saved as a new version.' });
       setAmount('');
-      setTouched(false);
       void utils.costModel.getSupportPolicy.invalidate();
     },
     onError: (err) => toast.error('Could not update support cost', { description: err.message }),
@@ -52,20 +49,17 @@ export function SupportCostCard() {
     <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_4px_rgba(16,24,40,0.04)]">
       <h3 className="text-[12px] font-medium text-slate-700">Support &amp; overhead</h3>
       <p className="mt-0.5 max-w-xl text-[11px] leading-relaxed text-slate-400">
-        The share of management, admin and internal function that delivery carries. Added to every
-        new estimate as a cost line, where it can be adjusted or removed for an engagement that
-        genuinely differs. Existing estimates keep the figure they were built with.
+        The share of management, admin and internal function that delivery carries. Charged once
+        per engagement and added to every new estimate as a cost line, where it can be adjusted or
+        removed for one that genuinely differs. Existing estimates keep the figure they were built
+        with.
       </p>
 
       <div className="mt-2 flex items-baseline gap-2">
         <span className="text-[18px] font-semibold tabular-nums text-slate-900">
           {policy ? formatCurrency(Number(policy.amount)) : 'none set'}
         </span>
-        {policy && (
-          <Badge variant="secondary">
-            {policy.basis === 'engagement' ? 'per engagement' : 'per resource-hour'}
-          </Badge>
-        )}
+        {policy && <span className="text-[11px] text-slate-400">per engagement</span>}
       </div>
 
       {!policy && (
@@ -91,23 +85,6 @@ export function SupportCostCard() {
             className="mt-1 w-32"
           />
         </div>
-        <div>
-          <Label htmlFor="support-basis" className="text-[11px]">
-            Applied
-          </Label>
-          <select
-            id="support-basis"
-            value={effectiveBasis}
-            onChange={(e) => {
-              setTouched(true);
-              setBasis(e.target.value as typeof basis);
-            }}
-            className="mt-1 h-9 rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700"
-          >
-            <option value="per_resource_hour">per resource-hour</option>
-            <option value="engagement">per engagement</option>
-          </select>
-        </div>
         <Button
           size="sm"
           disabled={!valid || save.isPending}
@@ -116,7 +93,6 @@ export function SupportCostCard() {
               name: policy?.name ?? 'Standard support',
               label: policy?.label ?? 'Support & overhead',
               amount: parsed,
-              basis: effectiveBasis,
               effectiveFrom: today(),
             })
           }
@@ -126,9 +102,7 @@ export function SupportCostCard() {
       </div>
 
       <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
-        {effectiveBasis === 'per_resource_hour'
-          ? 'Scales with the size of the engagement, the way it did when it was part of the hourly rate.'
-          : 'A flat amount, the same on a two-week review as on a six-month programme.'}
+        A flat amount: the same on a two-week review as on a six-month programme.
       </p>
     </div>
   );

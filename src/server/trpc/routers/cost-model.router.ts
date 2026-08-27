@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 import { financialProcedure, protectedProcedure, router } from '../router';
+import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
 import {
   deliveryRoles,
@@ -109,21 +110,55 @@ export const costModelRouter = router({
       return created;
     }),
 
-  assignRoleToUser: financialProcedure
-    .input(z.object({ userId: z.string().uuid(), deliveryRoleId: z.string().uuid() }))
+  /**
+   * Who does what on an engagement.
+   *
+   * Gated on user management rather than financial access: a delivery role is
+   * an org fact, not a cost one, and it is set from the Users page alongside
+   * the platform role. What a role or a person *costs* stays behind
+   * `financialProcedure` — nothing salary-derived is reachable from here.
+   */
+  assignRoleToUser: protectedProcedure
+    .use(requirePermission('users', 'manage'))
+    .input(
+      z.object({
+        userId: z.string().uuid(),
+        /** Null takes the role away rather than assigning one. */
+        deliveryRoleId: z.string().uuid().nullable(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
+      const actor = ctx.user!;
+
+      if (input.deliveryRoleId === null) {
+        await db.delete(userDeliveryRoles).where(eq(userDeliveryRoles.userId, input.userId));
+        await writeAuditLog({
+          userId: actor.id,
+          userEmail: actor.email,
+          action: 'assign',
+          entityType: 'user_delivery_role',
+          entityId: input.userId,
+          metadata: { deliveryRoleId: null, removed: true },
+        });
+        return null;
+      }
+
       const [row] = await db
         .insert(userDeliveryRoles)
-        .values({ ...input, assignedBy: ctx.user.id })
+        .values({
+          userId: input.userId,
+          deliveryRoleId: input.deliveryRoleId,
+          assignedBy: actor.id,
+        })
         .onConflictDoUpdate({
           target: userDeliveryRoles.userId,
-          set: { deliveryRoleId: input.deliveryRoleId, assignedBy: ctx.user.id, updatedAt: new Date() },
+          set: { deliveryRoleId: input.deliveryRoleId, assignedBy: actor.id, updatedAt: new Date() },
         })
         .returning();
 
       await writeAuditLog({
-        userId: ctx.user.id,
-        userEmail: ctx.user.email,
+        userId: actor.id,
+        userEmail: actor.email,
         action: 'assign',
         entityType: 'user_delivery_role',
         entityId: input.userId,

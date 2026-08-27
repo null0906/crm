@@ -146,7 +146,6 @@ export const estimatesRouter = router({
             hours: z.number().positive().max(20800),
             overrideBase: z.number().nonnegative().nullish(),
             overrideSeat: z.number().nonnegative().nullish(),
-            overrideSupport: z.number().nonnegative().nullish(),
           })
         ),
       })
@@ -206,7 +205,9 @@ export const estimatesRouter = router({
         targetMarginPercent: z.number().min(0).max(100).nullish(),
         asOfDate: isoDate.optional(),
         gnrPolicyId: z.string().uuid().nullish(),
-        costingMode: z.enum(['blended', 'named']).optional(),
+        /** null clears the override and falls back to the effective policy. */
+        gnrRateOverride: z.number().min(0).max(100).nullish(),
+        gnrExcluded: z.boolean().optional(),
       })
     )
     .mutation(async ({ input }) =>

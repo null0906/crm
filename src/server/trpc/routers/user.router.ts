@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
-import { users, roles } from '@/server/db/schema';
+import { users, roles, userDeliveryRoles, deliveryRoles } from '@/server/db/schema';
 import { eq, asc, ne } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { writeAuditLog } from '@/server/services/audit.service';
@@ -69,6 +69,10 @@ export const userRouter = router({
    * router — it was previously the only ungated procedure here, which let any
    * authenticated user enumerate every colleague's phone number and role.
    *
+   * Carries the delivery role too — what someone does on an engagement, as
+   * opposed to what they may do in the CRM. Two different questions, answered
+   * side by side on the Users page.
+   *
    * Use `assignable` for dropdowns.
    */
   list: protectedProcedure
@@ -90,10 +94,15 @@ export const userRouter = router({
             name: roles.name,
             slug: roles.slug,
           },
+          deliveryRoleId: userDeliveryRoles.deliveryRoleId,
+          deliveryRoleName: deliveryRoles.name,
           createdAt: users.createdAt,
         })
         .from(users)
         .innerJoin(roles, eq(users.roleId, roles.id))
+        // Left, not inner: most people have no delivery role and must still be listed.
+        .leftJoin(userDeliveryRoles, eq(userDeliveryRoles.userId, users.id))
+        .leftJoin(deliveryRoles, eq(deliveryRoles.id, userDeliveryRoles.deliveryRoleId))
         .where(ne(users.status, 'inactive'))
         .orderBy(asc(users.firstName));
     }),

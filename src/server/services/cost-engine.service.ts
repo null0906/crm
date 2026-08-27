@@ -53,7 +53,7 @@ export interface CostEngineInput {
   asOf?: string;
   /** Pin a specific GNR policy; otherwise the one effective on `asOf` is used. */
   gnrPolicyId?: string | null;
-  /** Explicit GNR override, bypassing policy lookup (FR-P4-55). */
+  /** Explicit GNR rate for this engagement, replacing the policy's (FR-P4-55). */
   gnrRatePercentOverride?: number | null;
   currency?: string;
 }
@@ -189,16 +189,8 @@ async function resolveGnr(
   appliesTo: GnrBasis;
   isOverride: boolean;
 }> {
-  if (input.gnrRatePercentOverride !== undefined && input.gnrRatePercentOverride !== null) {
-    return {
-      policyId: null,
-      policyName: null,
-      policyVersion: null,
-      ratePercent: input.gnrRatePercentOverride,
-      appliesTo: 'total',
-      isOverride: true,
-    };
-  }
+  const hasOverride =
+    input.gnrRatePercentOverride !== undefined && input.gnrRatePercentOverride !== null;
 
   const [policy] = input.gnrPolicyId
     ? await db.select().from(gnrPolicies).where(eq(gnrPolicies.id, input.gnrPolicyId)).limit(1)
@@ -219,19 +211,22 @@ async function resolveGnr(
       policyId: null,
       policyName: null,
       policyVersion: null,
-      ratePercent: 0,
+      ratePercent: hasOverride ? input.gnrRatePercentOverride! : 0,
       appliesTo: 'total',
-      isOverride: false,
+      isOverride: hasOverride,
     };
   }
 
+  // An override changes the rate, not what the rate is charged on: the policy
+  // still decides whether GNR lands on the engagement total or on labour alone.
+  // The policy is not credited as the source when its rate was overridden.
   return {
-    policyId: policy.id,
-    policyName: policy.name,
-    policyVersion: policy.version,
-    ratePercent: Number(policy.ratePercent ?? 0),
+    policyId: hasOverride ? null : policy.id,
+    policyName: hasOverride ? null : policy.name,
+    policyVersion: hasOverride ? null : policy.version,
+    ratePercent: hasOverride ? input.gnrRatePercentOverride! : Number(policy.ratePercent ?? 0),
     appliesTo: policy.appliesTo,
-    isOverride: false,
+    isOverride: hasOverride,
   };
 }
 

@@ -9,12 +9,17 @@ export interface CostLineDraft {
   kind: 'non_labour' | 'custom';
   label: string;
   amount: string;
-  basis: 'engagement' | 'per_resource_hour';
   passThrough: boolean;
 }
 
 /**
  * Non-labour costs and estimator-defined variables (FR-P4-16, FR-P4-56).
+ *
+ * Every line is a flat amount for the whole engagement. Lines could once be
+ * priced per resource-hour; that is gone, because support and overhead — the
+ * only line that used it — is charged per engagement, and a control with one
+ * right answer is only a chance to pick the wrong one. The server still accepts
+ * the other basis for rows written before this, but nothing here produces one.
  *
  * Pass-through matters commercially: an external auditor fee passed through at
  * cost is money moving through you, not margin you earn on it.
@@ -46,7 +51,7 @@ export function CostLinesEditor({
   function add(kind: 'non_labour' | 'custom') {
     setDraft((d) => [
       ...d,
-      { kind, label: '', amount: '', basis: 'engagement', passThrough: kind === 'non_labour' },
+      { kind, label: '', amount: '', passThrough: kind === 'non_labour' },
     ]);
     setDirty(true);
   }
@@ -59,7 +64,8 @@ export function CostLinesEditor({
         <h2 className="text-[13px] font-medium text-slate-800">Other costs</h2>
         <p className="mt-0.5 text-[11px] text-slate-400">
           Support and overhead, external auditor fees, tooling, travel — plus any variable of your
-          own. Pass-through lines are quoted at cost and earn no margin.
+          own. Each is a flat amount for the whole engagement. Pass-through lines are quoted at cost
+          and earn no margin.
         </p>
       </div>
 
@@ -83,19 +89,6 @@ export function CostLinesEditor({
               placeholder="0"
               className="h-8 w-32"
             />
-            {line.kind === 'custom' && (
-              <select
-                disabled={readOnly}
-                value={line.basis}
-                onChange={(e) =>
-                  update(i, { basis: e.target.value as 'engagement' | 'per_resource_hour' })
-                }
-                className="h-8 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-700 disabled:bg-slate-50"
-              >
-                <option value="engagement">per engagement</option>
-                <option value="per_resource_hour">per resource-hour</option>
-              </select>
-            )}
             <label className="flex items-center gap-1 text-[11px] text-slate-500">
               <input
                 type="checkbox"

@@ -56,11 +56,13 @@ export function DeliveryRolesTab() {
   });
 
   const assign = trpc.costModel.assignRoleToUser.useMutation({
-    onSuccess: () => {
-      toast.success('Delivery role assigned');
+    onSuccess: (row) => {
+      toast.success(row ? 'Delivery role assigned' : 'Delivery role cleared');
       void utils.costModel.listStaffWithRoles.invalidate();
+      // Settings -> Users shows the same fact, so it goes stale otherwise.
+      void utils.users.list.invalidate();
     },
-    onError: (err) => toast.error('Could not assign the role', { description: err.message }),
+    onError: (err) => toast.error('Could not change the role', { description: err.message }),
   });
 
   const countFor = (roleId: string) => staff.filter((s) => s.deliveryRoleId === roleId).length;
@@ -210,8 +212,13 @@ export function DeliveryRolesTab() {
                     <select
                       value={person.deliveryRoleId ?? ''}
                       onChange={(e) =>
-                        e.target.value &&
-                        assign.mutate({ userId: person.userId, deliveryRoleId: e.target.value })
+                        // Empty clears the role. This used to be guarded on a
+                        // truthy value, which made "Not assigned" do nothing at
+                        // all — the one option that looked like it should.
+                        assign.mutate({
+                          userId: person.userId,
+                          deliveryRoleId: e.target.value || null,
+                        })
                       }
                       className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[12px] text-slate-700"
                     >

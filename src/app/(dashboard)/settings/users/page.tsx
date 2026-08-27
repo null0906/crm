@@ -159,6 +159,22 @@ export default function UsersSettingsPage() {
   });
   const { data: roles = [] } = trpc.users.listRoles.useQuery();
 
+  // What someone does on an engagement, as opposed to what they may do in the
+  // CRM. Assigning it here is what lets the estimate builder group people by
+  // role and reach their seat cost.
+  const { data: deliveryRoles = [] } = trpc.costModel.listRoles.useQuery();
+  const assignDeliveryRole = trpc.costModel.assignRoleToUser.useMutation({
+    onSuccess: (row) => {
+      toast.success(row ? 'Delivery role assigned' : 'Delivery role cleared');
+      void utils.users.list.invalidate();
+      // The cost-model screens and the estimate person picker read this from
+      // their own query; without this they keep showing the old grouping.
+      void utils.costModel.listStaffWithRoles.invalidate();
+    },
+    onError: (err) =>
+      toast.error('Could not change the delivery role', { description: err.message }),
+  });
+
   const createUser = trpc.users.create.useMutation({
     onSuccess: () => {
       toast.success('User created');
@@ -254,6 +270,26 @@ export default function UsersSettingsPage() {
                 <p className="text-xs text-slate-500 font-mono">{user.email}</p>
               </div>
               <Badge variant="secondary" className="text-xs">{getRoleDisplayName(user.role.name)}</Badge>
+              <select
+                value={user.deliveryRoleId ?? ''}
+                disabled={assignDeliveryRole.isPending}
+                onChange={(e) =>
+                  assignDeliveryRole.mutate({
+                    userId: user.id,
+                    // Empty clears the role; the server deletes rather than upserts.
+                    deliveryRoleId: e.target.value || null,
+                  })
+                }
+                className="w-40 shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 disabled:opacity-60"
+                title="Delivery role — what this person does on an engagement"
+              >
+                <option value="">No delivery role</option>
+                {deliveryRoles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
               {isSuperAdmin && (
                 <div className="w-28 text-right">
                   {user.role.slug === 'super_admin' ? (

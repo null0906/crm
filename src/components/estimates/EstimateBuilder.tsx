@@ -28,6 +28,7 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
   const { data, isLoading, error } = trpc.estimates.getById.useQuery({ id: estimateId });
 
   const [price, setPrice] = useState<string | null>(null);
+  const [gnrRate, setGnrRate] = useState<string | null>(null);
   const [confirmApprove, setConfirmApprove] = useState(false);
 
   const refresh = () => {
@@ -54,7 +55,7 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
     onError: fail('save the costs'),
   });
   const save = trpc.estimates.save.useMutation({
-    onSuccess: () => { toast.success('Saved'); refresh(); },
+    onSuccess: () => { toast.success('Saved'); setGnrRate(null); refresh(); },
     onError: fail('save'),
   });
   const approve = trpc.estimates.approve.useMutation({
@@ -172,6 +173,7 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
         <TeamShapeEditor
           lines={teamLines.map((l) => ({
             deliveryRoleId: l.deliveryRoleId,
+            userId: l.userId ?? '',
             resourceCount: String(l.resourceCount),
             hours: String(Number(l.hours)),
           }))}
@@ -182,6 +184,9 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
               id: estimateId,
               lines: lines.map((l) => ({
                 deliveryRoleId: l.deliveryRoleId,
+                // Empty string clears the person and returns the line to the
+                // role average; the server takes null for that.
+                userId: l.userId || null,
                 resourceCount: Number(l.resourceCount),
                 hours: Number(l.hours),
               })),
@@ -194,7 +199,6 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
             kind: l.kind as 'non_labour' | 'custom',
             label: l.label,
             amount: String(Number(l.amount)),
-            basis: l.basis as 'engagement' | 'per_resource_hour',
             passThrough: l.passThrough,
           }))}
           readOnly={readOnly}
@@ -260,12 +264,81 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
                 <Row label="Custom" value={formatCurrency(breakdown.customTotal, currency)} />
               )}
               <Row
-                label={`GNR ${breakdown.gnr.ratePercent}%`}
-                hint={`on ${breakdown.gnr.appliesTo === 'total' ? 'the total' : 'labour only'}`}
+                label={estimate.gnrExcluded ? 'GNR — excluded' : `GNR ${breakdown.gnr.ratePercent}%`}
+                hint={
+                  estimate.gnrExcluded
+                    ? 'not charged on this engagement'
+                    : `on ${breakdown.gnr.appliesTo === 'total' ? 'the total' : 'labour only'}${
+                        breakdown.gnr.isOverride ? ' · set on this estimate' : ''
+                      }`
+                }
                 value={formatCurrency(breakdown.gnr.gnrAmount, currency)}
               />
             </tbody>
           </table>
+
+          {!readOnly && (
+            <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
+              <label className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={!estimate.gnrExcluded}
+                  onChange={(e) =>
+                    save.mutate({ id: estimateId, gnrExcluded: !e.target.checked })
+                  }
+                />
+                Charge GNR
+              </label>
+              {!estimate.gnrExcluded && (
+                <>
+                  <div>
+                    <Label htmlFor="gnr-rate" className="text-[11px]">
+                      Rate for this engagement
+                    </Label>
+                    <Input
+                      id="gnr-rate"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="any"
+                      className="mt-1 h-8 w-24"
+                      placeholder={String(breakdown.gnr.ratePercent)}
+                      value={gnrRate ?? (estimate.gnrRateOverride ?? '')}
+                      onChange={(e) => setGnrRate(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={save.isPending || gnrRate === null}
+                    onClick={() =>
+                      save.mutate({
+                        id: estimateId,
+                        // Empty clears the override and falls back to the policy.
+                        gnrRateOverride: gnrRate?.trim() ? Number(gnrRate) : null,
+                      })
+                    }
+                  >
+                    {save.isPending ? 'Saving…' : 'Apply'}
+                  </Button>
+                  {estimate.gnrRateOverride !== null && gnrRate === null && (
+                    <button
+                      type="button"
+                      onClick={() => save.mutate({ id: estimateId, gnrRateOverride: null })}
+                      className="pb-1.5 text-[11px] text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline"
+                    >
+                      use the standard rate
+                    </button>
+                  )}
+                </>
+              )}
+              <p className="w-full text-[10px] leading-relaxed text-slate-400">
+                {estimate.gnrExcluded
+                  ? 'Nothing is added for bench time, rework or unbilled admin. The cost below is what this engagement bills for, not what it costs to run.'
+                  : 'Applies to this estimate only. Leave the rate empty to follow the standard policy; changing the policy itself is in Settings under Cost Model.'}
+              </p>
+            </div>
+          )}
 
           <div className="mt-3 flex items-baseline justify-between border-t border-slate-200 pt-3">
             <span className="text-[12px] font-medium text-slate-700">Total delivery cost</span>

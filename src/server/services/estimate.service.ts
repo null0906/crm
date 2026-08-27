@@ -274,7 +274,12 @@ export async function recalculate(
     {
       team: teamLines.map((line) => ({
         deliveryRoleId: line.deliveryRoleId,
-        userId: estimate.costingMode === 'named' ? line.userId : null,
+        // Whether a line is costed against a named person or role averages is a
+        // property of the line, not of the estimate: the lead is usually known
+        // long before the analysts are. A line with nobody named resolves the
+        // role rate, which is exactly what the old estimate-wide 'blended' mode
+        // did, so nothing is lost by deciding it per line.
+        userId: line.userId,
         hours: Number(line.hours),
         resourceCount: line.resourceCount,
         overrides: {
@@ -295,6 +300,9 @@ export async function recalculate(
         })),
       asOf: estimate.asOfDate,
       gnrPolicyId: estimate.gnrPolicyId,
+      // Excluding GNR is a rate of zero the estimator chose; the flag is what
+      // distinguishes it from a zero that means no policy was ever configured.
+      gnrRatePercentOverride: estimate.gnrExcluded ? 0 : num(estimate.gnrRateOverride),
       currency: estimate.currency,
     },
     db
@@ -449,6 +457,18 @@ export async function applyDriverAnswers(
   if (detail.estimate.baselineId) {
     const sized = await applyBaseline(detail.estimate.baselineId, sizing, db);
     warnings.push(...sized.warnings);
+
+    // Re-sizing regenerates the team from the baseline, which cannot know who
+    // was on it. Say so: names disappearing silently reads as a bug, and the
+    // cost drops with them because seat only resolves for a named person.
+    const wereNamed = detail.teamLines.filter((l) => l.userId).length;
+    if (wereNamed > 0) {
+      warnings.push(
+        wereNamed === 1
+          ? 'The person named on the team was cleared by re-sizing. Name them again to include their seat cost.'
+          : `The ${wereNamed} people named on the team were cleared by re-sizing. Name them again to include their seat costs.`
+      );
+    }
     await replaceTeamLines(
       estimateId,
       sized.lines.map((l) => ({
@@ -475,7 +495,8 @@ export async function saveCommercials(
     targetMarginPercent?: number | null;
     asOfDate?: string;
     gnrPolicyId?: string | null;
-    costingMode?: 'blended' | 'named';
+    gnrRateOverride?: number | null;
+    gnrExcluded?: boolean;
   },
   db: DbClient = defaultDb
 ): Promise<void> {
@@ -496,7 +517,10 @@ export async function saveCommercials(
           : {}),
         ...(input.asOfDate !== undefined ? { asOfDate: input.asOfDate } : {}),
         ...(input.gnrPolicyId !== undefined ? { gnrPolicyId: input.gnrPolicyId } : {}),
-        ...(input.costingMode !== undefined ? { costingMode: input.costingMode } : {}),
+        ...(input.gnrRateOverride !== undefined
+          ? { gnrRateOverride: input.gnrRateOverride?.toString() ?? null }
+          : {}),
+        ...(input.gnrExcluded !== undefined ? { gnrExcluded: input.gnrExcluded } : {}),
         updatedAt: new Date(),
       })
       .where(eq(estimates.id, estimateId));

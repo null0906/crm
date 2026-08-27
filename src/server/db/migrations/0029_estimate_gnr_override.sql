@@ -1,0 +1,3 @@
+ALTER TABLE "estimates" ADD COLUMN "gnr_rate_override" numeric(5, 2);--> statement-breakpoint
+ALTER TABLE "estimates" ADD COLUMN "gnr_excluded" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "estimates" ADD CONSTRAINT "estimate_gnr_override_check" CHECK ("estimates"."gnr_rate_override" IS NULL OR ("estimates"."gnr_rate_override" >= 0 AND "estimates"."gnr_rate_override" <= 100));

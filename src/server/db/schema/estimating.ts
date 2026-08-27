@@ -273,8 +273,27 @@ export const estimates = pgTable(
     gnrPolicyId: uuid('gnr_policy_id').references(() => gnrPolicies.id, { onDelete: 'set null' }),
     gnrRatePercent: decimal('gnr_rate_percent', { precision: 5, scale: 2 }),
     gnrAppliesTo: varchar('gnr_applies_to', { length: 20 }).$type<GnrBasis>(),
+    /**
+     * Per-estimate GNR, set on the estimate rather than in the policy.
+     *
+     * `gnrRateOverride` null means "use whatever policy is effective". An
+     * override changes the rate, not what it is charged on — the policy still
+     * decides whether it lands on the total or on labour alone.
+     *
+     * `gnrExcluded` is deliberately a separate flag rather than an override of
+     * 0: a rate of zero because someone chose to exclude it and a rate of zero
+     * because no policy exists are different facts, and only one of them is a
+     * decision.
+     */
+    gnrRateOverride: decimal('gnr_rate_override', { precision: 5, scale: 2 }),
+    gnrExcluded: boolean('gnr_excluded').notNull().default(false),
     /** The date effective-dated rates resolve against. */
     asOfDate: date('as_of_date').notNull(),
+    /**
+     * Superseded by per-line naming: whether a resource is costed against a
+     * named person or a role average is now decided by whether that line names
+     * anyone. Kept because existing rows carry a value; nothing reads it.
+     */
     costingMode: varchar('costing_mode', { length: 20 })
       .$type<CostingMode>()
       .notNull()
@@ -324,6 +343,10 @@ export const estimates = pgTable(
     ),
     check('estimate_costing_mode_check', sql`${t.costingMode} IN ('blended', 'named')`),
     check('estimate_multiplier_check', sql`${t.sizeMultiplier} > 0`),
+    check(
+      'estimate_gnr_override_check',
+      sql`${t.gnrRateOverride} IS NULL OR (${t.gnrRateOverride} >= 0 AND ${t.gnrRateOverride} <= 100)`
+    ),
     // An approved estimate must carry the evidence of its approval. Guards
     // against a status flip that skips the freeze.
     check(
