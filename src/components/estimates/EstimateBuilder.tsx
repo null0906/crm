@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatCurrency, formatDateTime } from '@/lib/formatters';
+import { serviceLineLabel } from '@/lib/service-lines';
 import { ScopingQuestionnaire, type DriverAnswerDraft } from './ScopingQuestionnaire';
 import { TeamShapeEditor, type TeamLineDraft } from './TeamShapeEditor';
 import { CostLinesEditor, type CostLineDraft } from './CostLinesEditor';
@@ -106,7 +107,7 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
             {estimate.title}
           </h1>
           <p className="mt-0.5 text-xs text-slate-400">
-            {estimate.serviceLine ? `${estimate.serviceLine} · ` : ''}
+            {estimate.serviceLine ? `${serviceLineLabel(estimate.serviceLine)} · ` : ''}
             rates as at {estimate.asOfDate}
             {estimate.baselineVersion ? ` · baseline v${estimate.baselineVersion}` : ''}
           </p>

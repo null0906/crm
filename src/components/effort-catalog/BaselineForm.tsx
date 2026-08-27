@@ -6,7 +6,7 @@ import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { DEAL_SERVICE_OPTIONS } from '@/lib/constants';
+import { activeServiceLines } from '@/lib/service-lines';
 
 export interface DraftLine {
   deliveryRoleId: string;
@@ -72,9 +72,9 @@ export function BaselineForm({
             className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700 disabled:bg-slate-50"
           >
             <option value="">Choose…</option>
-            {DEAL_SERVICE_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {activeServiceLines().map((s) => (
+              <option key={s.slug} value={s.slug}>
+                {s.label}
               </option>
             ))}
           </select>

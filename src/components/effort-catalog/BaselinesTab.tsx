@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { serviceLineLabel } from '@/lib/service-lines';
 import {
   Dialog,
   DialogContent,
@@ -115,7 +116,7 @@ export function BaselinesTab() {
               Services being sold with no baseline
             </p>
             <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800">
-              {gaps.map((g) => `${g.serviceLine} (${g.openDeals} open)`).join(' · ')}. Estimates for
+              {gaps.map((g) => `${g.label} (${g.openDeals} open)`).join(' · ')}. Estimates for
               these start from a blank sheet.
             </p>
           </div>
@@ -182,7 +183,8 @@ export function BaselinesTab() {
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-medium text-slate-800">{b.name}</p>
                   <p className="text-[11px] text-slate-400">
-                    {b.serviceLine} · {b.segment} · v{b.version} · {totalEffort(b)} resource-hours
+                    {serviceLineLabel(b.serviceLine)} · {b.segment} · v{b.version} ·{' '}
+                    {totalEffort(b)} resource-hours
                   </p>
                 </div>
                 <Badge variant={CONFIDENCE_VARIANT[b.confidence as 'low' | 'medium' | 'high']}>

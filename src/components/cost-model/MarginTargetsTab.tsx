@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { DEAL_SERVICE_OPTIONS } from '@/lib/constants';
+import { activeServiceLines, serviceLineLabel } from '@/lib/service-lines';
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -88,9 +88,9 @@ export function MarginTargetsTab() {
                 className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700"
               >
                 <option value={COMPANY_DEFAULT}>Company default (all services)</option>
-                {DEAL_SERVICE_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                {activeServiceLines().map((s) => (
+                  <option key={s.slug} value={s.slug}>
+                    {s.label}
                   </option>
                 ))}
               </select>
@@ -186,7 +186,9 @@ export function MarginTargetsTab() {
                   {t.serviceLine === COMPANY_DEFAULT ? (
                     <Badge variant="secondary">Company default</Badge>
                   ) : (
-                    <span className="text-[13px] text-slate-800">{t.serviceLine}</span>
+                    <span className="text-[13px] text-slate-800">
+                      {serviceLineLabel(t.serviceLine)}
+                    </span>
                   )}
                 </td>
                 <td className="px-4 py-2.5 text-[13px] tabular-nums text-slate-800">

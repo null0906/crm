@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { formatCurrency, formatDate } from '@/lib/formatters';
-import { DEAL_SERVICE_OPTIONS } from '@/lib/constants';
+import { activeServiceLines, serviceLineLabel } from '@/lib/service-lines';
 
 const STATUS_VARIANT = {
   draft: 'secondary',
@@ -124,7 +124,7 @@ export function EstimateListTab({ dealId }: { dealId: string }) {
                   <td className="px-4 py-2.5">
                     <p className="text-[13px] text-slate-800">{e.title}</p>
                     <p className="text-[11px] text-slate-400">
-                      {e.serviceLine ? `${e.serviceLine} · ` : ''}
+                      {e.serviceLine ? `${serviceLineLabel(e.serviceLine)} · ` : ''}
                       {formatDate(e.createdAt)}
                     </p>
                   </td>
@@ -199,9 +199,9 @@ export function EstimateListTab({ dealId }: { dealId: string }) {
                 className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700"
               >
                 <option value="">Not set</option>
-                {DEAL_SERVICE_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                {activeServiceLines().map((s) => (
+                  <option key={s.slug} value={s.slug}>
+                    {s.label}
                   </option>
                 ))}
               </select>
@@ -225,7 +225,7 @@ export function EstimateListTab({ dealId }: { dealId: string }) {
               </select>
               {serviceLine && matching.length === 0 && (
                 <p className="mt-1 text-[11px] text-amber-700">
-                  No baseline exists for {serviceLine} yet.
+                  No baseline exists for {serviceLineLabel(serviceLine)} yet.
                 </p>
               )}
             </div>

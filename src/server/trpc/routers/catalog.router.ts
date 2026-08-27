@@ -9,6 +9,7 @@ import {
   effortBaselines,
 } from '@/server/db/schema';
 import { writeAuditLog } from '@/server/services/audit.service';
+import { fromLegacy, serviceLineLabel } from '@/lib/service-lines';
 
 /**
  * The effort catalog (FR-P4-01 to FR-P4-07).
@@ -275,24 +276,57 @@ export const catalogRouter = router({
   /**
    * Service lines being sold with no baseline behind them (FR-P4-07).
    * Reads the services recorded on open prospects.
+   *
+   * The comparison happens here rather than in SQL because the two sides speak
+   * different languages: prospects record what the sales team picked from its
+   * own list ('SOC 2'), baselines record a canonical slug ('soc2_type2'). The
+   * old query compared them lowercased, which matched nothing and reported
+   * every service as uncovered — including the one service that did have a
+   * baseline.
    */
   coverageGaps: protectedProcedure.query(async () => {
     const rows = await db.execute(sql`
-      SELECT service AS service_line, COUNT(*)::int AS open_deals
+      SELECT service, COUNT(*)::int AS open_deals
       FROM (
         SELECT jsonb_array_elements_text(COALESCE(d.services, '[]'::jsonb)) AS service
         FROM deals d
         WHERE d.deleted_at IS NULL AND d.status = 'open'
       ) s
-      WHERE NOT EXISTS (
-        SELECT 1 FROM effort_baselines b
-        WHERE b.is_active = true AND LOWER(b.service_line) = LOWER(s.service)
-      )
       GROUP BY service
-      ORDER BY open_deals DESC
     `);
-    const extract = (r: unknown): { service_line: string; open_deals: number }[] =>
+    const extract = (r: unknown): { service: string; open_deals: number }[] =>
       Array.isArray(r) ? r : ((r as { rows?: unknown[] })?.rows as never) ?? [];
-    return extract(rows).map((r) => ({ serviceLine: r.service_line, openDeals: r.open_deals }));
+
+    const covered = new Set(
+      (
+        await db
+          .select({ serviceLine: effortBaselines.serviceLine })
+          .from(effortBaselines)
+          .where(eq(effortBaselines.isActive, true))
+      )
+        .map((b) => fromLegacy(b.serviceLine))
+        .filter((s): s is string => s !== null)
+    );
+
+    // A service nobody can map is uncovered by definition — there is no slug to
+    // hang a baseline off. Reported under its raw name so it is still findable.
+    const gaps = new Map<string, { serviceLine: string; label: string; openDeals: number }>();
+    for (const row of extract(rows)) {
+      const slug = fromLegacy(row.service);
+      if (slug !== null && covered.has(slug)) continue;
+      const key = slug ?? row.service;
+      const existing = gaps.get(key);
+      if (existing) {
+        existing.openDeals += row.open_deals;
+      } else {
+        gaps.set(key, {
+          serviceLine: key,
+          label: slug ? serviceLineLabel(slug) : row.service,
+          openDeals: row.open_deals,
+        });
+      }
+    }
+
+    return [...gaps.values()].sort((a, b) => b.openDeals - a.openDeals);
   }),
 });
