@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-LOCAL_DATABASE_URL="${LOCAL_DATABASE_URL:-postgresql://crm_user:crm_password@127.0.0.1:5433/seccomply_crm}"
+LOCAL_DATABASE_URL="${LOCAL_DATABASE_URL:-postgresql://crm_user:crm_password@127.0.0.1:5434/seccomply_crm}"
 
 docker compose up -d postgres
 

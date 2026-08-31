@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: crm_user
       POSTGRES_PASSWORD: crm_password
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "${POSTGRES_PORT:-5434}:5432"
     volumes:
       # PG18+ stores data in a major-version subdirectory, so the mount goes
       # at /var/lib/postgresql rather than /data. See docker-library/postgres#1259.

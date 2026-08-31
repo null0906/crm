@@ -3,7 +3,7 @@
 The local development database runs in Docker and is reachable only through:
 
 ```text
-postgresql://crm_user:crm_password@127.0.0.1:5433/seccomply_crm
+postgresql://crm_user:crm_password@127.0.0.1:5434/seccomply_crm
 ```
 
 ## Start with seeded local data

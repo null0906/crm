@@ -979,7 +979,7 @@ Node 22, Docker (for local Postgres), and a `.env` file.
 | Command | Purpose |
 |---|---|
 | `npm run dev` | Dev server |
-| `npm run dev:local` | Dev server pointed at the local Docker Postgres on port 5433 |
+| `npm run dev:local` | Dev server pointed at the local Docker Postgres on port 5434 |
 | `npm run build` / `npm start` | Production build and serve |
 | `npm run db:local:up` / `db:local:down` | Start / stop the local Postgres container |
 | `npm run db:local:setup` | Full local database setup |

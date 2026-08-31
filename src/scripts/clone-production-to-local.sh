@@ -2,14 +2,14 @@
 
 set -euo pipefail
 
-LOCAL_DATABASE_URL="${LOCAL_DATABASE_URL:-postgresql://crm_user:crm_password@127.0.0.1:5433/seccomply_crm}"
+LOCAL_DATABASE_URL="${LOCAL_DATABASE_URL:-postgresql://crm_user:crm_password@127.0.0.1:5434/seccomply_crm}"
 
 if [[ "${CONFIRM_PRODUCTION_CLONE:-}" != "YES" ]]; then
   cat <<'EOF'
 Refusing to copy production data without explicit confirmation.
 
 This creates a local copy containing production data. Keep it off shared devices,
-do not expose port 5433, and do not use it for external demos.
+do not expose port 5434, and do not use it for external demos.
 
 Run with:
   CONFIRM_PRODUCTION_CLONE=YES npm run db:local:clone
