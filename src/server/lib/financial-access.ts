@@ -51,6 +51,13 @@ export const FINANCIAL_FIELDS = [
   'gnrAmount',
   'basisAmount',
   'totalDeliveryCost',
+  // The effort catalog is deliberately readable without the entitlement — the
+  // estimate builder needs baselines and the scoping questions carry no money.
+  // `idealCost` is the exception: it is what a standard engagement costs to
+  // deliver, sitting on an otherwise open payload, and `expectedCost` is that
+  // same figure multiplied by the scoping multiplier.
+  'idealCost',
+  'expectedCost',
   // margin, which is a route back to cost
   'marginAmount',
   'marginPercent',

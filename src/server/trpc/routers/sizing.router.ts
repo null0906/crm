@@ -3,7 +3,12 @@ import { TRPCError } from '@trpc/server';
 import { asc, eq, inArray, isNull, lte, or, sql, and } from 'drizzle-orm';
 import { financialProcedure, protectedProcedure, router } from '../router';
 import { db } from '@/server/db';
-import { sizingDriverOptions, sizingDrivers, sizingPolicies } from '@/server/db/schema';
+import {
+  sizingDriverOptions,
+  sizingDriverServiceLines,
+  sizingDrivers,
+  sizingPolicies,
+} from '@/server/db/schema';
 import { writeAuditLog } from '@/server/services/audit.service';
 import { composeMultiplier } from '@/server/services/sizing.service';
 
@@ -26,27 +31,72 @@ const driverAnswer = z.object({
 });
 
 export const sizingRouter = router({
+  /**
+   * The questions to ask, optionally narrowed to one service line.
+   *
+   * A driver with no rows in `sizing_driver_service_lines` is global and asked
+   * everywhere. That absence-means-everything rule is deliberate: it is what
+   * made adding the link table safe, since every driver that predates it has no
+   * rows and keeps appearing on every service exactly as before.
+   */
   listDrivers: protectedProcedure
-    .input(z.object({ includeInactive: z.boolean().default(false) }).optional())
+    .input(
+      z
+        .object({
+          includeInactive: z.boolean().default(false),
+          serviceLine: z.string().trim().max(50).nullish(),
+        })
+        .optional()
+    )
     .query(async ({ input }) => {
+      const scoped = input?.serviceLine
+        ? sql`(
+            EXISTS (
+              SELECT 1 FROM ${sizingDriverServiceLines}
+              WHERE ${sizingDriverServiceLines.driverId} = ${sizingDrivers.id}
+                AND ${sizingDriverServiceLines.serviceLine} = ${input.serviceLine}
+            )
+            OR NOT EXISTS (
+              SELECT 1 FROM ${sizingDriverServiceLines}
+              WHERE ${sizingDriverServiceLines.driverId} = ${sizingDrivers.id}
+            )
+          )`
+        : sql`true`;
+
       const drivers = await db
         .select()
         .from(sizingDrivers)
-        .where(input?.includeInactive ? sql`true` : eq(sizingDrivers.isActive, true))
+        .where(
+          and(input?.includeInactive ? sql`true` : eq(sizingDrivers.isActive, true), scoped)
+        )
         .orderBy(asc(sizingDrivers.position), asc(sizingDrivers.name));
 
-      const options = drivers.length
-        ? await db
-            .select()
-            .from(sizingDriverOptions)
-            .where(inArray(sizingDriverOptions.driverId, drivers.map((d) => d.id)))
-            .orderBy(asc(sizingDriverOptions.position))
-        : [];
+      if (!drivers.length) return [];
+      const driverIds = drivers.map((d) => d.id);
 
-      return drivers.map((d) => ({
-        ...d,
-        options: options.filter((o) => o.driverId === d.id),
-      }));
+      const options = await db
+        .select()
+        .from(sizingDriverOptions)
+        .where(inArray(sizingDriverOptions.driverId, driverIds))
+        .orderBy(asc(sizingDriverOptions.position));
+
+      // Returned so a caller can tell a question asked everywhere from one
+      // asked here: editing a global driver changes every other service too,
+      // and the editor has to be able to say so.
+      const links = await db
+        .select()
+        .from(sizingDriverServiceLines)
+        .where(inArray(sizingDriverServiceLines.driverId, driverIds));
+
+      return drivers.map((d) => {
+        const serviceLines = links.filter((l) => l.driverId === d.id).map((l) => l.serviceLine);
+        return {
+          ...d,
+          options: options.filter((o) => o.driverId === d.id),
+          serviceLines,
+          isGlobal: serviceLines.length === 0,
+        };
+      });
     }),
 
   createDriver: financialProcedure
@@ -62,7 +112,8 @@ export const sizingRouter = router({
           name: z.string().trim().min(2).max(120),
           description: z.string().trim().nullish(),
           valueType: z.enum(['select', 'number']),
-          appliesTo: z.enum(['hours', 'team', 'both']).default('hours'),
+          /** Empty means the question is asked on every service line. */
+          serviceLines: z.array(z.string().trim().max(50)).default([]),
           multiplierPerUnit: z.number().min(0).max(10).nullish(),
           unitBaseline: z.number().int().min(0).default(0),
           position: z.number().int().min(0).default(0),
@@ -73,14 +124,24 @@ export const sizingRouter = router({
         })
     )
     .mutation(async ({ ctx, input }) => {
-      const [created] = await db
-        .insert(sizingDrivers)
-        .values({
-          ...input,
-          multiplierPerUnit: input.multiplierPerUnit?.toString() ?? null,
-          createdBy: ctx.user.id,
-        })
-        .returning();
+      const { serviceLines: scope, ...driver } = input;
+      const created = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(sizingDrivers)
+          .values({
+            ...driver,
+            multiplierPerUnit: driver.multiplierPerUnit?.toString() ?? null,
+            createdBy: ctx.user.id,
+          })
+          .returning();
+
+        if (scope.length) {
+          await tx
+            .insert(sizingDriverServiceLines)
+            .values(scope.map((serviceLine) => ({ driverId: row!.id, serviceLine })));
+        }
+        return row;
+      });
 
       await writeAuditLog({
         userId: ctx.user.id,
@@ -99,7 +160,12 @@ export const sizingRouter = router({
         id: z.string().uuid(),
         name: z.string().trim().min(2).max(120).optional(),
         description: z.string().trim().nullish(),
-        appliesTo: z.enum(['hours', 'team', 'both']).optional(),
+        /**
+         * Replaces the whole scope when given. An empty array means the
+         * question becomes global, which is a real choice and so cannot be
+         * expressed as "leave it alone" — omitting the field is what does that.
+         */
+        serviceLines: z.array(z.string().trim().max(50)).optional(),
         multiplierPerUnit: z.number().min(0).max(10).nullish(),
         unitBaseline: z.number().int().min(0).optional(),
         position: z.number().int().min(0).optional(),
@@ -107,18 +173,33 @@ export const sizingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, multiplierPerUnit, ...rest } = input;
-      const [updated] = await db
-        .update(sizingDrivers)
-        .set({
-          ...rest,
-          ...(multiplierPerUnit !== undefined
-            ? { multiplierPerUnit: multiplierPerUnit?.toString() ?? null }
-            : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(sizingDrivers.id, id))
-        .returning();
+      const { id, multiplierPerUnit, serviceLines: scope, ...rest } = input;
+      const updated = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .update(sizingDrivers)
+          .set({
+            ...rest,
+            ...(multiplierPerUnit !== undefined
+              ? { multiplierPerUnit: multiplierPerUnit?.toString() ?? null }
+              : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(sizingDrivers.id, id))
+          .returning();
+        if (!row) return null;
+
+        if (scope !== undefined) {
+          await tx
+            .delete(sizingDriverServiceLines)
+            .where(eq(sizingDriverServiceLines.driverId, id));
+          if (scope.length) {
+            await tx
+              .insert(sizingDriverServiceLines)
+              .values(scope.map((serviceLine) => ({ driverId: id, serviceLine })));
+          }
+        }
+        return row;
+      });
       if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Driver not found.' });
 
       await writeAuditLog({

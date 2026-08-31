@@ -23,19 +23,15 @@ export interface Driver {
   name: string;
   description: string | null;
   valueType: 'select' | 'number';
-  appliesTo: 'hours' | 'team' | 'both';
   multiplierPerUnit: string | null;
   unitBaseline: number;
   position: number;
   isActive: boolean;
   options: DriverOption[];
+  /** Empty means the question is asked on every service line. */
+  serviceLines: string[];
+  isGlobal: boolean;
 }
-
-const APPLIES_HINT: Record<string, string> = {
-  hours: 'Same team, more hours each.',
-  team: 'Same hours each, more people.',
-  both: 'Split across both, so total effort matches the multiplier rather than squaring it.',
-};
 
 /** "+5% for each beyond 1" — what the two numeric fields actually mean. */
 function numericSentence(perUnit: string, baseline: number): string {
@@ -44,12 +40,27 @@ function numericSentence(perUnit: string, baseline: number): string {
   return `${pct > 0 ? '+' : ''}${pct}% for each beyond ${baseline}.`;
 }
 
-export function DriverEditor({ driver, canEdit }: { driver: Driver; canEdit: boolean }) {
+/**
+ * One scoping question.
+ *
+ * `serviceLine` is the page this is being edited from. A question asked
+ * everywhere shows up on every service line's page, so the editor has to say
+ * loudly that a change here lands on all of them — otherwise someone tuning
+ * SOC 2 silently reprices ISO 27001.
+ */
+export function DriverEditor({
+  driver,
+  canEdit,
+  serviceLine,
+}: {
+  driver: Driver;
+  canEdit: boolean;
+  serviceLine?: string | null;
+}) {
   const utils = trpc.useUtils();
   const refresh = () => utils.sizing.listDrivers.invalidate();
 
   const [name, setName] = useState(driver.name);
-  const [appliesTo, setAppliesTo] = useState(driver.appliesTo);
   const [perUnit, setPerUnit] = useState(driver.multiplierPerUnit ?? '');
   const [baseline, setBaseline] = useState(String(driver.unitBaseline));
   const [options, setOptions] = useState<DriverOption[]>(driver.options);
@@ -60,7 +71,6 @@ export function DriverEditor({ driver, canEdit }: { driver: Driver; canEdit: boo
   // holding a stale copy on screen.
   useEffect(() => {
     setName(driver.name);
-    setAppliesTo(driver.appliesTo);
     setPerUnit(driver.multiplierPerUnit ?? '');
     setBaseline(String(driver.unitBaseline));
     setOptions(driver.options);
@@ -84,7 +94,6 @@ export function DriverEditor({ driver, canEdit }: { driver: Driver; canEdit: boo
 
   const driverDirty =
     name !== driver.name ||
-    appliesTo !== driver.appliesTo ||
     perUnit !== (driver.multiplierPerUnit ?? '') ||
     baseline !== String(driver.unitBaseline);
 
@@ -138,23 +147,34 @@ export function DriverEditor({ driver, canEdit }: { driver: Driver; canEdit: boo
 
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="text-[11px] text-slate-500">What it changes</label>
-          {canEdit ? (
-            <select
-              value={appliesTo}
-              onChange={(e) => setAppliesTo(e.target.value as Driver['appliesTo'])}
-              className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700"
-            >
-              <option value="hours">Adds hours</option>
-              <option value="team">Adds people</option>
-              <option value="both">Both</option>
-            </select>
-          ) : (
-            <p className="mt-1 text-[12px] text-slate-700">{appliesTo}</p>
-          )}
-          <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
-            {APPLIES_HINT[appliesTo]}
+          <label className="text-[11px] text-slate-500">Asked on</label>
+          <p className="mt-1 text-[12px] text-slate-700">
+            {driver.isGlobal
+              ? 'Every service line'
+              : driver.serviceLines.length === 1
+                ? 'This service line only'
+                : `${driver.serviceLines.length} service lines`}
           </p>
+          {driver.isGlobal && canEdit && (
+            <p className="mt-1 text-[10px] leading-relaxed text-amber-700">
+              Editing this changes it for every service, not just this one.
+            </p>
+          )}
+          {canEdit && serviceLine && (
+            <button
+              type="button"
+              disabled={update.isPending}
+              onClick={() =>
+                update.mutate({
+                  id: driver.id,
+                  serviceLines: driver.isGlobal ? [serviceLine] : [],
+                })
+              }
+              className="mt-1 text-[10px] text-blue-600 underline-offset-2 hover:underline"
+            >
+              {driver.isGlobal ? 'Ask this only here' : 'Ask this everywhere'}
+            </button>
+          )}
         </div>
 
         {driver.valueType === 'number' && (
@@ -319,7 +339,6 @@ export function DriverEditor({ driver, canEdit }: { driver: Driver; canEdit: boo
               update.mutate({
                 id: driver.id,
                 name: name.trim(),
-                appliesTo,
                 ...(driver.valueType === 'number'
                   ? { multiplierPerUnit: Number(perUnit), unitBaseline: Number(baseline) || 0 }
                   : {}),

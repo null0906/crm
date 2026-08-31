@@ -5,6 +5,7 @@ import {
   gnrPolicies,
   marginTargets,
   resourceCostComponents,
+  users,
 } from '@/server/db/schema';
 import type { CostComponent, CostScope, GnrBasis } from '@/lib/types';
 
@@ -22,7 +23,12 @@ export interface TeamMemberInput {
    * only then can a seat cost resolve, because seat belongs to a person.
    */
   userId?: string | null;
-  hours: number;
+  /**
+   * Null when nobody has decided how long this role is needed for. Costed at
+   * zero and warned about, rather than guessed at: a seeded role is on the
+   * sheet precisely because the decision is still outstanding.
+   */
+  hours: number | null;
   /** How many people in this role. Defaults to 1 so a line is one person. */
   resourceCount?: number;
   /** Per-component overrides. Every figure is editable (FR-P4-55). */
@@ -259,11 +265,36 @@ export async function computeCost(
     : [];
   const roleNames = new Map(roleRows.map((r) => [r.id, r.name]));
 
+  // Names, so a missing rate can say whose it is. "No cost rate for Security
+  // Analyst" sends someone looking for a role rate that no longer exists;
+  // "No cost rate for Priya Nair" says what to actually go and fix.
+  const userIds = [...new Set(input.team.map((m) => m.userId).filter((id): id is string => !!id))];
+  const userRows = userIds.length
+    ? await db
+        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName })
+        .from(users)
+        .where(inArray(users.id, userIds))
+    : [];
+  const userNames = new Map(
+    userRows.map((u) => [u.id, [u.firstName, u.lastName].filter(Boolean).join(' ') || 'this person'])
+  );
+
   const resolved = await resolveComponents(input.team, asOf, db);
 
   const resources: CostedResource[] = input.team.map((member) => {
     const amounts = {} as Record<CostComponent, number>;
     const resolvedFrom = {} as CostedResource['resolvedFrom'];
+    const roleName = roleNames.get(member.deliveryRoleId) ?? member.deliveryRoleId;
+    const personName = member.userId ? userNames.get(member.userId) : null;
+
+    // Said once for the line rather than once per component. Both base and seat
+    // are priced against a person, so an unnamed line is not two missing rates
+    // -- there is nobody to have either, and saying so twice is noise.
+    if (!member.userId) {
+      warnings.push(
+        `The ${roleName} line names nobody, so it cannot be costed. Name the person who will do the work.`
+      );
+    }
 
     for (const component of COMPONENTS) {
       const override = member.overrides?.[component];
@@ -277,17 +308,13 @@ export async function computeCost(
       if (!hit) {
         amounts[component] = 0;
         resolvedFrom[component] = { scope: 'default', overridden: false };
-        const roleName = roleNames.get(member.deliveryRoleId) ?? member.deliveryRoleId;
-        // Seat gets its own wording. "No seat rate for Security Analyst" would
-        // send someone to the role rates looking for a field that no longer
-        // exists there, when what is missing is a rate on a person.
-        warnings.push(
-          component === 'seat'
-            ? member.userId
-              ? `No seat cost is set for the person on the ${roleName} line. Set it against them in Delivery Roles.`
-              : `${roleName} is costed blended, so no seat cost applies. Name the person to include it.`
-            : `No ${component} rate effective on ${asOf} for role ${roleName}. Treated as zero.`
-        );
+        // Only worth saying when there is somebody it could have been set
+        // against; the unnamed case was already reported once above.
+        if (personName) {
+          warnings.push(
+            `No ${component === 'seat' ? 'seat cost' : 'cost rate'} effective on ${asOf} for ${personName}. Set it in Settings → Cost Model → Cost Rates.`
+          );
+        }
         continue;
       }
 
@@ -298,16 +325,26 @@ export async function computeCost(
     const loadedHourly = money(amounts.base + amounts.seat);
     const resourceCount = member.resourceCount ?? 1;
 
+    // An unfinished line costs nothing, which is the honest figure -- but it
+    // makes the total quietly too low, so the estimate says it is incomplete.
+    const hours = member.hours ?? 0;
+    if (member.hours === null) {
+      const roleName = roleNames.get(member.deliveryRoleId) ?? member.deliveryRoleId;
+      warnings.push(
+        `${roleName} has no hours assigned yet, so it adds nothing to the cost.`
+      );
+    }
+
     return {
       deliveryRoleId: member.deliveryRoleId,
       deliveryRoleName: roleNames.get(member.deliveryRoleId) ?? 'Unknown role',
       userId: member.userId ?? null,
-      hours: member.hours,
+      hours,
       resourceCount,
       base: money(amounts.base),
       seat: money(amounts.seat),
       loadedHourly,
-      total: money(loadedHourly * member.hours * resourceCount),
+      total: money(loadedHourly * hours * resourceCount),
       resolvedFrom,
     };
   });

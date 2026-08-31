@@ -1,6 +1,8 @@
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db as defaultDb } from '@/server/db';
 import {
+  deliveryRoles,
+  effortBaselines,
   estimateCostLines,
   estimateDrivers,
   estimateTeamLines,
@@ -13,7 +15,7 @@ import {
   resolveMarginTarget,
   type CostBreakdown,
 } from './cost-engine.service';
-import { applyBaseline, composeMultiplier, type DriverAnswer } from './sizing.service';
+import { baselineRoles, composeMultiplier, type DriverAnswer } from './sizing.service';
 
 type DbClient = typeof defaultDb;
 
@@ -25,6 +27,23 @@ export class EstimateFrozenError extends Error {
       `This estimate is ${status} and cannot be changed. Duplicate it to explore a different scenario.`
     );
     this.name = 'EstimateFrozenError';
+  }
+}
+
+/**
+ * Thrown when approval is attempted on an estimate that cannot be fully costed.
+ *
+ * Cost is priced against a person, so a line naming nobody contributes nothing
+ * and quietly makes the total too low. That is tolerable in a draft, which is
+ * where the thinking happens — but an approved estimate is the frozen record of
+ * a decision, and freezing a number that is wrong by an unstaffed role is worse
+ * than refusing to freeze it.
+ */
+export class EstimateIncompleteError extends Error {
+  readonly code = 'ESTIMATE_INCOMPLETE';
+  constructor(message: string) {
+    super(message);
+    this.name = 'EstimateIncompleteError';
   }
 }
 
@@ -117,10 +136,11 @@ async function resolveSupportPolicy(asOf: string, db: DbClient) {
 }
 
 /**
- * Creates a draft. When a baseline is given the team shape is seeded from it,
- * otherwise the estimator starts from an empty sheet. Either way the support
- * line is seeded, so overhead is on the estimate from the start rather than
- * remembered by whoever happens to be building it.
+ * Creates a draft. When a baseline is given, the roles a standard engagement of
+ * that service needs are seeded onto the sheet with no hours -- the roles are
+ * a suggestion worth having, the hours are a decision nobody has made yet.
+ * Either way the support line is seeded, so overhead is on the estimate from
+ * the start rather than remembered by whoever happens to be building it.
  */
 export async function createEstimate(
   input: CreateEstimateInput,
@@ -131,17 +151,13 @@ export async function createEstimate(
 
   return db.transaction(async (tx) => {
     let baselineVersion: number | null = null;
-    let seededLines: Awaited<ReturnType<typeof applyBaseline>>['lines'] = [];
+    let seededRoles: Awaited<ReturnType<typeof baselineRoles>>['roles'] = [];
 
     if (input.baselineId) {
-      const sized = await applyBaseline(
-        input.baselineId,
-        { hoursMultiplier: 1, teamMultiplier: 1 },
-        tx as unknown as DbClient
-      );
-      baselineVersion = sized.baselineVersion;
-      seededLines = sized.lines;
-      warnings.push(...sized.warnings);
+      const catalog = await baselineRoles(input.baselineId, tx as unknown as DbClient);
+      baselineVersion = catalog.baselineVersion;
+      seededRoles = catalog.roles;
+      warnings.push(...catalog.warnings);
     }
 
     const [created] = await tx
@@ -160,15 +176,18 @@ export async function createEstimate(
       })
       .returning();
 
-    if (seededLines.length) {
+    if (seededRoles.length) {
       await tx.insert(estimateTeamLines).values(
-        seededLines.map((line) => ({
+        seededRoles.map((role) => ({
           estimateId: created!.id,
-          deliveryRoleId: line.deliveryRoleId,
-          deliveryStage: line.deliveryStage,
-          resourceCount: line.resourceCount,
-          hours: line.hours.toString(),
-          position: line.position,
+          deliveryRoleId: role.deliveryRoleId,
+          deliveryStage: role.deliveryStage,
+          resourceCount: role.resourceCount,
+          // Null, not the baseline's hours: how long this engagement needs each
+          // role for is the estimator's call, and a seeded number would be read
+          // as one.
+          hours: null,
+          position: role.position,
         }))
       );
     }
@@ -252,6 +271,53 @@ async function marginFor(
 }
 
 /**
+ * What this engagement ought to cost, against what the engine says it does.
+ *
+ * The baseline's ideal cost is the price of a standard engagement of that
+ * service, set by hand in Settings; multiplied by the scoping multiplier it
+ * says what an engagement of this size should come to. It sets nothing and
+ * blocks nothing -- a wide gap means the team, the hours or the scoping answers
+ * disagree with each other, and which of them is wrong is a judgement.
+ *
+ * Null when there is no baseline or no ideal cost on it. A caller that has no
+ * benchmark should say so rather than render a zero, which reads as free.
+ */
+export interface CostBenchmark {
+  idealCost: number;
+  multiplier: number;
+  expectedCost: number;
+  /** How far the engine's figure sits from expected. Negative is under. */
+  deltaPercent: number;
+}
+
+async function benchmarkFor(
+  estimate: typeof estimates.$inferSelect,
+  totalDeliveryCost: number,
+  db: DbClient
+): Promise<CostBenchmark | null> {
+  if (!estimate.baselineId) return null;
+
+  const [baseline] = await db
+    .select({ idealCost: effortBaselines.idealCost })
+    .from(effortBaselines)
+    .where(eq(effortBaselines.id, estimate.baselineId))
+    .limit(1);
+
+  const idealCost = num(baseline?.idealCost);
+  if (idealCost === null || idealCost <= 0) return null;
+
+  const multiplier = num(estimate.sizeMultiplier) ?? 1;
+  const expectedCost = round2(idealCost * multiplier);
+
+  return {
+    idealCost,
+    multiplier,
+    expectedCost,
+    deltaPercent: round2(((totalDeliveryCost - expectedCost) / expectedCost) * 100),
+  };
+}
+
+/**
  * Recomputes without saving.
  *
  * An approved estimate returns its frozen snapshot instead of recomputing, so
@@ -260,14 +326,22 @@ async function marginFor(
 export async function recalculate(
   estimateId: string,
   db: DbClient = defaultDb
-): Promise<{ breakdown: CostBreakdown; margin: ReturnType<typeof computeMargin> | null }> {
+): Promise<{
+  breakdown: CostBreakdown;
+  margin: ReturnType<typeof computeMargin> | null;
+  benchmark: CostBenchmark | null;
+}> {
   const detail = await getEstimateDetail(estimateId, db);
   if (!detail) throw new Error('Estimate not found.');
   const { estimate, teamLines, costLines } = detail;
 
   if (estimate.status !== 'draft' && estimate.snapshot) {
     const breakdown = estimate.snapshot as CostBreakdown;
-    return { breakdown, margin: await marginFor(estimate, breakdown.totalDeliveryCost, db) };
+    return {
+      breakdown,
+      margin: await marginFor(estimate, breakdown.totalDeliveryCost, db),
+      benchmark: await benchmarkFor(estimate, breakdown.totalDeliveryCost, db),
+    };
   }
 
   const breakdown = await computeCost(
@@ -280,7 +354,9 @@ export async function recalculate(
         // role rate, which is exactly what the old estimate-wide 'blended' mode
         // did, so nothing is lost by deciding it per line.
         userId: line.userId,
-        hours: Number(line.hours),
+        // Null until somebody decides how long this role is needed for. The
+        // engine costs it at zero and warns rather than guessing.
+        hours: line.hours === null ? null : Number(line.hours),
         resourceCount: line.resourceCount,
         overrides: {
           ...(line.overrideBase !== null ? { base: Number(line.overrideBase) } : {}),
@@ -308,7 +384,11 @@ export async function recalculate(
     db
   );
 
-  return { breakdown, margin: await marginFor(estimate, breakdown.totalDeliveryCost, db) };
+  return {
+    breakdown,
+    margin: await marginFor(estimate, breakdown.totalDeliveryCost, db),
+    benchmark: await benchmarkFor(estimate, breakdown.totalDeliveryCost, db),
+  };
 }
 
 /** Recomputes and writes the totals back onto the draft. */
@@ -347,7 +427,8 @@ export async function replaceTeamLines(
     userId?: string | null;
     deliveryStage?: string | null;
     resourceCount: number;
-    hours: number;
+    /** Null while nobody has decided how long this role is needed for. */
+    hours: number | null;
     overrideBase?: number | null;
     overrideSeat?: number | null;
   }[],
@@ -364,7 +445,7 @@ export async function replaceTeamLines(
           userId: line.userId ?? null,
           deliveryStage: line.deliveryStage ?? null,
           resourceCount: line.resourceCount,
-          hours: line.hours.toString(),
+          hours: line.hours === null ? null : line.hours.toString(),
           overrideBase: line.overrideBase?.toString() ?? null,
           overrideSeat: line.overrideSeat?.toString() ?? null,
           position: i,
@@ -373,6 +454,77 @@ export async function replaceTeamLines(
     }
   });
   await persistTotals(estimateId, db);
+}
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Puts the roles a standard engagement of this service needs onto the sheet.
+ *
+ * Additive and idempotent: a role the estimate already carries is left exactly
+ * as it is, whoever is named on it and whatever hours it holds. Only roles that
+ * are missing are appended, and they arrive with no hours.
+ *
+ * This replaces `resizeTeamFromBaseline`, which ran on every trip through the
+ * questionnaire and rewrote how long each role was working. Seeding is now
+ * something the estimator asks for once, because a scoping answer is not a
+ * staffing decision.
+ */
+export async function seedRolesFromBaseline(
+  estimateId: string,
+  db: DbClient = defaultDb
+): Promise<{ added: number; warnings: string[] }> {
+  await assertDraft(estimateId, db);
+
+  const [estimate] = await db
+    .select({ baselineId: estimates.baselineId })
+    .from(estimates)
+    .where(eq(estimates.id, estimateId))
+    .limit(1);
+  if (!estimate) throw new Error('Estimate not found.');
+  if (!estimate.baselineId) {
+    return {
+      added: 0,
+      warnings: ['No baseline is attached to this estimate, so there are no roles to seed.'],
+    };
+  }
+
+  const catalog = await baselineRoles(estimate.baselineId, db);
+  const warnings = [...catalog.warnings];
+
+  const existing = await db
+    .select()
+    .from(estimateTeamLines)
+    .where(eq(estimateTeamLines.estimateId, estimateId));
+
+  // Role and stage together identify a line: the same role can legitimately
+  // appear at two stages, and they are different work.
+  const key = (roleId: string, stage: string | null) => `${roleId}::${stage ?? ''}`;
+  const present = new Set(existing.map((l) => key(l.deliveryRoleId, l.deliveryStage)));
+  const missing = catalog.roles.filter((r) => !present.has(key(r.deliveryRoleId, r.deliveryStage)));
+
+  if (!missing.length) {
+    return { added: 0, warnings };
+  }
+
+  let nextPosition = existing.reduce((max, l) => Math.max(max, l.position), -1) + 1;
+  await db.insert(estimateTeamLines).values(
+    missing.map((role) => ({
+      estimateId,
+      deliveryRoleId: role.deliveryRoleId,
+      deliveryStage: role.deliveryStage,
+      resourceCount: role.resourceCount,
+      hours: null,
+      position: nextPosition++,
+    }))
+  );
+
+  // Adding a role with no hours moves no money, but the warning about
+  // unassigned hours is the point of the exercise.
+  await persistTotals(estimateId, db);
+  return { added: missing.length, warnings };
 }
 
 export async function replaceCostLines(
@@ -407,11 +559,13 @@ export async function replaceCostLines(
 }
 
 /**
- * Records driver answers, recomposes the multiplier and re-sizes the team from
- * the baseline (FR-P4-11, FR-P4-13).
+ * Records driver answers and recomposes the size multiplier (FR-P4-11).
  *
- * Re-sizing replaces the team shape, so manual edits made after the last
- * questionnaire change are lost — the caller should warn before doing it.
+ * It touches no team line. This used to re-size the whole team from the
+ * baseline on every save, which meant answering a scoping question rewrote how
+ * long each person was working -- an estimator who had assigned hours
+ * deliberately would find them changed underneath. Scoping records how big the
+ * engagement is; the hours stay where whoever is staffing it put them.
  */
 export async function applyDriverAnswers(
   estimateId: string,
@@ -454,35 +608,10 @@ export async function applyDriverAnswers(
       .where(eq(estimates.id, estimateId));
   });
 
-  if (detail.estimate.baselineId) {
-    const sized = await applyBaseline(detail.estimate.baselineId, sizing, db);
-    warnings.push(...sized.warnings);
-
-    // Re-sizing regenerates the team from the baseline, which cannot know who
-    // was on it. Say so: names disappearing silently reads as a bug, and the
-    // cost drops with them because seat only resolves for a named person.
-    const wereNamed = detail.teamLines.filter((l) => l.userId).length;
-    if (wereNamed > 0) {
-      warnings.push(
-        wereNamed === 1
-          ? 'The person named on the team was cleared by re-sizing. Name them again to include their seat cost.'
-          : `The ${wereNamed} people named on the team were cleared by re-sizing. Name them again to include their seat costs.`
-      );
-    }
-    await replaceTeamLines(
-      estimateId,
-      sized.lines.map((l) => ({
-        deliveryRoleId: l.deliveryRoleId,
-        deliveryStage: l.deliveryStage,
-        resourceCount: l.resourceCount,
-        hours: l.hours,
-      })),
-      db
-    );
-  } else {
-    warnings.push('No baseline is attached, so the team shape was not re-sized.');
-    await persistTotals(estimateId, db);
-  }
+  // The multiplier carries no money on its own -- it is a size, and cost comes
+  // from the hours somebody assigned. Totals are refreshed anyway so the stored
+  // copy and the warnings stay in step with the rest of the estimate.
+  await persistTotals(estimateId, db);
 
   return { multiplier: sizing.multiplier, warnings };
 }
@@ -497,6 +626,9 @@ export async function saveCommercials(
     gnrPolicyId?: string | null;
     gnrRateOverride?: number | null;
     gnrExcluded?: boolean;
+    /** The window the client asked for, and the effort judged to fill it. */
+    engagementWeeks?: number | null;
+    engagementHours?: number | null;
   },
   db: DbClient = defaultDb
 ): Promise<void> {
@@ -521,12 +653,43 @@ export async function saveCommercials(
           ? { gnrRateOverride: input.gnrRateOverride?.toString() ?? null }
           : {}),
         ...(input.gnrExcluded !== undefined ? { gnrExcluded: input.gnrExcluded } : {}),
+        ...(input.engagementWeeks !== undefined
+          ? { engagementWeeks: input.engagementWeeks?.toString() ?? null }
+          : {}),
+        ...(input.engagementHours !== undefined
+          ? { engagementHours: input.engagementHours?.toString() ?? null }
+          : {}),
         updatedAt: new Date(),
       })
       .where(eq(estimates.id, estimateId));
 
     await persistTotals(estimateId, tx as unknown as DbClient);
   });
+}
+
+/**
+ * Refuses to freeze an estimate carrying a line nobody is on.
+ *
+ * Named separately from the frozen check because it fails for the opposite
+ * reason: not "this is finished" but "this is not finished enough to finish".
+ * The roles are listed in the message — "two lines are unstaffed" sends someone
+ * hunting, and the builder disables the button for the same reason.
+ */
+async function assertEveryLineIsStaffed(estimateId: string, db: DbClient): Promise<void> {
+  const unstaffed = await db
+    .select({ roleName: deliveryRoles.name })
+    .from(estimateTeamLines)
+    .leftJoin(deliveryRoles, eq(deliveryRoles.id, estimateTeamLines.deliveryRoleId))
+    .where(and(eq(estimateTeamLines.estimateId, estimateId), isNull(estimateTeamLines.userId)));
+
+  if (!unstaffed.length) return;
+
+  const names = [...new Set(unstaffed.map((r) => r.roleName ?? 'an unnamed role'))];
+  throw new EstimateIncompleteError(
+    `${names.join(', ')} ${names.length === 1 ? 'has' : 'have'} nobody named, so ${
+      names.length === 1 ? 'that line costs' : 'those lines cost'
+    } nothing. Cost is worked out per person — name who will do the work before approving.`
+  );
 }
 
 /**
@@ -542,6 +705,7 @@ export async function approveEstimate(
   db: DbClient = defaultDb
 ): Promise<CostBreakdown> {
   await assertDraft(estimateId, db);
+  await assertEveryLineIsStaffed(estimateId, db);
   const breakdown = await persistTotals(estimateId, db);
   const now = new Date();
 
@@ -590,7 +754,10 @@ export async function duplicateEstimate(
         gnrPolicyId: estimate.gnrPolicyId,
         asOfDate: estimate.asOfDate,
         costingMode: estimate.costingMode,
+        teamSizingMode: estimate.teamSizingMode,
         currency: estimate.currency,
+        engagementWeeks: estimate.engagementWeeks,
+        engagementHours: estimate.engagementHours,
         sizeMultiplier: estimate.sizeMultiplier,
         price: estimate.price,
         targetMarginPercent: estimate.targetMarginPercent,

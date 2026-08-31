@@ -27,15 +27,21 @@ export function NewDriverDialog({
   open,
   onOpenChange,
   nextPosition,
+  serviceLine,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   nextPosition: number;
+  /** The service line whose page this was opened from, if any. */
+  serviceLine?: string | null;
 }) {
   const utils = trpc.useUtils();
   const [name, setName] = useState('');
   const [valueType, setValueType] = useState<'select' | 'number'>('select');
-  const [appliesTo, setAppliesTo] = useState<'hours' | 'team' | 'both'>('hours');
+  // A question created from a service line's page belongs to that line unless
+  // it is deliberately made global. Defaulting the other way would mean every
+  // new question quietly reprices every other service.
+  const [global, setGlobal] = useState(false);
   const [perUnit, setPerUnit] = useState('');
   const [baseline, setBaseline] = useState('0');
 
@@ -106,18 +112,18 @@ export function NewDriverDialog({
               </select>
             </div>
             <div>
-              <Label htmlFor="nd-applies" className="text-[11px]">
-                What it changes
+              <Label htmlFor="nd-scope" className="text-[11px]">
+                Asked on
               </Label>
               <select
-                id="nd-applies"
-                value={appliesTo}
-                onChange={(e) => setAppliesTo(e.target.value as 'hours' | 'team' | 'both')}
-                className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700"
+                id="nd-scope"
+                value={global ? 'global' : 'service'}
+                onChange={(e) => setGlobal(e.target.value === 'global')}
+                disabled={!serviceLine}
+                className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700 disabled:bg-slate-50"
               >
-                <option value="hours">Adds hours</option>
-                <option value="team">Adds people</option>
-                <option value="both">Both</option>
+                {serviceLine && <option value="service">This service line only</option>}
+                <option value="global">Every service line</option>
               </select>
             </div>
           </div>
@@ -169,7 +175,7 @@ export function NewDriverDialog({
                 slug,
                 name: name.trim(),
                 valueType,
-                appliesTo,
+                serviceLines: serviceLine && !global ? [serviceLine] : [],
                 position: nextPosition,
                 ...(valueType === 'number'
                   ? { multiplierPerUnit: Number(perUnit), unitBaseline: Number(baseline) || 0 }

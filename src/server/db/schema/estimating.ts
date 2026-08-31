@@ -7,6 +7,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -30,6 +31,7 @@ import type {
   SizingAppliesTo,
   SizingComposition,
   SizingValueType,
+  TeamSizingMode,
 } from '@/lib/types';
 
 /* ------------------------------------------------------------------ catalog */
@@ -37,9 +39,16 @@ import type {
 /**
  * Effort baselines (FR-P4-01 to FR-P4-04).
  *
- * What a service line normally takes, expressed as a team shape over hours.
- * Versioned rather than edited so an estimate built six months ago still
- * resolves the baseline it was actually built from (NFR-REP-01).
+ * What a standard engagement of a service line looks like. Versioned rather
+ * than edited so an estimate built six months ago still resolves the baseline
+ * it was actually built from (NFR-REP-01).
+ *
+ * A baseline no longer sizes anything. It used to be expanded by the scoping
+ * multiplier into a full team with hours already decided, which left the
+ * estimator correcting numbers the machine had invented. It now carries two
+ * facts and neither is arithmetic: which roles a standard engagement needs
+ * (`effortBaselineLines`, seeded onto an estimate without hours), and what one
+ * ought to cost (`idealCost`, shown beside the engine's figure as a benchmark).
  */
 export const effortBaselines = pgTable(
   'effort_baselines',
@@ -60,6 +69,16 @@ export const effortBaselines = pgTable(
     // FR-P4-02: until delivered effort is captured, a baseline is somebody's
     // judgement and should say so on its face rather than implying evidence.
     isJudgementBased: boolean('is_judgement_based').notNull().default(true),
+    /**
+     * What a standard (x1) engagement of this service ought to cost.
+     *
+     * Nullable, because a baseline written before benchmarking existed has no
+     * honest answer and a zero would read as free. The builder multiplies it by
+     * the scoping multiplier and shows the result beside what the cost engine
+     * computed, so a team and hours that disagree with the shape of the work
+     * are visible. It never sets a price — the engine still does that.
+     */
+    idealCost: decimal('ideal_cost', { precision: 15, scale: 2 }),
     isActive: boolean('is_active').notNull().default(true),
     notes: text('notes'),
     createdBy: uuid('created_by').notNull().references(() => users.id),
@@ -71,10 +90,19 @@ export const effortBaselines = pgTable(
     index('idx_baselines_service').on(t.serviceLine, t.isActive),
     check('baseline_confidence_check', sql`${t.confidence} IN ('low', 'medium', 'high')`),
     check('baseline_sample_check', sql`${t.sampleSize} >= 0`),
+    check('baseline_ideal_cost_check', sql`${t.idealCost} IS NULL OR ${t.idealCost} >= 0`),
   ]
 );
 
-/** One role's presence on a baseline: how many people, for how many hours. */
+/**
+ * One role's presence on a baseline: how many people, and typically for how
+ * long.
+ *
+ * `hours` is reference data — what a standard engagement has historically
+ * taken. Nothing multiplies it and nothing copies it onto an estimate: seeding
+ * puts the role and its headcount on the sheet and leaves the hours blank for
+ * whoever is actually scoping the engagement to decide.
+ */
 export const effortBaselineLines = pgTable(
   'effort_baseline_lines',
   {
@@ -104,9 +132,10 @@ export const effortBaselineLines = pgTable(
 /**
  * The drivers that genuinely change effort (FR-P4-08).
  *
- * `appliesTo` matters for the shape of the team: three cloud environments might
- * add hours to each person's workload or add an analyst alongside them, which
- * are the same effort but a different engagement to staff and to schedule.
+ * A driver is a scoping question whose answer says how much bigger or smaller
+ * than standard this engagement is. Which service lines a driver is asked on is
+ * `sizingDriverServiceLines`; a driver with no rows there is asked on all of
+ * them.
  */
 export const sizingDrivers = pgTable(
   'sizing_drivers',
@@ -116,6 +145,12 @@ export const sizingDrivers = pgTable(
     name: varchar('name', { length: 120 }).notNull(),
     description: text('description'),
     valueType: varchar('value_type', { length: 20 }).$type<SizingValueType>().notNull(),
+    /**
+     * Superseded. Sizing used to compose two axes — hours per person and
+     * headcount — and expand a baseline team from them. People are now assigned
+     * by hand, so a driver contributes to one number and nothing reads this.
+     * Kept because existing rows carry a value.
+     */
     appliesTo: varchar('applies_to', { length: 20 })
       .$type<SizingAppliesTo>()
       .notNull()
@@ -153,6 +188,31 @@ export const sizingDriverOptions = pgTable(
     unique('uq_driver_option_value').on(t.driverId, t.value),
     index('idx_driver_options_driver').on(t.driverId),
     check('driver_option_multiplier_check', sql`${t.multiplier} > 0`),
+  ]
+);
+
+/**
+ * Which service lines a scoping question is asked on.
+ *
+ * A driver with **no rows here is global** and asked on every service line.
+ * That is the absence-means-everything convention on purpose: it is what makes
+ * this table additive. Every driver that existed before it was introduced has
+ * no rows and therefore keeps behaving exactly as it did.
+ *
+ * `serviceLine` carries no foreign key to `service_lines`, matching every other
+ * service-line column in the schema — see the note on that table.
+ */
+export const sizingDriverServiceLines = pgTable(
+  'sizing_driver_service_lines',
+  {
+    driverId: uuid('driver_id')
+      .notNull()
+      .references(() => sizingDrivers.id, { onDelete: 'cascade' }),
+    serviceLine: varchar('service_line', { length: 50 }).notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'pk_driver_service_line', columns: [t.driverId, t.serviceLine] }),
+    index('idx_driver_service_lines_service').on(t.serviceLine),
   ]
 );
 
@@ -298,7 +358,35 @@ export const estimates = pgTable(
       .$type<CostingMode>()
       .notNull()
       .default('blended'),
+    /**
+     * Superseded along with baseline expansion. Sizing no longer shapes a team
+     * at all, so there is nothing left to choose between growing one and
+     * loading the existing one. Kept because existing rows carry a value;
+     * nothing reads it.
+     */
+    teamSizingMode: varchar('team_sizing_mode', { length: 20 })
+      .$type<TeamSizingMode>()
+      .notNull()
+      .default('fixed'),
     currency: varchar('currency', { length: 3 }).notNull().default('INR'),
+
+    /**
+     * The engagement as the estimator commits to it (not as anything derives
+     * it).
+     *
+     * `engagementWeeks` is the window the client asked for and
+     * `engagementHours` the effort judged necessary to fill it. Both are typed
+     * by hand and nothing pre-fills them: scoping says how big the work is
+     * relative to standard, which is not the same as knowing how many hours
+     * anyone will commit. They are nullable because an estimate is legitimately
+     * incomplete until somebody decides.
+     *
+     * Neither constrains the team lines. The builder reports the gap between
+     * these and what is actually assigned, and leaves the judgement where it
+     * belongs.
+     */
+    engagementWeeks: decimal('engagement_weeks', { precision: 6, scale: 2 }),
+    engagementHours: decimal('engagement_hours', { precision: 10, scale: 2 }),
 
     // --- computed ---
     sizeMultiplier: decimal('size_multiplier', { precision: 6, scale: 4 }).notNull().default('1.0'),
@@ -342,7 +430,16 @@ export const estimates = pgTable(
       sql`${t.status} IN ('draft', 'approved', 'superseded', 'archived')`
     ),
     check('estimate_costing_mode_check', sql`${t.costingMode} IN ('blended', 'named')`),
+    check('estimate_team_sizing_mode_check', sql`${t.teamSizingMode} IN ('fixed', 'grow')`),
     check('estimate_multiplier_check', sql`${t.sizeMultiplier} > 0`),
+    check(
+      'estimate_engagement_weeks_check',
+      sql`${t.engagementWeeks} IS NULL OR ${t.engagementWeeks} > 0`
+    ),
+    check(
+      'estimate_engagement_hours_check',
+      sql`${t.engagementHours} IS NULL OR ${t.engagementHours} > 0`
+    ),
     check(
       'estimate_gnr_override_check',
       sql`${t.gnrRateOverride} IS NULL OR (${t.gnrRateOverride} >= 0 AND ${t.gnrRateOverride} <= 100)`
@@ -356,7 +453,15 @@ export const estimates = pgTable(
   ]
 );
 
-/** The team shape on this estimate: role, headcount, hours, optional person. */
+/**
+ * The team shape on this estimate: role, headcount, hours, optional person.
+ *
+ * `hours` is nullable because a role can be on the sheet before anyone has
+ * decided how long it needs. Seeding the roles a baseline suggests is exactly
+ * that case, and writing a placeholder number instead would be the machine
+ * inventing an answer — which is the thing this design removed. A null-hours
+ * line costs nothing and the engine warns that it is unfinished.
+ */
 export const estimateTeamLines = pgTable(
   'estimate_team_lines',
   {
@@ -370,7 +475,7 @@ export const estimateTeamLines = pgTable(
     userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
     deliveryStage: varchar('delivery_stage', { length: 40 }),
     resourceCount: integer('resource_count').notNull().default(1),
-    hours: decimal('hours', { precision: 8, scale: 2 }).notNull(),
+    hours: decimal('hours', { precision: 8, scale: 2 }),
     // Per-component hourly overrides (FR-P4-55). Null means "use the resolved
     // rate". There is no support override any more — support is a cost line.
     overrideBase: decimal('override_base', { precision: 15, scale: 4 }),
@@ -380,7 +485,7 @@ export const estimateTeamLines = pgTable(
   (t) => [
     index('idx_estimate_team_estimate').on(t.estimateId),
     check('estimate_team_count_check', sql`${t.resourceCount} > 0`),
-    check('estimate_team_hours_check', sql`${t.hours} > 0`),
+    check('estimate_team_hours_check', sql`${t.hours} IS NULL OR ${t.hours} > 0`),
   ]
 );
 
@@ -460,6 +565,7 @@ export type NewEffortBaseline = typeof effortBaselines.$inferInsert;
 export type EffortBaselineLine = typeof effortBaselineLines.$inferSelect;
 export type SizingDriver = typeof sizingDrivers.$inferSelect;
 export type SizingDriverOption = typeof sizingDriverOptions.$inferSelect;
+export type SizingDriverServiceLine = typeof sizingDriverServiceLines.$inferSelect;
 export type SizingPolicy = typeof sizingPolicies.$inferSelect;
 export type Estimate = typeof estimates.$inferSelect;
 export type NewEstimate = typeof estimates.$inferInsert;

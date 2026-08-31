@@ -565,67 +565,177 @@ async function seed() {
   const roleRows = await db.select().from(schema.deliveryRoles);
   const roleBySlug = new Map(roleRows.map((r) => [r.slug, r.id]));
 
-  // The seven drivers named in the Engagement Pricing source document.
-  // `appliesTo` records whether a driver adds hours to each person or grows the
-  // team — the same multiplier costs differently depending on which.
+  /**
+   * The ISO 27001 scope-definition questions.
+   *
+   * Each is asked as a COUNT rather than the open-ended governance prompt it
+   * came from, because the engine composes a multiplier from counts and
+   * weighted choices -- free text would contribute 1.0 and size nothing. The
+   * original wording rides along as `description`, which the questionnaire
+   * renders beneath the question, so the prompt the count came from stays on
+   * screen.
+   *
+   * `serviceLines` is what keeps them off every other service line: a driver
+   * with no link rows is asked everywhere, which is the behaviour this replaced.
+   *
+   * The rates are starting points, editable per question in Settings. Changing
+   * one only affects the next estimate scoped -- an estimate stores the
+   * multiplier it was actually built with.
+   */
   const driverSeed = [
     {
-      slug: 'headcount_band', name: 'Headcount band', valueType: 'select' as const,
-      appliesTo: 'both' as const, position: 1,
+      slug: 'iso_sites_in_scope', name: 'Sites or locations in scope',
+      description: 'What business units, sites/locations and legal entities are within scope?',
+      valueType: 'number' as const, multiplierPerUnit: '0.0800', unitBaseline: 1, position: 1,
+      serviceLines: ['iso27001'], options: [],
+    },
+    {
+      slug: 'iso_legal_entities', name: 'Legal entities in scope',
+      description: 'What business units, sites/locations and legal entities are within scope?',
+      valueType: 'number' as const, multiplierPerUnit: '0.1000', unitBaseline: 1, position: 2,
+      serviceLines: ['iso27001'], options: [],
+    },
+    {
+      slug: 'iso_products_services', name: 'Products or services the ISMS covers',
+      description: 'What products, services and information assets does the ISMS cover?',
+      valueType: 'number' as const, multiplierPerUnit: '0.0500', unitBaseline: 1, position: 3,
+      serviceLines: ['iso27001'], options: [],
+    },
+    {
+      slug: 'iso_systems_in_scope', name: 'Systems and applications in scope',
+      description: 'What network boundaries, systems, applications and data flows are in scope?',
+      valueType: 'number' as const, multiplierPerUnit: '0.0200', unitBaseline: 10, position: 4,
+      serviceLines: ['iso27001'], options: [],
+    },
+    {
+      slug: 'iso_interested_parties', name: 'Interested parties imposing distinct requirements',
+      description:
+        'Which interested parties (regulators, customers, owners, employees) and their requirements apply?',
+      valueType: 'number' as const, multiplierPerUnit: '0.0300', unitBaseline: 2, position: 5,
+      serviceLines: ['iso27001'], options: [],
+    },
+    {
+      slug: 'iso_external_interfaces', name: 'Dependencies crossing the scope boundary',
+      description:
+        'What interfaces and dependencies exist with parties/services outside the scope (e.g. outsourced IT)?',
+      valueType: 'number' as const, multiplierPerUnit: '0.0400', unitBaseline: 2, position: 6,
+      serviceLines: ['iso27001'], options: [],
+    },
+    {
+      // The smallest rate of the nine on purpose: an exclusion removes scope but
+      // adds the work of justifying it against Annex A, so the net is close to
+      // neutral. The weight most worth tuning against real delivery.
+      slug: 'iso_annex_a_exclusions', name: 'Annex A controls excluded',
+      description: 'Are there any exclusions? Is each exclusion justified against Annex A applicability?',
+      valueType: 'number' as const, multiplierPerUnit: '0.0200', unitBaseline: 0, position: 7,
+      serviceLines: ['iso27001'], options: [],
+    },
+    {
+      slug: 'iso_regulatory_regimes', name: 'Legal or regulatory regimes applying',
+      description: 'What legal, regulatory and contractual security requirements apply within scope?',
+      valueType: 'number' as const, multiplierPerUnit: '0.0600', unitBaseline: 1, position: 8,
+      serviceLines: ['iso27001'], options: [],
+    },
+    {
+      slug: 'iso_third_party_deps', name: 'Cloud and third-party dependencies in scope',
+      description: 'Have cloud, third-party and supply-chain dependencies been mapped into the scope?',
+      valueType: 'number' as const, multiplierPerUnit: '0.0300', unitBaseline: 3, position: 9,
+      serviceLines: ['iso27001'], options: [],
+    },
+
+    // The nine above describe how big the scope is. These five describe how hard
+    // the job is, which is what a real client intake showed was missing: a
+    // client with nothing in place wanting certification in a month priced
+    // identically to one with a mature ISMS and six months to spare.
+    //
+    // Four are categorical rather than countable, so they are weighted choices.
+    // That also bounds them -- a per-unit count reaches the ceiling on its own
+    // given a large enough answer, where a fixed set of options cannot.
+    {
+      slug: 'iso_business_functions', name: 'Business functions in scope',
+      description:
+        'What are your critical business processes and functions? How is your organization structured (departments, teams, locations)?',
+      valueType: 'number' as const, multiplierPerUnit: '0.0600', unitBaseline: 3, position: 10,
+      serviceLines: ['iso27001'], options: [],
+    },
+    {
+      // The largest weight in the set, and the one the checklist missed
+      // entirely. Reaches below 1.0 because a client who is already audited is
+      // genuinely cheaper to serve -- a model that can only add never quotes
+      // anyone the discount they have earned.
+      slug: 'iso_security_posture', name: 'Information security already in place',
+      description:
+        'Do you already have any information security policies or frameworks in place? Are you using any existing certifications (e.g. SOC 2, NIST, CIS)? Are you using tools for logging, monitoring, endpoint protection, access control?',
+      valueType: 'select' as const, position: 11, serviceLines: ['iso27001'],
       options: [
-        { value: 'under_100', label: 'Under 100', multiplier: '0.9000' },
-        { value: '100_250', label: '100 - 250', multiplier: '1.0000' },
-        { value: '251_1000', label: '251 - 1000', multiplier: '1.1500' },
-        { value: 'over_1000', label: 'Over 1000', multiplier: '1.3000' },
+        { value: 'nothing', label: 'Nothing at all', multiplier: '1.3500' },
+        { value: 'policies_only', label: 'Policies written, no tooling', multiplier: '1.2000' },
+        { value: 'partial_tooling', label: 'Some tooling in place', multiplier: '1.0800' },
+        { value: 'established', label: 'Established and audited', multiplier: '0.9500' },
       ],
     },
     {
-      slug: 'cloud_environments', name: 'Cloud environments', valueType: 'number' as const,
-      appliesTo: 'hours' as const, multiplierPerUnit: '0.0500', unitBaseline: 1, position: 2, options: [],
-    },
-    {
-      slug: 'physical_locations', name: 'Physical locations', valueType: 'number' as const,
-      appliesTo: 'hours' as const, multiplierPerUnit: '0.0500', unitBaseline: 1, position: 3, options: [],
-    },
-    {
-      slug: 'security_maturity', name: 'Existing security maturity', valueType: 'select' as const,
-      appliesTo: 'both' as const, position: 4,
+      slug: 'iso_certification_deadline', name: 'Time until certification is required',
+      description: 'What is your expected timeline for certification?',
+      valueType: 'select' as const, position: 12, serviceLines: ['iso27001'],
       options: [
-        { value: 'none', label: 'None', multiplier: '1.2500' },
-        { value: 'basic', label: 'Basic', multiplier: '1.1000' },
-        { value: 'established', label: 'Established', multiplier: '1.0000' },
-        { value: 'mature', label: 'Mature', multiplier: '0.9000' },
+        { value: 'under_2m', label: 'Under 2 months', multiplier: '1.4000' },
+        { value: '2_to_4m', label: '2 to 4 months', multiplier: '1.1000' },
+        { value: '4_to_6m', label: '4 to 6 months', multiplier: '1.0000' },
+        { value: 'over_6m', label: 'Over 6 months', multiplier: '0.9500' },
       ],
     },
     {
-      slug: 'prior_certification', name: 'Prior certification history', valueType: 'select' as const,
-      appliesTo: 'hours' as const, position: 5,
+      slug: 'iso_hosting_model', name: 'Where the in-scope systems run',
+      description: 'Are your systems hosted on-premises, in the cloud, or hybrid?',
+      valueType: 'select' as const, position: 13, serviceLines: ['iso27001'],
       options: [
-        { value: 'none', label: 'First-time certification', multiplier: '1.1000' },
-        { value: 'expired', label: 'Previously certified, lapsed', multiplier: '1.0500' },
-        { value: 'current', label: 'Currently certified', multiplier: '0.9500' },
+        // Hybrid is the dearest because it is two control environments, not one.
+        { value: 'hybrid', label: 'Hybrid', multiplier: '1.2000' },
+        { value: 'on_premises', label: 'On-premises', multiplier: '1.1000' },
+        { value: 'single_cloud', label: 'Single cloud', multiplier: '1.0000' },
       ],
     },
     {
-      slug: 'in_scope_systems', name: 'In-scope systems', valueType: 'number' as const,
-      appliesTo: 'team' as const, multiplierPerUnit: '0.0200', unitBaseline: 10, position: 6, options: [],
-    },
-    {
-      slug: 'parallel_frameworks', name: 'Frameworks running in parallel', valueType: 'number' as const,
-      appliesTo: 'both' as const, multiplierPerUnit: '0.1500', unitBaseline: 1, position: 7, options: [],
+      slug: 'iso_identity_management', name: 'How identity is managed',
+      description: 'Do you use a central identity management system (e.g. Azure AD, Okta)?',
+      valueType: 'select' as const, position: 14, serviceLines: ['iso27001'],
+      options: [
+        { value: 'none', label: 'No central directory', multiplier: '1.2000' },
+        { value: 'directory', label: 'Directory without SSO/IdP', multiplier: '1.1000' },
+        { value: 'central_idp', label: 'Central IdP with SSO', multiplier: '1.0000' },
+      ],
     },
   ];
 
   await db
     .insert(schema.sizingDrivers)
-    .values(driverSeed.map(({ options: _options, ...d }) => ({ ...d, createdBy: adminUserId })))
+    .values(
+      driverSeed.map(({ options: _options, serviceLines: _serviceLines, ...d }) => ({
+        ...d,
+        createdBy: adminUserId,
+      }))
+    )
     .onConflictDoNothing({ target: schema.sizingDrivers.slug });
 
   const driverRows = await db.select().from(schema.sizingDrivers);
   const driverBySlug = new Map(driverRows.map((d) => [d.slug, d.id]));
 
+  // Without these a question has no link rows, which means "asked on every
+  // service line" -- the behaviour the per-service scoping replaced.
+  const serviceLineLinks = driverSeed.flatMap((d) =>
+    d.serviceLines.map((serviceLine) => ({ driverId: driverBySlug.get(d.slug)!, serviceLine }))
+  );
+  if (serviceLineLinks.length) {
+    await db
+      .insert(schema.sizingDriverServiceLines)
+      .values(serviceLineLinks)
+      .onConflictDoNothing();
+  }
+
+  // The four categorical questions carry their weights here, one row per option.
   const optionValues = driverSeed.flatMap((d) =>
-    d.options.map((o, i) => ({
+    d.options.map((o: { label: string; value: string; multiplier: string }, i: number) => ({
       driverId: driverBySlug.get(d.slug)!,
       label: o.label,
       value: o.value,
@@ -642,10 +752,14 @@ async function seed() {
     await db.insert(schema.sizingPolicies).values({
       name: 'Standard sizing policy',
       version: 1,
-      maxMultiplier: '2.50',
-      composition: 'multiplicative',
+      maxMultiplier: '3.00',
+      // Additive, matching what migration 0035 makes effective. Multiplying
+      // fourteen questions together compounds past the ceiling, at which point
+      // every large client caps at the same number and the answers stop
+      // distinguishing between them.
+      composition: 'additive',
       effectiveFrom: '2026-01-01',
-      notes: 'Composed driver multipliers are capped at 2.5x and the cap is reported, not hidden.',
+      notes: 'Driver increments are summed and the total is capped at 3x, with the cap reported rather than hidden.',
       createdBy: adminUserId,
     });
   }

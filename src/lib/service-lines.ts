@@ -22,6 +22,15 @@ export interface ServiceLine {
 }
 
 /**
+ * The seed list, and the fallback while the query is in flight.
+ *
+ * Service lines now live in the `service_lines` table and are edited in
+ * Settings, because adding one used to mean a deploy before anyone could price
+ * it. This array is what migration 0032 seeded that table from, and what
+ * `useServiceLines` renders before the first response arrives — a label that
+ * flickers in from nothing is worse than a stale one that is almost always
+ * right. Editing it changes neither: it is history plus a first paint.
+ *
  * SOC 2 is split by type because the two are genuinely different engagements —
  * a Type I is a point-in-time design opinion, a Type II observes a review
  * period — and costing them from one baseline would average away the
@@ -65,9 +74,13 @@ export function activeServiceLines(): ServiceLine[] {
 }
 
 /**
- * Renders a stored slug. Falls back to the raw value rather than to 'Unknown',
- * so a row written before the migration is legible on screen instead of
- * disappearing behind a placeholder.
+ * Renders a stored slug against the seed list.
+ *
+ * Falls back to the raw value rather than to 'Unknown', so a row written before
+ * the migration is legible on screen instead of disappearing behind a
+ * placeholder. React callers should prefer `useServiceLines().label`, which
+ * reads the configured list and so knows about lines added since this constant
+ * was written; this one exists for server code and for the fallback path.
  */
 export function serviceLineLabel(slug: string | null | undefined): string {
   if (!slug) return 'Not set';

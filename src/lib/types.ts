@@ -150,6 +150,15 @@ export type SizingComposition = 'multiplicative' | 'additive';
 export type EstimateStatus = 'draft' | 'approved' | 'superseded' | 'archived';
 /** Blended costs at role averages; named costs the specific people proposed. */
 export type CostingMode = 'blended' | 'named';
+/**
+ * Where a sizing driver's growth lands on an estimate.
+ *
+ * `fixed` keeps the baseline's headcount and puts the growth into hours per
+ * person — the team was shaped deliberately in the catalog, so sizing changes
+ * how much work it does rather than who is on it. `grow` lets the team axis
+ * add people, which is the older behaviour. Total effort is the same either way.
+ */
+export type TeamSizingMode = 'fixed' | 'grow';
 export type EstimateCostLineKind = 'non_labour' | 'custom';
 export type CostLineBasis = 'engagement' | 'per_resource_hour';
 

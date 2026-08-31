@@ -7,7 +7,7 @@ import {
   sizingDrivers,
   sizingPolicies,
 } from '@/server/db/schema';
-import type { SizingAppliesTo, SizingComposition } from '@/lib/types';
+import type { SizingComposition } from '@/lib/types';
 
 type DbClient = typeof defaultDb;
 
@@ -25,17 +25,14 @@ export interface DriverContribution {
   driverId: string;
   slug: string;
   name: string;
-  appliesTo: SizingAppliesTo;
-  /** What this driver alone multiplies effort by. 1.0 means neutral. */
+  /** What this driver alone multiplies the engagement's size by. 1.0 is neutral. */
   multiplier: number;
   answerLabel: string;
 }
 
 export interface SizingResult {
-  /** Total effort multiplier: hoursMultiplier x teamMultiplier. */
+  /** How big this engagement is against a standard one. 2.3 means 2.3x. */
   multiplier: number;
-  hoursMultiplier: number;
-  teamMultiplier: number;
   /** What the drivers composed to before the policy ceiling was applied. */
   rawMultiplier: number;
   capped: boolean;
@@ -70,13 +67,14 @@ async function resolveSizingPolicy(asOf: string, db: DbClient) {
 }
 
 /**
- * Composes driver answers into a single effort multiplier (FR-P4-09, FR-P4-10).
+ * Composes driver answers into a single size multiplier (FR-P4-09, FR-P4-10).
  *
- * A driver states whether it adds hours to each person's workload, enlarges the
- * team, or both — the same effort, but a different engagement to staff.
- * `both` is split as the square root across each axis, so that
- * hoursMultiplier x teamMultiplier reproduces the driver's stated effect on
- * total effort rather than squaring it.
+ * This answers one question and stops: how big is this engagement against a
+ * standard one of its service line. It used to answer two — hours per person
+ * and headcount — and hand the pair to a baseline expander that produced a
+ * fully staffed team. That made scoping responsible for staffing decisions it
+ * has no basis for: how big the work is does not tell you how many hours anyone
+ * will commit or who is free to do them. Both are now typed by a person.
  *
  * The policy ceiling is applied to the composed total and reported rather than
  * hidden — a capped estimate is a signal that the drivers disagree with
@@ -96,7 +94,7 @@ export async function composeMultiplier(
   const contributions: DriverContribution[] = [];
   if (!answers.length) {
     return {
-      multiplier: 1, hoursMultiplier: 1, teamMultiplier: 1, rawMultiplier: 1,
+      multiplier: 1, rawMultiplier: 1,
       capped: false, maxMultiplier, composition, policyId: policy?.id ?? null,
       contributions, warnings,
     };
@@ -150,45 +148,25 @@ export async function composeMultiplier(
       driverId: driver.id,
       slug: driver.slug,
       name: driver.name,
-      appliesTo: driver.appliesTo,
       multiplier: round4(multiplier),
       answerLabel,
     });
   }
 
-  const combine = (values: number[]): number =>
+  const rawMultiplier =
     composition === 'additive'
-      ? 1 + values.reduce((sum, m) => sum + (m - 1), 0)
-      : values.reduce((product, m) => product * m, 1);
+      ? 1 + contributions.reduce((sum, c) => sum + (c.multiplier - 1), 0)
+      : contributions.reduce((product, c) => product * c.multiplier, 1);
 
-  const hoursValues = contributions
-    .filter((c) => c.appliesTo === 'hours' || c.appliesTo === 'both')
-    .map((c) => (c.appliesTo === 'both' ? Math.sqrt(c.multiplier) : c.multiplier));
-  const teamValues = contributions
-    .filter((c) => c.appliesTo === 'team' || c.appliesTo === 'both')
-    .map((c) => (c.appliesTo === 'both' ? Math.sqrt(c.multiplier) : c.multiplier));
-
-  let hoursMultiplier = combine(hoursValues);
-  let teamMultiplier = combine(teamValues);
-  const rawMultiplier = hoursMultiplier * teamMultiplier;
-
-  let capped = false;
-  let multiplier = rawMultiplier;
-  if (rawMultiplier > maxMultiplier) {
-    capped = true;
-    const scale = Math.sqrt(maxMultiplier / rawMultiplier);
-    hoursMultiplier *= scale;
-    teamMultiplier *= scale;
-    multiplier = maxMultiplier;
+  const capped = rawMultiplier > maxMultiplier;
+  if (capped) {
     warnings.push(
       `Composed multiplier ${round2(rawMultiplier)}x exceeded the ${maxMultiplier}x ceiling and was capped.`
     );
   }
 
   return {
-    multiplier: round4(multiplier),
-    hoursMultiplier: round4(hoursMultiplier),
-    teamMultiplier: round4(teamMultiplier),
+    multiplier: round4(Math.min(rawMultiplier, maxMultiplier)),
     rawMultiplier: round4(rawMultiplier),
     capped,
     maxMultiplier,
@@ -199,37 +177,37 @@ export async function composeMultiplier(
   };
 }
 
-export interface SizedTeamLine {
+export interface BaselineRole {
   deliveryRoleId: string;
   deliveryStage: string | null;
   resourceCount: number;
-  hours: number;
   position: number;
 }
 
-export interface SizedBaseline {
+export interface BaselineRoles {
   baselineId: string;
   baselineVersion: number;
   serviceLine: string;
   isJudgementBased: boolean;
   confidence: string;
-  lines: SizedTeamLine[];
+  roles: BaselineRole[];
   warnings: string[];
 }
 
 /**
- * Expands a catalog baseline into a sized team shape (FR-P4-01, FR-P4-13).
+ * Reads which roles a standard engagement of this service line needs.
  *
- * Headcount is a whole number of people, so the team multiplier is rounded and
- * the rounding residue is folded back into hours. That keeps total effort equal
- * to baseline effort x multiplier instead of silently drifting by up to half a
- * person per line.
+ * Deliberately arithmetic-free. This used to be `applyBaseline`, which
+ * multiplied the baseline's headcount and hours by the sizing result to produce
+ * a staffed team — so answering a questionnaire silently rewrote how long
+ * everyone on the engagement was working. Seeding now copies the roles and
+ * their usual headcount and leaves hours null, because the baseline's hours are
+ * a record of what past engagements took, not a decision about this one.
  */
-export async function applyBaseline(
+export async function baselineRoles(
   baselineId: string,
-  sizing: Pick<SizingResult, 'hoursMultiplier' | 'teamMultiplier'>,
   db: DbClient = defaultDb
-): Promise<SizedBaseline> {
+): Promise<BaselineRoles> {
   const [baseline] = await db
     .select()
     .from(effortBaselines)
@@ -244,30 +222,12 @@ export async function applyBaseline(
     .orderBy(asc(effortBaselineLines.position));
 
   const warnings: string[] = [];
-  if (!lines.length) warnings.push('This baseline has no team lines, so the estimate starts empty.');
+  if (!lines.length) warnings.push('This baseline lists no roles, so the estimate starts empty.');
   if (baseline.isJudgementBased) {
     warnings.push(
-      'This baseline is judgement-based: no delivered effort supports it yet, so treat the numbers as a starting point.'
+      'This baseline is judgement-based: no delivered effort supports it yet, so treat the roles as a starting point.'
     );
   }
-
-  const sized = lines.map((line) => {
-    const baseCount = line.resourceCount;
-    const baseHours = Number(line.hours);
-    const targetEffort = baseCount * baseHours * sizing.teamMultiplier * sizing.hoursMultiplier;
-
-    const resourceCount = Math.max(1, Math.round(baseCount * sizing.teamMultiplier));
-    // Residue from rounding headcount goes into hours so effort is preserved.
-    const hours = round2(targetEffort / resourceCount);
-
-    return {
-      deliveryRoleId: line.deliveryRoleId,
-      deliveryStage: line.deliveryStage,
-      resourceCount,
-      hours,
-      position: line.position,
-    };
-  });
 
   return {
     baselineId: baseline.id,
@@ -275,7 +235,12 @@ export async function applyBaseline(
     serviceLine: baseline.serviceLine,
     isJudgementBased: baseline.isJudgementBased,
     confidence: baseline.confidence,
-    lines: sized,
+    roles: lines.map((line) => ({
+      deliveryRoleId: line.deliveryRoleId,
+      deliveryStage: line.deliveryStage,
+      resourceCount: line.resourceCount,
+      position: line.position,
+    })),
     warnings,
   };
 }

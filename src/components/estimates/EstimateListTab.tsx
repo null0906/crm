@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calculator, Lock, Plus } from 'lucide-react';
+import { Calculator, Lock, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
@@ -17,8 +17,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatCurrency, formatDate } from '@/lib/formatters';
-import { activeServiceLines, serviceLineLabel } from '@/lib/service-lines';
+import { useServiceLines } from '@/lib/use-service-lines';
 
 const STATUS_VARIANT = {
   draft: 'secondary',
@@ -39,12 +40,16 @@ export function EstimateListTab({ dealId }: { dealId: string }) {
   const router = useRouter();
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.estimates.listForDeal.useQuery({ dealId });
+  const { active: activeServiceLines, label: serviceLineLabel } = useServiceLines({
+    includeInactive: true,
+  });
   const { data: baselines = [] } = trpc.catalog.listBaselines.useQuery();
 
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
   const [serviceLine, setServiceLine] = useState('');
   const [baselineId, setBaselineId] = useState('');
+  const [deleting, setDeleting] = useState<{ id: string; title: string } | null>(null);
 
   const create = trpc.estimates.create.useMutation({
     onSuccess: (result) => {
@@ -54,6 +59,15 @@ export function EstimateListTab({ dealId }: { dealId: string }) {
       router.push(`/deals/${dealId}/estimates/${result.id}`);
     },
     onError: (err) => toast.error('Could not create the estimate', { description: err.message }),
+  });
+
+  const remove = trpc.estimates.delete.useMutation({
+    onSuccess: () => {
+      toast.success('Estimate deleted');
+      setDeleting(null);
+      void utils.estimates.listForDeal.invalidate({ dealId });
+    },
+    onError: (err) => toast.error('Could not delete the estimate', { description: err.message }),
   });
 
   const estimates = data?.estimates ?? [];
@@ -112,6 +126,7 @@ export function EstimateListTab({ dealId }: { dealId: string }) {
                 <th className="px-4 py-3 text-right text-xs font-medium text-slate-500">Cost</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-slate-500">Price</th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-slate-500">Margin</th>
+                {canSeeFinancials && <th className="w-12 px-4 py-3" />}
               </tr>
             </thead>
             <tbody>
@@ -119,7 +134,7 @@ export function EstimateListTab({ dealId }: { dealId: string }) {
                 <tr
                   key={e.id}
                   onClick={() => router.push(`/deals/${dealId}/estimates/${e.id}`)}
-                  className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50/80"
+                  className="group cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50/80"
                 >
                   <td className="px-4 py-2.5">
                     <p className="text-[13px] text-slate-800">{e.title}</p>
@@ -154,6 +169,24 @@ export function EstimateListTab({ dealId }: { dealId: string }) {
                       `${e.marginPercent}%`
                     )}
                   </td>
+                  {canSeeFinancials && (
+                    <td className="px-4 py-2.5 text-right">
+                      {/* Only a draft can go: an approved estimate is the frozen
+                          record of a decision, and the server refuses anyway. */}
+                      {e.status === 'draft' && (
+                        <button
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            setDeleting({ id: e.id, title: e.title });
+                          }}
+                          className="rounded p-1 text-slate-300 opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 focus:opacity-100"
+                          title="Delete estimate"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -199,7 +232,7 @@ export function EstimateListTab({ dealId }: { dealId: string }) {
                 className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700"
               >
                 <option value="">Not set</option>
-                {activeServiceLines().map((s) => (
+                {activeServiceLines.map((s) => (
                   <option key={s.slug} value={s.slug}>
                     {s.label}
                   </option>
@@ -252,6 +285,21 @@ export function EstimateListTab({ dealId }: { dealId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title="Delete estimate?"
+        description={
+          deleting
+            ? `${deleting.title} and its team shape, cost lines and sizing all go with it. This cannot be undone — duplicate it first if you want to keep the working.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        destructive
+        loading={remove.isPending}
+        onConfirm={() => deleting && remove.mutate({ id: deleting.id })}
+      />
     </div>
   );
 }

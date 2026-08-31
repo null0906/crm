@@ -1,22 +1,46 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useAutosave } from "@/hooks/useAutosave";
+import { SaveStatus } from "./SaveStatus";
+import { AlertTriangle, Layers, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { HOURS_PER_WEEK } from "@/lib/constants";
+import { exceedsDeadline, reconcileHours } from "@/lib/engagement-fit";
 
 export interface TeamLineDraft {
   deliveryRoleId: string;
   /** Empty means costed at the role average rather than against a person. */
   userId: string;
   resourceCount: string;
+  /** Empty while nobody has decided how long this role is needed for. */
   hours: string;
 }
 
+/** Blank stays blank: an unanswered field is not the number zero. */
+function toHours(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /**
- * The team shape: which roles, who is on them, for how many hours.
+ * The engagement and the team: how long the client wants it, how many hours it
+ * takes, and who spends them.
+ *
+ * This is where the judgement scoping used to make now lives. The period and
+ * the total hours are typed, not derived — knowing the work is 2.3x standard
+ * says nothing about how many hours anyone will commit — and the team lines
+ * distribute those hours across people.
+ *
+ * Nothing here is enforced. The reconciliation and the deadline check report
+ * the gap between what was committed and what was assigned, because closing it
+ * needs facts this component does not have: whether the date is soft, whether
+ * the hours were padded, whether a role is about to be split.
  *
  * Naming a person is what makes seat cost resolve — seat belongs to an
  * individual, so a line with nobody on it carries none and the engine says so.
@@ -28,53 +52,117 @@ export function TeamShapeEditor({
   readOnly,
   onSave,
   isSaving,
+  engagementWeeks,
+  engagementHours,
+  onSaveEngagement,
+  isSavingEngagement,
+  hasBaseline,
+  onSeedRoles,
+  isSeeding,
+  isError = false,
+  isErrorEngagement = false,
 }: {
   lines: TeamLineDraft[];
   readOnly: boolean;
   onSave: (lines: TeamLineDraft[]) => void;
   isSaving: boolean;
+  engagementWeeks: number | null;
+  engagementHours: number | null;
+  onSaveEngagement: (input: { weeks: number | null; hours: number | null }) => void;
+  isSavingEngagement: boolean;
+  hasBaseline: boolean;
+  onSeedRoles: () => void;
+  isSeeding: boolean;
+  isError?: boolean;
+  isErrorEngagement?: boolean;
 }) {
   const { data: roles = [] } = trpc.costModel.listRoles.useQuery();
   const { data: staff = [] } = trpc.costModel.listStaffWithRoles.useQuery();
   const [draft, setDraft] = useState<TeamLineDraft[]>(lines);
   const [dirty, setDirty] = useState(false);
 
-  // Re-sizing from the questionnaire replaces the team, so the editor has to
-  // pick up the new shape rather than hold on to what was on screen.
+  // Seeding roles from the baseline appends lines server-side, so the editor has
+  // to pick up the new shape rather than hold on to what was on screen -- but
+  // only when the person is not mid-edit. After a save `dirty` is false and the
+  // incoming copy is what was just sent, so this is a no-op; if they typed
+  // during the round trip it is their keystrokes that win, and the next debounce
+  // sends those instead.
   useEffect(() => {
+    if (dirty) return;
     setDraft(lines);
-    setDirty(false);
-  }, [lines]);
+  }, [lines, dirty]);
+
+  // The committed figures are their own draft: they save on their own button,
+  // separately from the team lines, so typing a deadline does not put the whole
+  // roster into an unsaved state.
+  const [weeksDraft, setWeeksDraft] = useState<string | null>(null);
+  const [hoursDraft, setHoursDraft] = useState<string | null>(null);
+  useEffect(() => {
+    setWeeksDraft(null);
+    setHoursDraft(null);
+  }, [engagementWeeks, engagementHours]);
 
   function update(i: number, patch: Partial<TeamLineDraft>) {
     setDraft((d) => d.map((l, j) => (j === i ? { ...l, ...patch } : l)));
     setDirty(true);
   }
 
-  const totalEffort = draft.reduce(
-    (sum, l) => sum + (Number(l.resourceCount) || 0) * (Number(l.hours) || 0),
-    0,
-  );
+  const assigned = draft.map((l) => ({
+    hours: toHours(l.hours),
+    resourceCount: Number(l.resourceCount) || 0,
+  }));
 
-  /**
-   * How long the engagement runs, as opposed to how much work it is.
-   *
-   * Roles run alongside each other, so the longest single role sets the
-   * calendar. Three analysts at 416 hours each is 1,248 resource-hours of
-   * effort but still only about ten weeks of elapsed time — summing the lines
-   * would report a duration three times too long.
-   */
-  const longestLineHours = draft.reduce(
-    (max, l) => Math.max(max, Number(l.hours) || 0),
-    0,
-  );
-  const durationWeeks = longestLineHours / HOURS_PER_WEEK;
+  const weeksValue = weeksDraft ?? (engagementWeeks === null ? "" : String(engagementWeeks));
+  const hoursValue = hoursDraft ?? (engagementHours === null ? "" : String(engagementHours));
+
+  // Checked against what is typed, not what is saved, so the reconciliation
+  // moves as you edit rather than after a round trip.
+  const committedWeeks = toHours(weeksValue);
+  const fit = reconcileHours(assigned, toHours(hoursValue));
+  const overdueLines = draft.filter((l) => exceedsDeadline(toHours(l.hours), committedWeeks));
+
   const weeksLabel = (hours: number) => (hours / HOURS_PER_WEEK).toFixed(1);
+  // A blank hours field is a legitimate state, not an invalid one — a seeded
+  // role sits there until somebody decides. Only a half-filled field is wrong.
   const valid = draft.every(
     (l) =>
-      l.deliveryRoleId && Number(l.resourceCount) > 0 && Number(l.hours) > 0,
+      l.deliveryRoleId &&
+      Number(l.resourceCount) > 0 &&
+      (l.hours.trim() === "" || toHours(l.hours) !== null),
   );
+  const blankHours = draft.filter((l) => l.hours.trim() === "").length;
   const named = draft.filter((l) => l.userId && Number(l.resourceCount) > 1);
+
+  // Two autosaves, because they are two different writes: the committed period
+  // and hours go to the estimate, the lines replace the team. Sharing one would
+  // mean typing a deadline rewrote the whole roster.
+  const team = useAutosave({
+    value: draft,
+    serialise: (d) =>
+      JSON.stringify(d.map((l) => [l.deliveryRoleId, l.userId, l.resourceCount, l.hours.trim()])),
+    isValid: () => valid,
+    enabled: !readOnly,
+    isSaving,
+    isError,
+    onSave: (d) => {
+      setDirty(false);
+      onSave(d);
+    },
+  });
+
+  const engagement = useAutosave({
+    value: { weeks: weeksValue, hours: hoursValue },
+    serialise: (v) => `${v.weeks.trim()}|${v.hours.trim()}`,
+    // A blank field is a decision nobody has made yet, which is savable. A
+    // half-typed number is not.
+    isValid: (v) =>
+      (v.weeks.trim() === "" || toHours(v.weeks) !== null) &&
+      (v.hours.trim() === "" || toHours(v.hours) !== null),
+    enabled: !readOnly,
+    isSaving: isSavingEngagement,
+    isError: isErrorEngagement,
+    onSave: (v) => onSaveEngagement({ weeks: toHours(v.weeks), hours: toHours(v.hours) }),
+  });
 
   /**
    * People holding this delivery role first, everyone else under "Other".
@@ -93,36 +181,135 @@ export function TeamShapeEditor({
 
   return (
     <section className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-[0_1px_4px_rgba(16,24,40,0.04)]">
-      <div className="mb-3 flex items-start justify-between gap-4">
-        <div>
+      <div className="mb-3">
+        <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-[13px] font-medium text-slate-800">
-            Team &amp; hours
+            Engagement &amp; team
           </h2>
-          <p className="mt-0.5 text-[11px] text-slate-400">
-            Who is on it and for how long. Cost is charged per person per hour;
-            the weeks are how long each role is on it, at {HOURS_PER_WEEK} hours
-            a week. Naming someone is what brings their seat cost in — an
-            unnamed line is priced at the role average.
+          {/* One pill for whichever write is in flight. They are separate
+              mutations but a single panel, and two pills a few pixels apart
+              would read as a fault rather than as progress. */}
+          <SaveStatus status={engagement.status !== "idle" ? engagement.status : team.status} />
+        </div>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
+          How long the client wants it, how many hours it takes, and who spends
+          them. Cost is charged per person per hour, at {HOURS_PER_WEEK} hours a
+          week. Naming someone is what brings their seat cost in — an unnamed
+          line is priced at the role average. Changes save themselves.
+        </p>
+      </div>
+
+      {/* ---- what was committed ---- */}
+      <div className="mb-3 rounded-lg bg-slate-50/80 px-3 py-2.5">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <Label htmlFor="engagement-weeks" className="text-[11px]">
+              Engagement period
+            </Label>
+            <div className="mt-1 flex items-center gap-1.5">
+              <Input
+                id="engagement-weeks"
+                type="number"
+                min={0}
+                step="any"
+                disabled={readOnly}
+                value={weeksValue}
+                onChange={(e) => setWeeksDraft(e.target.value)}
+                className="h-8 w-20"
+                placeholder="—"
+              />
+              <span className="text-[11px] text-slate-400">weeks</span>
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="engagement-hours" className="text-[11px]">
+              Total hours
+            </Label>
+            <div className="mt-1 flex items-center gap-1.5">
+              <Input
+                id="engagement-hours"
+                type="number"
+                min={0}
+                step="any"
+                disabled={readOnly}
+                value={hoursValue}
+                onChange={(e) => setHoursDraft(e.target.value)}
+                className="h-8 w-24"
+                placeholder="—"
+              />
+              <span className="text-[11px] text-slate-400">hours</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Under the period rather than beside it: this is the total those two
+            fields are being reconciled against, so it reads as their result
+            instead of as a third input.
+            
+            The second figure is the PACE, not the duration. It previously showed
+            the longest role's hours over 40 and called it "weeks long", which
+            claimed a 16-week engagement lasted 1.6 weeks -- that number is how
+            long one person would take at full time, which is effort, and the
+            duration is the period committed in the field above. */}
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-t border-slate-200/70 pt-2">
+          <div>
+            <span className="text-[16px] font-semibold tabular-nums text-slate-900">
+              {fit.assigned}
+            </span>
+            <span className="ml-1.5 text-[10px] text-slate-400">assigned resource-hours</span>
+          </div>
+          {committedWeeks !== null && fit.assigned > 0 && (
+            <div>
+              <span className="text-[10px] text-slate-400">over </span>
+              <span className="text-[16px] font-semibold tabular-nums text-slate-900">
+                {committedWeeks}
+              </span>
+              <span className="ml-1.5 text-[10px] text-slate-400">
+                weeks &mdash; about {(fit.assigned / committedWeeks).toFixed(1)}h of team time a
+                week
+              </span>
+            </div>
+          )}
+        </div>
+
+        {fit.differs && fit.unassigned !== null && (
+          <p className="mt-2 text-[11px] leading-relaxed text-amber-700">
+            {fit.unassigned > 0
+              ? `${fit.unassigned}h of the ${fit.committed}h committed are not assigned to anyone yet.`
+              : `The team is assigned ${Math.abs(fit.unassigned)}h more than the ${fit.committed}h committed.`}{" "}
+            <span className="text-slate-400">
+              Both are estimates — adjust whichever one is wrong.
+            </span>
+          </p>
+        )}
+        {!fit.differs && fit.committed !== null && (
+          <p className="mt-2 text-[11px] text-slate-400">
+            The team accounts for all {fit.committed}h.
+          </p>
+        )}
+        <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">
+          Nothing here is derived from the scoping multiplier — it says how big
+          the work is, not how many hours you will commit to it.
+        </p>
+      </div>
+
+      {overdueLines.length > 0 && committedWeeks !== null && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-600" />
+          <p className="text-[11px] leading-relaxed text-amber-800">
+            {overdueLines.length === 1 ? "One role is" : `${overdueLines.length} roles are`} booked
+            for more hours than {committedWeeks} weeks allows one person (
+            {committedWeeks * HOURS_PER_WEEK}h). This team cannot finish inside the deadline as it
+            stands — split the role across more people, or move the date.
           </p>
         </div>
-        {/* <div className="text-right">
-          <p className="text-[18px] font-semibold tabular-nums text-slate-900">
-            {totalEffort}
-          </p>
-          <p className="text-[10px] text-slate-400">resource-hours</p>
-          {durationWeeks > 0 && (
-            <p className="mt-0.5 text-[11px] tabular-nums text-slate-500">
-              {weeksLabel(longestLineHours)} weeks long
-            </p>
-          )}
-        </div> */}
-      </div>
+      )}
 
       <div className="space-y-2">
         {draft.length === 0 && (
           <p className="text-[11px] text-slate-400">
-            No team yet. Add a role, or answer the scoping questions to size one
-            from the baseline.
+            No team yet. Add a role
+            {hasBaseline ? ", or seed the ones this service usually needs" : ""}.
           </p>
         )}
         {draft.map((line, i) => (
@@ -192,16 +379,29 @@ export function TeamShapeEditor({
               step="any"
               value={line.hours}
               onChange={(e) => update(i, { hours: e.target.value })}
-              className="h-8 w-20"
+              className={
+                exceedsDeadline(toHours(line.hours), committedWeeks)
+                  ? "h-8 w-20 border-amber-300 bg-amber-50"
+                  : "h-8 w-20"
+              }
+              placeholder="—"
             />
             <span className="w-10 text-[11px] text-slate-400">hours</span>
             <span
-              className="w-14 text-[10px] tabular-nums text-slate-300"
-              title="How long this role is on the engagement"
+              className={
+                exceedsDeadline(toHours(line.hours), committedWeeks)
+                  ? "w-14 text-[10px] tabular-nums text-amber-600"
+                  : "w-14 text-[10px] tabular-nums text-slate-300"
+              }
+              title={
+                exceedsDeadline(toHours(line.hours), committedWeeks)
+                  ? "More hours than one person can work in the engagement period"
+                  : `Person-weeks of effort, at ${HOURS_PER_WEEK}h a week — not how long the engagement runs`
+              }
             >
-              {Number(line.hours) > 0
-                ? `${weeksLabel(Number(line.hours))} wks`
-                : ""}
+              {toHours(line.hours) !== null
+                ? `${weeksLabel(toHours(line.hours)!)} wks`
+                : "—"}
             </span>
             {!readOnly && (
               <button
@@ -228,8 +428,17 @@ export function TeamShapeEditor({
         </p>
       )}
 
+      {blankHours > 0 && (
+        <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
+          {blankHours === 1
+            ? "One role has no hours yet, so it costs nothing."
+            : `${blankHours} roles have no hours yet, so they cost nothing.`}{" "}
+          A seeded role sits blank until you decide how long it is needed for.
+        </p>
+      )}
+
       {!readOnly && (
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="ghost"
@@ -244,13 +453,16 @@ export function TeamShapeEditor({
             <Plus className="mr-1 h-3 w-3" />
             Add role
           </Button>
-          {dirty && (
+          {hasBaseline && (
             <Button
               size="sm"
-              disabled={!valid || isSaving}
-              onClick={() => onSave(draft)}
+              variant="ghost"
+              disabled={isSeeding}
+              onClick={onSeedRoles}
+              title="Adds any roles this service usually needs that are missing, with no hours"
             >
-              {isSaving ? "Saving…" : "Save team"}
+              <Layers className="mr-1 h-3 w-3" />
+              {isSeeding ? "Seeding…" : "Seed roles from baseline"}
             </Button>
           )}
         </div>

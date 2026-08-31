@@ -17,7 +17,7 @@ const settingsSections = [
     title: 'Pricing',
     items: [
       { label: 'Cost & Pricing Model', description: 'Delivery roles, cost rates, GNR and margin targets', href: '/settings/cost-model', icon: Calculator },
-      { label: 'Effort Catalog', description: 'Effort baselines per service line and the sizing drivers that scale them', href: '/settings/effort-catalog', icon: Library },
+      { label: 'Service Lines', description: 'What we sell, its scoping questions, role checklist and ideal cost', href: '/settings/service-lines', icon: Library },
     ],
   },
   {

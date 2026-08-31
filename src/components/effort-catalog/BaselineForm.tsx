@@ -6,7 +6,7 @@ import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { activeServiceLines } from '@/lib/service-lines';
+import { useServiceLines } from '@/lib/use-service-lines';
 
 export interface DraftLine {
   deliveryRoleId: string;
@@ -22,7 +22,14 @@ export interface BaselineFormValue {
 }
 
 /**
- * The team-shape editor, shared by creating a baseline and revising one.
+ * The role-checklist editor, shared by creating a baseline and revising one.
+ *
+ * The hours collected here are reference data — what these engagements have
+ * historically taken — and nothing multiplies or copies them. Seeding an
+ * estimate takes the roles and their headcount and leaves hours blank, because
+ * how long this engagement needs a role for is a decision belonging to whoever
+ * is scoping it. They are still worth recording: an estimator staring at a
+ * blank hours field is better off knowing the last one took 160.
  *
  * Revising is not an edit: it writes a new version and deactivates the old, so
  * estimates keep resolving the version they were built from. The form is the
@@ -42,6 +49,7 @@ export function BaselineForm({
   onSubmit: (value: BaselineFormValue) => void;
 }) {
   const { data: roles = [] } = trpc.costModel.listRoles.useQuery();
+  const { active: activeServiceLines } = useServiceLines();
   const [serviceLine, setServiceLine] = useState(initial?.serviceLine ?? '');
   const [segment, setSegment] = useState(initial?.segment ?? 'standard');
   const [name, setName] = useState(initial?.name ?? '');
@@ -72,7 +80,7 @@ export function BaselineForm({
             className="mt-1 h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-[12px] text-slate-700 disabled:bg-slate-50"
           >
             <option value="">Choose…</option>
-            {activeServiceLines().map((s) => (
+            {activeServiceLines.map((s) => (
               <option key={s.slug} value={s.slug}>
                 {s.label}
               </option>
@@ -103,9 +111,9 @@ export function BaselineForm({
       <div>
         <div className="mb-1.5 flex items-center justify-between">
           <Label className="text-[11px]">
-            Team shape
+            Roles
             {effort > 0 && (
-              <span className="ml-2 text-slate-400">{effort} resource-hours</span>
+              <span className="ml-2 text-slate-400">{effort} resource-hours typical</span>
             )}
           </Label>
           <Button
@@ -117,6 +125,10 @@ export function BaselineForm({
             Add role
           </Button>
         </div>
+        <p className="mb-1.5 text-[10px] leading-relaxed text-slate-400">
+          The hours are reference only — what these engagements have historically taken. An
+          estimate seeds the roles and their headcount, never the hours.
+        </p>
         {lines.length === 0 && <p className="text-[11px] text-slate-400">No roles yet.</p>}
         <div className="space-y-2">
           {lines.map((line, i) => (

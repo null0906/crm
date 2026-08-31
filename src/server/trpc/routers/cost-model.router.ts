@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
-import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, count, eq, isNull, or, sql } from 'drizzle-orm';
 import { financialProcedure, protectedProcedure, router } from '../router';
 import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
 import {
   deliveryRoles,
+  effortBaselineLines,
+  estimateTeamLines,
   gnrPolicies,
   marginTargets,
   resourceCostComponents,
@@ -108,6 +110,218 @@ export const costModelRouter = router({
         entityName: created!.name,
       });
       return created;
+    }),
+
+  /**
+   * Rename, describe, reposition or retire a role.
+   *
+   * The slug is deliberately not editable: it is the stable identifier other
+   * lookups key on, so renaming it would silently break them. `isActive: false`
+   * is how a role in use gets retired — it disappears from every picker while
+   * the estimates and baselines that already name it keep resolving.
+   */
+  updateRole: financialProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        name: z.string().trim().min(2).max(100).optional(),
+        description: z.string().trim().nullish(),
+        position: z.number().int().min(0).optional(),
+        isActive: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { id, ...fields } = input;
+      const patch = Object.fromEntries(
+        Object.entries(fields).filter(([, v]) => v !== undefined)
+      );
+      if (Object.keys(patch).length === 0) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nothing to update.' });
+      }
+
+      const [updated] = await db
+        .update(deliveryRoles)
+        .set({ ...patch, updatedAt: new Date() })
+        .where(eq(deliveryRoles.id, id))
+        .returning();
+      if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'Delivery role not found.' });
+
+      await writeAuditLog({
+        userId: ctx.user.id,
+        userEmail: ctx.user.email,
+        action: 'update',
+        entityType: 'delivery_role',
+        entityId: updated.id,
+        entityName: updated.name,
+        metadata: { ...patch, financialWrite: true },
+      });
+      return updated;
+    }),
+
+  /**
+   * Positions are rewritten wholesale rather than swapped in pairs: existing
+   * rows disagree about the column (roles created before the tab passed a
+   * position all sit at 0), so a swap has nothing meaningful to swap. Sending
+   * the whole ordering normalises it on the way through.
+   */
+  reorderRoles: financialProcedure
+    .input(
+      z
+        .array(z.object({ id: z.string().uuid(), position: z.number().int().min(0) }))
+        .min(1)
+        .max(200)
+    )
+    .mutation(async ({ ctx, input }) => {
+      await db.transaction(async (tx) => {
+        for (const row of input) {
+          await tx
+            .update(deliveryRoles)
+            .set({ position: row.position, updatedAt: new Date() })
+            .where(eq(deliveryRoles.id, row.id));
+        }
+      });
+
+      await writeAuditLog({
+        userId: ctx.user.id,
+        userEmail: ctx.user.email,
+        action: 'update',
+        entityType: 'delivery_role',
+        metadata: { reordered: true, count: input.length },
+      });
+      return { count: input.length };
+    }),
+
+  /**
+   * What still points at each role, so the tab can offer a real delete only
+   * where one is safe and fall back to deactivation everywhere else. Batched
+   * for every role at once — a per-row query would be N round trips to render
+   * one column.
+   *
+   * The `rates` count is now entirely historical: no role-scoped rate can be
+   * created any more. It is deliberately still counted, because
+   * `delivery_role_id` cascades on delete — removing a role would take its
+   * closed base rates with it and break the reproduction of every estimate
+   * dated before pricing moved to people. The guard stopped protecting live
+   * pricing and started protecting the archive.
+   */
+  roleUsage: financialProcedure.query(async () => {
+    const [staff, baselineLines, estimateLines, rates] = await Promise.all([
+      db
+        .select({ id: userDeliveryRoles.deliveryRoleId, n: count() })
+        .from(userDeliveryRoles)
+        .groupBy(userDeliveryRoles.deliveryRoleId),
+      db
+        .select({ id: effortBaselineLines.deliveryRoleId, n: count() })
+        .from(effortBaselineLines)
+        .groupBy(effortBaselineLines.deliveryRoleId),
+      db
+        .select({ id: estimateTeamLines.deliveryRoleId, n: count() })
+        .from(estimateTeamLines)
+        .groupBy(estimateTeamLines.deliveryRoleId),
+      db
+        .select({ id: resourceCostComponents.deliveryRoleId, n: count() })
+        .from(resourceCostComponents)
+        .where(eq(resourceCostComponents.scope, 'role'))
+        .groupBy(resourceCostComponents.deliveryRoleId),
+    ]);
+
+    const roles = await db.select({ id: deliveryRoles.id }).from(deliveryRoles);
+    const lookup = (rows: { id: string | null; n: number }[], roleId: string) =>
+      Number(rows.find((r) => r.id === roleId)?.n ?? 0);
+
+    return roles.map((r) => ({
+      deliveryRoleId: r.id,
+      staff: lookup(staff, r.id),
+      baselineLines: lookup(baselineLines, r.id),
+      estimateLines: lookup(estimateLines, r.id),
+      rates: lookup(rates, r.id),
+    }));
+  }),
+
+  /**
+   * A real delete, and only where nothing references the role.
+   *
+   * Role-scoped rates cascade away with it. That is safe precisely because the
+   * guard below proves no estimate and no baseline can still be resolving
+   * against them — otherwise retiring the role, not deleting it, is the answer.
+   */
+  deleteRole: financialProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const [role] = await db
+        .select()
+        .from(deliveryRoles)
+        .where(eq(deliveryRoles.id, input.id))
+        .limit(1);
+      if (!role) throw new TRPCError({ code: 'NOT_FOUND', message: 'Delivery role not found.' });
+
+      // Recounted here rather than trusted from the client: the tab's usage
+      // snapshot can be minutes old by the time someone confirms the dialog.
+      const [[staff], [baselineLines], [estimateLines], [rates]] = await Promise.all([
+        db
+          .select({ n: count() })
+          .from(userDeliveryRoles)
+          .where(eq(userDeliveryRoles.deliveryRoleId, input.id)),
+        db
+          .select({ n: count() })
+          .from(effortBaselineLines)
+          .where(eq(effortBaselineLines.deliveryRoleId, input.id)),
+        db
+          .select({ n: count() })
+          .from(estimateTeamLines)
+          .where(eq(estimateTeamLines.deliveryRoleId, input.id)),
+        db
+          .select({ n: count() })
+          .from(resourceCostComponents)
+          .where(
+            and(
+              eq(resourceCostComponents.scope, 'role'),
+              eq(resourceCostComponents.deliveryRoleId, input.id)
+            )
+          ),
+      ]);
+
+      const blockers: string[] = [];
+      const people = Number(staff?.n ?? 0);
+      const baselines = Number(baselineLines?.n ?? 0);
+      const estimates = Number(estimateLines?.n ?? 0);
+      if (people > 0) blockers.push(`${people} ${people === 1 ? 'person is' : 'people are'} assigned to it`);
+      if (baselines > 0) blockers.push(`it appears on ${baselines} effort baseline ${baselines === 1 ? 'line' : 'lines'}`);
+      if (estimates > 0) blockers.push(`it appears on ${estimates} estimate ${estimates === 1 ? 'line' : 'lines'}`);
+
+      if (blockers.length > 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Cannot delete ${role.name} — ${blockers.join(', and ')}. Deactivate it instead to hide it from new work.`,
+        });
+      }
+
+      try {
+        await db.delete(deliveryRoles).where(eq(deliveryRoles.id, input.id));
+      } catch (err) {
+        // Something referenced the role between the count and the delete.
+        // Postgres caught it; report it the same way rather than as a 500.
+        const code = (err as { cause?: { code?: string }; code?: string }).code
+          ?? (err as { cause?: { code?: string } }).cause?.code;
+        if (code === '23503') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: `Cannot delete ${role.name} — something started using it just now. Reload and try again, or deactivate it instead.`,
+          });
+        }
+        throw err;
+      }
+
+      await writeAuditLog({
+        userId: ctx.user.id,
+        userEmail: ctx.user.email,
+        action: 'delete',
+        entityType: 'delivery_role',
+        entityId: role.id,
+        entityName: role.name,
+        metadata: { ratesRemoved: Number(rates?.n ?? 0), financialWrite: true },
+      });
+      return { success: true };
     }),
 
   /**
@@ -254,6 +468,15 @@ export const costModelRouter = router({
         // error rather than a permissive default.
         .refine((v) => v.component !== 'seat' || v.scope === 'employee', {
           message: 'Seat cost belongs to a person. Set it against an employee, not a role.',
+          path: ['component'],
+        })
+        // Mirrors cost_components_base_is_employee_check. A role rate is an
+        // average of what several people are paid, which is not a cost anyone
+        // actually incurs; pricing an engagement on one is only accidentally
+        // right about whoever ends up on it.
+        .refine((v) => v.component !== 'base' || v.scope === 'employee', {
+          message:
+            'Cost is set per person. Set this against the individual in Settings → Cost Model → Cost Rates.',
           path: ['component'],
         })
     )
@@ -560,6 +783,53 @@ export const costModelRouter = router({
         });
         return created;
       });
+    }),
+
+  /**
+   * Removing a target is closing it, not deleting it — an estimate priced
+   * against it last quarter still has to explain itself.
+   *
+   * The close date is yesterday so the target stops applying immediately, but
+   * never earlier than the day it started: the table's date-range check would
+   * reject that. A target set today can therefore only be closed as of today
+   * and stays in force until tomorrow, which the confirm dialog says out loud.
+   */
+  closeMarginTarget: financialProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const [existing] = await db
+        .select()
+        .from(marginTargets)
+        .where(eq(marginTargets.id, input.id))
+        .limit(1);
+      if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'Margin target not found.' });
+      if (existing.effectiveTo !== null) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'That target is already closed.' });
+      }
+
+      const [closed] = await db
+        .update(marginTargets)
+        .set({
+          effectiveTo: sql`GREATEST(${marginTargets.effectiveFrom}, (CURRENT_DATE - INTERVAL '1 day')::date)`,
+          updatedAt: new Date(),
+        })
+        .where(eq(marginTargets.id, input.id))
+        .returning();
+
+      await writeAuditLog({
+        userId: ctx.user.id,
+        userEmail: ctx.user.email,
+        action: 'update',
+        entityType: 'margin_target',
+        entityId: input.id,
+        entityName: existing.serviceLine,
+        metadata: {
+          closed: true,
+          effectiveTo: closed?.effectiveTo ?? null,
+          financialWrite: true,
+        },
+      });
+      return closed;
     }),
 
   // -------------------------------------------------------- entitlement ---

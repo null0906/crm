@@ -14,11 +14,13 @@ import {
   deleteDraft,
   duplicateEstimate,
   EstimateFrozenError,
+  EstimateIncompleteError,
   getEstimateDetail,
   recalculate,
   replaceCostLines,
   replaceTeamLines,
   saveCommercials,
+  seedRolesFromBaseline,
 } from '@/server/services/estimate.service';
 
 /**
@@ -32,10 +34,15 @@ import {
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
 
-/** Maps the service-layer freeze error onto a tRPC code the UI can act on. */
+/** Maps the service-layer refusals onto tRPC codes the UI can act on. */
 function rethrow(error: unknown): never {
   if (error instanceof EstimateFrozenError) {
     throw new TRPCError({ code: 'CONFLICT', message: error.message });
+  }
+  // Not a conflict: nothing about the estimate's state is contested, it simply
+  // is not finished. The builder shows the message as-is, so it names the roles.
+  if (error instanceof EstimateIncompleteError) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
   }
   throw error;
 }
@@ -102,10 +109,10 @@ export const estimatesRouter = router({
     .query(async ({ ctx, input }) => {
       const detail = await getEstimateDetail(input.id);
       if (!detail) throw new TRPCError({ code: 'NOT_FOUND', message: 'Estimate not found.' });
-      const { breakdown, margin } = await recalculate(input.id);
+      const { breakdown, margin, benchmark } = await recalculate(input.id);
 
       auditFinancialRead(ctx.user, 'estimate', { estimateId: input.id });
-      return { ...detail, breakdown, margin };
+      return { ...detail, breakdown, margin, benchmark };
     }),
 
   create: financialProcedure
@@ -143,7 +150,9 @@ export const estimatesRouter = router({
             userId: z.string().uuid().nullish(),
             deliveryStage: z.string().trim().max(40).nullish(),
             resourceCount: z.number().int().positive().max(200),
-            hours: z.number().positive().max(20800),
+            // Nullable: a role can be on the sheet before anyone has decided
+            // how long it is needed for.
+            hours: z.number().positive().max(20800).nullable(),
             overrideBase: z.number().nonnegative().nullish(),
             overrideSeat: z.number().nonnegative().nullish(),
           })
@@ -196,6 +205,17 @@ export const estimatesRouter = router({
     )
     .mutation(async ({ input }) => run(() => applyDriverAnswers(input.id, input.answers))),
 
+  /**
+   * Puts the roles the baseline suggests onto the sheet, with no hours.
+   *
+   * Explicitly asked for rather than run on every scoping save: additive and
+   * idempotent, so a second press changes nothing and a role the estimator
+   * removed on purpose only comes back if they ask for it.
+   */
+  seedRolesFromBaseline: financialProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ input }) => run(() => seedRolesFromBaseline(input.id))),
+
   save: financialProcedure
     .input(
       z.object({
@@ -208,6 +228,11 @@ export const estimatesRouter = router({
         /** null clears the override and falls back to the effective policy. */
         gnrRateOverride: z.number().min(0).max(100).nullish(),
         gnrExcluded: z.boolean().optional(),
+        // 520 weeks is ten years, and 200,000 hours is roughly a hundred
+        // person-years. Both are absurd for an engagement and are here to stop
+        // a fat finger overflowing the column, not to express a policy.
+        engagementWeeks: z.number().positive().max(520).nullish(),
+        engagementHours: z.number().positive().max(200_000).nullish(),
       })
     )
     .mutation(async ({ input }) =>

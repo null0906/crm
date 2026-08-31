@@ -25,8 +25,8 @@ export const COMPONENT_LABEL: Record<CostComponent, string> = {
 };
 
 export const COMPONENT_HINT: Record<CostComponent, string> = {
-  base: 'Salary-derived cost of this role, per hour.',
-  seat: 'Laptop, infrastructure and tooling for one person, per hour. Set against a person, not a role.',
+  base: 'What this person is paid, per hour.',
+  seat: 'Laptop, infrastructure and tooling for this person, per hour.',
 };
 
 function today(): string {
@@ -34,17 +34,18 @@ function today(): string {
 }
 
 export interface RateTarget {
+  /**
+   * Employee for anything settable. Role and default remain in the union only
+   * because closed historic rows carry them; nothing here writes one.
+   */
   scope: 'default' | 'role' | 'employee';
   component: CostComponent;
   deliveryRoleId?: string | null;
-  /** Set for employee scope — seat cost belongs to a person. */
   userId?: string | null;
-  /** Shown in the heading — "Security Analyst", "Priya Nair", "Company default". */
+  /** Shown in the heading — the person's name. */
   label: string;
   currentAmount: number | null;
   currentSince: string | null;
-  /** True when the figure shown is inherited rather than set for this scope. */
-  isInherited: boolean;
 }
 
 export function RateEditDialog({
@@ -60,7 +61,7 @@ export function RateEditDialog({
 
   React.useEffect(() => {
     if (target) {
-      setAmount(target.currentAmount !== null && !target.isInherited ? String(target.currentAmount) : '');
+      setAmount(target.currentAmount !== null ? String(target.currentAmount) : '');
       setEffectiveFrom(today());
       setShowAdvanced(false);
     }
@@ -103,14 +104,10 @@ export function RateEditDialog({
             ) : (
               <>
                 <p className="mt-0.5 text-[13px] font-medium text-slate-800">
-                  {formatCurrency(target.currentAmount)} / week
+                  {formatCurrency(target.currentAmount)} / hour
                 </p>
                 <p className="text-[11px] text-slate-400">
-                  {target.isInherited
-                    ? 'Inherited from the company default'
-                    : target.currentSince
-                      ? `since ${target.currentSince}`
-                      : null}
+                  {target.currentSince ? `since ${target.currentSince}` : null}
                 </p>
               </>
             )}

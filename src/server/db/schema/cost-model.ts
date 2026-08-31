@@ -59,14 +59,16 @@ export const userDeliveryRoles = pgTable('user_delivery_roles', {
 /**
  * Per-resource hourly cost components (FR-P4-14).
  *
- * Two components remain, and they behave differently on purpose:
+ * Two components remain, and both now belong to a person:
  *
- *   base — what the person is paid. Resolves most-specific-wins across
- *          employee > role > default, so an estimate can be costed before the
- *          team is decided.
- *   seat — desk, laptop, licences, insurance. Belongs to a person, not a role,
- *          so it resolves at employee scope ONLY. A blended estimate names
- *          nobody and therefore carries no seat cost; the engine says so.
+ *   base — what the person is paid.
+ *   seat — desk, laptop, licences, insurance.
+ *
+ * Base used to resolve most-specific-wins across employee > role > default, so
+ * an estimate could be costed before the team was decided. It no longer does:
+ * a role rate is an average, and an estimate built on one is only accidentally
+ * right about whoever actually turns up. A line naming nobody now carries no
+ * base cost, and the engine says so rather than reporting the average.
  *
  * Support is no longer here. It became an ordinary cost line on the estimate.
  *
@@ -84,6 +86,13 @@ export const resourceCostComponents = pgTable(
   'resource_cost_components',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    /**
+     * Every new row is 'employee' — both components are now employee-only, and
+     * the two CHECKs below enforce it. The column stays because history varies:
+     * the role and company-default base rates that were closed when pricing
+     * moved to people are still here, and still resolve for an estimate dated
+     * before that happened.
+     */
     scope: varchar('scope', { length: 20 }).$type<CostScope>().notNull(),
     deliveryRoleId: uuid('delivery_role_id').references(() => deliveryRoles.id, {
       onDelete: 'cascade',
@@ -115,10 +124,23 @@ export const resourceCostComponents = pgTable(
       'cost_components_seat_is_employee_check',
       sql`${t.component} <> 'seat' OR ${t.scope} = 'employee'`
     ),
+    // Base is what a particular person is paid, so a role average is not a
+    // weaker version of it — it is a different claim. Added NOT VALID in
+    // migration 0033: the closed role and default rows violate this and have to
+    // survive it, because historic estimates still resolve against them.
+    check(
+      'cost_components_base_is_employee_check',
+      sql`${t.component} <> 'base' OR ${t.scope} = 'employee'`
+    ),
     check('cost_components_amount_check', sql`${t.amountPerHour} >= 0`),
+    // Minus one day, so a rate can be closed before it began. That expresses
+    // "superseded before it ever took effect", which is a real state: setting
+    // a rate and correcting it the same day closes the first one at yesterday.
+    // Such a row resolves on no date at all, since effective_from <= as_of and
+    // effective_to >= as_of cannot both hold.
     check(
       'cost_components_range_check',
-      sql`${t.effectiveTo} IS NULL OR ${t.effectiveTo} >= ${t.effectiveFrom}`
+      sql`${t.effectiveTo} IS NULL OR ${t.effectiveTo} >= ${t.effectiveFrom} - 1`
     ),
     // Each scope shape must have at most one open-ended row, or rate
     // resolution becomes non-deterministic. Split by scope so Postgres's

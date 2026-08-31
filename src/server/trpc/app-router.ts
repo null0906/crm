@@ -32,6 +32,7 @@ import { executiveOverviewRouter } from './routers/executive-overview.router';
 import { costModelRouter } from './routers/cost-model.router';
 import { catalogRouter } from './routers/catalog.router';
 import { sizingRouter } from './routers/sizing.router';
+import { serviceLinesRouter } from './routers/service-lines.router';
 import { estimatesRouter } from './routers/estimates.router';
 
 export const appRouter = router({
@@ -68,6 +69,7 @@ export const appRouter = router({
   costModel: costModelRouter,
   catalog: catalogRouter,
   sizing: sizingRouter,
+  serviceLines: serviceLinesRouter,
   estimates: estimatesRouter,
 });
 

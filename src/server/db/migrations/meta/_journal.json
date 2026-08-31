@@ -218,6 +218,41 @@
       "when": 1787812550590,
       "tag": "0030_service_line_slugs",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1787898950590,
+      "tag": "0031_estimate_team_sizing_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787985350590,
+      "tag": "0032_service_line_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788071750590,
+      "tag": "0033_person_scoped_cost_rates",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788158150590,
+      "tag": "0034_iso27001_scoping_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788244550590,
+      "tag": "0035_iso27001_sizing_drivers",
+      "breakpoints": true
     }
   ]
 }
