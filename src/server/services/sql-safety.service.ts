@@ -7,7 +7,12 @@ type ExecutableDb = {
 
 const parser = new Parser();
 const dangerousKeywords = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT', 'REVOKE'];
-const systemTables = ['pg_', 'information_schema', 'auth.', 'nextauth'];
+// 'eops.', 'eops_migrations' and 'auth.' belong to the Employee Ops platform, which shares
+// this database. The database role is the real control — crm_app has no USAGE on those
+// schemas, so these queries fail at the server regardless — but keeping them out of the
+// validator means a generated query is rejected with a clear message instead of a
+// permission error surfacing as an assistant failure.
+const systemTables = ['pg_', 'information_schema', 'auth.', 'nextauth', 'eops.', 'eops_migrations'];
 
 /**
  * Salary-derived cost data, blocked outright rather than by entitlement.
