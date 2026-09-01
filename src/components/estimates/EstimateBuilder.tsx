@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, ChevronLeft, Copy, Lock, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import type { inferRouterOutputs } from '@trpc/server';
+import type { AppRouter } from '@/server/trpc/app-router';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,10 +35,63 @@ const SCOPE_LABEL: Record<string, string> = {
   default: 'the company default (historic)',
 };
 
+type EstimateDetail = inferRouterOutputs<AppRouter>['estimates']['getById'];
+
+/**
+ * The shell owns the query and the three guards, and nothing else.
+ *
+ * Every other hook lives in `EstimateBuilderLoaded`, which only mounts once `data`
+ * exists, so neither component can change its hook count between renders. This
+ * component used to hold both, with `useAutosave` sitting below `if (isLoading)` —
+ * so the loading render ran 85 hooks and the resolved render ran 86, and React threw
+ * "rendered more hooks than during the previous render". A hook added above a guard
+ * here is fine; one added below it is that bug again.
+ */
 export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estimateId: string }) {
+  const { data, isLoading, error } = trpc.estimates.getById.useQuery({ id: estimateId });
+
+  if (isLoading) return <p className="px-6 py-8 text-[12px] text-slate-400">Loading…</p>;
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-lg px-6 py-16 text-center">
+        <div className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100">
+          <Lock className="h-4 w-4 text-slate-400" />
+        </div>
+        <p className="text-[13px] font-medium text-slate-800">Not available</p>
+        <p className="mt-1 text-[11px] text-slate-400">{error.message}</p>
+        <Link href={`/deals/${dealId}`} className="mt-4 inline-block text-[11px] text-blue-600">
+          Back to the prospect
+        </Link>
+      </div>
+    );
+  }
+  if (!data) return null;
+
+  // Keyed on the estimate: `duplicate` routes to a new id without leaving this
+  // component, and without a remount the new estimate would inherit the previous
+  // one's unsaved price and G&R drafts.
+  return (
+    <EstimateBuilderLoaded
+      key={estimateId}
+      dealId={dealId}
+      estimateId={estimateId}
+      data={data}
+    />
+  );
+}
+
+function EstimateBuilderLoaded({
+  dealId,
+  estimateId,
+  data,
+}: {
+  dealId: string;
+  estimateId: string;
+  data: EstimateDetail;
+}) {
   const router = useRouter();
   const utils = trpc.useUtils();
-  const { data, isLoading, error } = trpc.estimates.getById.useQuery({ id: estimateId });
   const { label: serviceLineLabel } = useServiceLines({ includeInactive: true });
 
   const [price, setPrice] = useState<string | null>(null);
@@ -96,24 +151,6 @@ export function EstimateBuilder({ dealId, estimateId }: { dealId: string; estima
     onSuccess: (r) => router.push(`/deals/${dealId}/estimates/${r.id}`),
     onError: fail('duplicate'),
   });
-
-  if (isLoading) return <p className="px-6 py-8 text-[12px] text-slate-400">Loading…</p>;
-
-  if (error) {
-    return (
-      <div className="mx-auto max-w-lg px-6 py-16 text-center">
-        <div className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100">
-          <Lock className="h-4 w-4 text-slate-400" />
-        </div>
-        <p className="text-[13px] font-medium text-slate-800">Not available</p>
-        <p className="mt-1 text-[11px] text-slate-400">{error.message}</p>
-        <Link href={`/deals/${dealId}`} className="mt-4 inline-block text-[11px] text-blue-600">
-          Back to the prospect
-        </Link>
-      </div>
-    );
-  }
-  if (!data) return null;
 
   const { estimate, teamLines, costLines, drivers, breakdown, margin, benchmark } = data;
   const readOnly = estimate.status !== 'draft';
