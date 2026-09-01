@@ -34,6 +34,17 @@ const restrictedTables = [
   'estimate_team_lines',
   'estimate_cost_lines',
   'estimate_drivers',
+  // These two are here for a different reason than the rest, and it is worth
+  // keeping the distinction straight: they hold no cost at all. They hold the
+  // client's own free-text answers about their business, IT estate, headcount
+  // and security posture — given to us for scoping an engagement, not for an
+  // assistant to summarise back to whoever asks. There is no question the
+  // assistant legitimately answers that needs them.
+  //
+  // They also would not be caught by the `estimates` entry above: matching is
+  // word-bounded, and `estimate_scoping_answers` contains no `estimates` token.
+  'estimate_scoping_documents',
+  'estimate_scoping_answers',
 ];
 
 function normalizeSql(sql: string): string {

@@ -5,8 +5,21 @@ import { financialProcedure, protectedProcedure, router } from '../router';
 import { db } from '@/server/db';
 import { estimates } from '@/server/db/schema';
 import { auditFinancialRead, canSeeFinancials, redactFinancials } from '@/server/lib/financial-access';
-import { writeAuditLog } from '@/server/services/audit.service';
+import {
+  MAX_SCOPING_ANSWER_CHARS,
+  MAX_SCOPING_QUESTION_CHARS,
+  MAX_SCOPING_ROWS,
+  MAX_SCOPING_SECTION_CHARS,
+  MAX_SCOPING_TOTAL_CHARS,
+} from '@/lib/scoping-sheet';
+import { buildChangeDiff, writeAuditLog } from '@/server/services/audit.service';
 import { notifyStaffedUsers } from '@/server/services/estimate-staffing.service';
+import {
+  deleteScopingSheet,
+  getScopingSheet,
+  replaceScopingSheet,
+  ScopingSheetConflictError,
+} from '@/server/services/scoping-document.service';
 import {
   applyDriverAnswers,
   approveEstimate,
@@ -38,6 +51,11 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD');
 /** Maps the service-layer refusals onto tRPC codes the UI can act on. */
 function rethrow(error: unknown): never {
   if (error instanceof EstimateFrozenError) {
+    throw new TRPCError({ code: 'CONFLICT', message: error.message });
+  }
+  // Two uploads raced and the unique constraint refused the second. The data is
+  // consistent either way; this is only so the loser is told to reload.
+  if (error instanceof ScopingSheetConflictError) {
     throw new TRPCError({ code: 'CONFLICT', message: error.message });
   }
   // Not a conflict: nothing about the estimate's state is contested, it simply
@@ -294,6 +312,147 @@ export const estimatesRouter = router({
           entityId: input.id,
         });
         return { id: input.id };
+      })
+    ),
+
+  /* ------------------------------------------- the client's scoping sheet */
+
+  /**
+   * The questionnaire the client filled in and sent back.
+   *
+   * Its own query rather than a field on `getById`, and the reason is
+   * performance rather than tidiness. `getById` calls `getEstimateDetail` and
+   * then `recalculate`, which calls it again — and `persistTotals` runs it once
+   * more on every mutation, which the builder fires on a two-second autosave
+   * cadence. A few hundred kilobytes of client prose riding on all of that, to
+   * compute a number it cannot affect, is a cost paid on every keystroke.
+   *
+   * Gated, despite carrying no money. The obvious reading of the entitlement
+   * rule says otherwise, so it is worth being explicit: nothing else in this
+   * module checks who owns an estimate. Every procedure here takes a bare uuid,
+   * and the financial entitlement is the whole of the access control. Making
+   * this `protectedProcedure` would not relax a data gate, it would let any
+   * authenticated user read, replace or destroy the questionnaire on any
+   * estimate whose id they hold.
+   *
+   * If a delivery lead ever needs to read what was scoped without seeing the
+   * price, that is a genuinely useful `protectedProcedure` — but it needs the
+   * per-estimate authorization this module does not yet have, so it is not a
+   * one-line change.
+   */
+  getScopingSheet: financialProcedure
+    .input(z.object({ estimateId: z.string().uuid() }))
+    .query(async ({ input }) => getScopingSheet(input.estimateId)),
+
+  /**
+   * Attaches a parsed questionnaire to a draft, replacing any earlier one.
+   *
+   * Reference only. It feeds no multiplier, changes no hours and moves nobody —
+   * sizing drivers remain the only path from scoping to a number. This is the
+   * sheet somebody reads while deciding what the drivers cannot tell them.
+   *
+   * The file never reaches the server: it is parsed in the browser and arrives
+   * as rows, matching the import wizard's precedent.
+   */
+  uploadScopingSheet: financialProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        fileName: z.string().trim().min(1).max(255),
+        sourceFormat: z.enum(['csv', 'xlsx']),
+        sheetName: z.string().trim().max(100).nullish(),
+        encoding: z.string().trim().max(20).nullish(),
+        rows: z
+          .array(
+            z.object({
+              section: z.string().trim().max(MAX_SCOPING_SECTION_CHARS).nullish(),
+              question: z.string().trim().min(1).max(MAX_SCOPING_QUESTION_CHARS),
+              // Not .min(1): a question the client left blank is a fact worth
+              // keeping, and is different from a question never asked.
+              answer: z.string().trim().max(MAX_SCOPING_ANSWER_CHARS).nullish(),
+              isSectionHeader: z.boolean().default(false),
+            })
+          )
+          .min(1)
+          .max(MAX_SCOPING_ROWS)
+          .superRefine((rows, ctx) => {
+            // The cap that actually matters. The per-field limits happily
+            // permit a 20 MB body between them, which lands either as a proxy
+            // 413 or as 20 MB to validate and insert.
+            const total = rows.reduce(
+              (n, r) => n + r.question.length + (r.answer?.length ?? 0) + (r.section?.length ?? 0),
+              0
+            );
+            if (total > MAX_SCOPING_TOTAL_CHARS) {
+              ctx.addIssue({
+                code: 'custom',
+                message:
+                  `This sheet is about ${Math.round(total / 1000)} KB of text, over the ` +
+                  `${MAX_SCOPING_TOTAL_CHARS / 1000} KB limit. Worth checking it is a ` +
+                  `questionnaire and not a report pasted into the response column.`,
+              });
+            }
+          }),
+      })
+    )
+    .mutation(async ({ ctx, input }) =>
+      run(async () => {
+        const result = await replaceScopingSheet(
+          input.id,
+          {
+            fileName: input.fileName,
+            sourceFormat: input.sourceFormat,
+            sheetName: input.sheetName ?? null,
+            encoding: input.encoding ?? null,
+            rows: input.rows,
+          },
+          ctx.user.id
+        );
+
+        const after = {
+          fileName: input.fileName,
+          rowCount: result.rowCount,
+          sourceFormat: input.sourceFormat,
+        };
+        await writeAuditLog({
+          userId: ctx.user.id,
+          userEmail: ctx.user.email,
+          action: result.previous ? 'update' : 'create',
+          // Recorded against the estimate, not a new entity type: idx_audit_entity
+          // is on (entity_type, entity_id), and someone asking what happened to
+          // an estimate should find this on its timeline rather than in a second
+          // bucket they would have to know to look in.
+          entityType: 'estimate',
+          entityId: input.id,
+          changes: result.previous ? buildChangeDiff({ ...result.previous }, after) : undefined,
+          // The questions and answers are deliberately not logged. The sheet is
+          // the client's prose about their security posture and the audit log is
+          // a wide-read table. Who replaced what, and when, reconstructs the
+          // history without copying the contents somewhere else.
+          metadata: { scopingSheet: true, ...after, replacedPrevious: Boolean(result.previous) },
+        });
+
+        return { id: input.id, rowCount: result.rowCount, replaced: Boolean(result.previous) };
+      })
+    ),
+
+  /** Takes the sheet off a draft. A frozen estimate keeps its own. */
+  deleteScopingSheet: financialProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) =>
+      run(async () => {
+        const removed = await deleteScopingSheet(input.id);
+        if (removed) {
+          await writeAuditLog({
+            userId: ctx.user.id,
+            userEmail: ctx.user.email,
+            action: 'delete',
+            entityType: 'estimate',
+            entityId: input.id,
+            metadata: { scopingSheet: true },
+          });
+        }
+        return { id: input.id, removed };
       })
     ),
 });

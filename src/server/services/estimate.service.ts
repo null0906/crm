@@ -5,6 +5,7 @@ import {
   effortBaselines,
   estimateCostLines,
   estimateDrivers,
+  estimateScopingDocuments,
   estimateTeamLines,
   estimates,
   supportCostPolicies,
@@ -87,7 +88,7 @@ function clampStoredMargin(marginPercent: number): number {
  * estimate that could be edited after approval would destroy the only signal
  * that tells you the estimates were wrong.
  */
-async function assertDraft(estimateId: string, db: DbClient): Promise<void> {
+export async function assertDraft(estimateId: string, db: DbClient): Promise<void> {
   const [row] = await db
     .select({ status: estimates.status })
     .from(estimates)
@@ -780,6 +781,52 @@ export async function duplicateEstimate(
       await tx.insert(estimateDrivers).values(
         drivers.map(({ id: _id, estimateId: _e, ...d }) => ({ ...d, estimateId: copy!.id }))
       );
+    }
+
+    // The client's scoping questionnaire comes too. Duplicating is how an
+    // approved estimate gets corrected, and a copy that arrived without the
+    // sheet it was scoped against would be missing the one thing you came back
+    // for. Written here against the schema rather than through
+    // scoping-document.service, which imports assertDraft from this module —
+    // calling into it would close a cycle, and it would have to skip its own
+    // guard anyway, since the source is usually approved and the target was
+    // inserted three statements ago.
+    //
+    // `uploadedBy` and `uploadedAt` are copied rather than reset, unlike
+    // `createdBy` above. The estimate really is new; the client's questionnaire
+    // is not, and restamping it would claim someone collected evidence they
+    // never asked for.
+    const [sheet] = await tx
+      .select()
+      .from(estimateScopingDocuments)
+      .where(eq(estimateScopingDocuments.estimateId, estimate.id))
+      .limit(1);
+
+    if (sheet) {
+      const [copiedSheet] = await tx
+        .insert(estimateScopingDocuments)
+        .values({
+          estimateId: copy!.id,
+          fileName: sheet.fileName,
+          sourceFormat: sheet.sourceFormat,
+          sheetName: sheet.sheetName,
+          encoding: sheet.encoding,
+          rowCount: sheet.rowCount,
+          uploadedBy: sheet.uploadedBy,
+          uploadedAt: sheet.uploadedAt,
+        })
+        .returning();
+
+      // Copied inside the database rather than pulled into Node and pushed
+      // straight back — the rows are prose and none of it needs to make the
+      // round trip.
+      await tx.execute(sql`
+        INSERT INTO estimate_scoping_answers
+          (document_id, position, section, question, answer, is_section_header)
+        SELECT ${copiedSheet!.id}, position, section, question, answer, is_section_header
+        FROM estimate_scoping_answers
+        WHERE document_id = ${sheet.id}
+      `);
     }
 
     return copy!.id;

@@ -30,3 +30,4 @@ export * from './api-tokens';
 export * from './cost-model';
 export * from './service-lines';
 export * from './estimating';
+export * from './scoping';

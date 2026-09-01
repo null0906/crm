@@ -161,6 +161,8 @@ export type CostingMode = 'blended' | 'named';
 export type TeamSizingMode = 'fixed' | 'grow';
 export type EstimateCostLineKind = 'non_labour' | 'custom';
 export type CostLineBasis = 'engagement' | 'per_resource_hour';
+/** How a returned scoping questionnaire reached us. Both are parsed in the browser. */
+export type ScopingSourceFormat = 'csv' | 'xlsx';
 
 export interface SessionUser {
   id: UUID;

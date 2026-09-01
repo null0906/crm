@@ -17,7 +17,8 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatCurrency, formatDateTime } from '@/lib/formatters';
 import { useServiceLines } from '@/lib/use-service-lines';
 import { SaveStatus } from './SaveStatus';
-import { ScopingQuestionnaire, type DriverAnswerDraft } from './ScopingQuestionnaire';
+// import { ScopingQuestionnaire, type DriverAnswerDraft } from './ScopingQuestionnaire';
+import { ClientScopingSheet } from './ClientScopingSheet';
 import { TeamShapeEditor, type TeamLineDraft } from './TeamShapeEditor';
 import { CostLinesEditor, type CostLineDraft } from './CostLinesEditor';
 
@@ -110,13 +111,18 @@ function EstimateBuilderLoaded({
   // Every onError stays — a write that silently did not happen to a financial
   // record is the one outcome nobody may miss, and the status pill is too quiet
   // to carry that alone.
-  const updateDrivers = trpc.estimates.updateDrivers.useMutation({
-    onSuccess: (r) => {
-      r.warnings.forEach((w) => toast.info(w));
-      refresh();
-    },
-    onError: fail('save the scoping answers'),
-  });
+  // Disabled along with the sizing-driver questionnaire below. Left commented
+  // rather than deleted because the whole path behind it is intact — the
+  // drivers, the multiplier, the router procedure and the answers already
+  // recorded against existing estimates. Restoring the panel is uncommenting
+  // this, the import, the `drivers` field and the JSX block.
+  // const updateDrivers = trpc.estimates.updateDrivers.useMutation({
+  //   onSuccess: (r) => {
+  //     r.warnings.forEach((w) => toast.info(w));
+  //     refresh();
+  //   },
+  //   onError: fail('save the scoping answers'),
+  // });
   const seedRoles = trpc.estimates.seedRolesFromBaseline.useMutation({
     onSuccess: (r) => {
       r.warnings.forEach((w) => toast.info(w));
@@ -152,7 +158,9 @@ function EstimateBuilderLoaded({
     onError: fail('duplicate'),
   });
 
-  const { estimate, teamLines, costLines, drivers, breakdown, margin, benchmark } = data;
+  // `drivers` is still returned by the query and still recorded against the
+  // estimate; nothing on screen reads it while the questionnaire is off.
+  const { estimate, teamLines, costLines, breakdown, margin, benchmark } = data;
   const readOnly = estimate.status !== 'draft';
   const currency = estimate.currency;
   const priceDraft = price ?? (estimate.price ?? '');
@@ -298,6 +306,15 @@ function EstimateBuilderLoaded({
       )}
 
       <div className="space-y-4">
+        {/* The sizing-driver questionnaire is switched off — not in use.
+            Everything behind it still works: the drivers, the composed
+            multiplier, `estimates.updateDrivers`, and the answers already
+            recorded against existing estimates, which keep their stored
+            `sizeMultiplier` and so still price exactly as they did. New
+            estimates simply size at ×1.0 and the benchmark compares against
+            that. To bring it back, uncomment this, the import at the top, the
+            `updateDrivers` mutation, and `drivers` in the destructure.
+
         <ScopingQuestionnaire
           key={drivers.map((d) => d.id).join(',')}
           answers={drivers.map((d) => ({
@@ -315,6 +332,12 @@ function EstimateBuilderLoaded({
             updateDrivers.mutate({ id: estimateId, answers })
           }
         />
+        */}
+
+        {/* The client's own returned questionnaire. Owns its query, mutations
+            and dialogs — deliberately, so this component gains no hook and its
+            payload stays off the refetch that follows every autosave. */}
+        <ClientScopingSheet estimateId={estimateId} readOnly={readOnly} />
 
         <TeamShapeEditor
           lines={teamDraftLines}
