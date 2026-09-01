@@ -196,6 +196,20 @@ function EstimateBuilderLoaded({
       save.mutate({ id: estimateId, gnrRateOverride: v.trim() === '' ? null : Number(v) }),
   });
 
+  /**
+   * Availability is published by the Employee Ops platform, which may not have
+   * deployed the views or granted access yet. The procedure answers
+   * `unavailable` rather than throwing in that case, so this stays null and the
+   * editor renders exactly as it did before -- no error, no empty capacity
+   * numbers that would read as "nobody is free".
+   */
+  const availabilityQuery = trpc.availability.forEstimate.useQuery(
+    { estimateId },
+    { staleTime: 60_000, retry: false }
+  );
+  const availability =
+    availabilityQuery.data?.status === 'ok' ? availabilityQuery.data : null;
+
   const teamDraftLines = useMemo(
     () =>
       teamLines.map((l) => ({
@@ -305,6 +319,7 @@ function EstimateBuilderLoaded({
         <TeamShapeEditor
           lines={teamDraftLines}
           readOnly={readOnly}
+          availability={availability}
           isSaving={updateTeam.isPending}
           isError={updateTeam.isError}
           isErrorEngagement={save.isError}

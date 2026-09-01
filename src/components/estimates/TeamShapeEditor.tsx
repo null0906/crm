@@ -29,6 +29,20 @@ function toHours(value: string): number | null {
 }
 
 /**
+ * Free capacity, as published by the Employee Ops platform.
+ *
+ * Hours, never money. `freeHours` is floored at zero on their side, so someone
+ * booked 50h against a 40h week reads identically to someone exactly full —
+ * which is the whole reason `overAllocated` is carried separately and must be
+ * shown rather than inferred from a zero.
+ */
+export interface TeamAvailability {
+  windowWeeks: number;
+  people: { userId: string; freeHours: number; overAllocated: boolean }[];
+  roles: { slug: string; peopleCount: number; freeHours: number }[];
+}
+
+/**
  * The engagement and the team: how long the client wants it, how many hours it
  * takes, and who spends them.
  *
@@ -61,6 +75,7 @@ export function TeamShapeEditor({
   isSeeding,
   isError = false,
   isErrorEngagement = false,
+  availability = null,
 }: {
   lines: TeamLineDraft[];
   readOnly: boolean;
@@ -75,6 +90,8 @@ export function TeamShapeEditor({
   isSeeding: boolean;
   isError?: boolean;
   isErrorEngagement?: boolean;
+  /** Null while Employee Ops has not published availability, or cannot be read. */
+  availability?: TeamAvailability | null;
 }) {
   const { data: roles = [] } = trpc.costModel.listRoles.useQuery();
   const { data: staff = [] } = trpc.costModel.listStaffWithRoles.useQuery();
@@ -312,6 +329,18 @@ export function TeamShapeEditor({
             {hasBaseline ? ", or seed the ones this service usually needs" : ""}.
           </p>
         )}
+        {availability && availability.roles.length > 0 && (
+          <p className="text-[10px] leading-relaxed text-slate-400">
+            Free over the next {availability.windowWeeks} weeks:{" "}
+            {availability.roles
+              .map((r) => {
+                const name = roles.find((x) => x.slug === r.slug)?.name ?? r.slug;
+                return `${name} ${Math.round(r.freeHours)}h across ${r.peopleCount}`;
+              })
+              .join(" · ")}
+            . A snapshot, not a booking.
+          </p>
+        )}
         {draft.map((line, i) => (
           <div key={i} className="flex items-center gap-2">
             <select
@@ -403,6 +432,54 @@ export function TeamShapeEditor({
                 ? `${weeksLabel(toHours(line.hours)!)} wks`
                 : "—"}
             </span>
+            {availability && (() => {
+              const person = line.userId
+                ? availability.people.find((p) => p.userId === line.userId)
+                : undefined;
+
+              // No row is "unknown", not "no capacity": the person may not be set
+              // up in Employee Ops, or the weeks may fall outside the published
+              // window. Never render that as a zero.
+              if (!person) {
+                return (
+                  <span
+                    className="w-20 text-[10px] tabular-nums text-slate-300"
+                    title={
+                      line.userId
+                        ? "No availability published for this person"
+                        : "Name someone to see whether they are free"
+                    }
+                  >
+                    —
+                  </span>
+                );
+              }
+
+              const need = toHours(line.hours);
+              const short = need !== null && need > person.freeHours;
+              const flag = person.overAllocated || short;
+
+              return (
+                <span
+                  className={
+                    flag
+                      ? "w-20 text-[10px] tabular-nums text-amber-600"
+                      : "w-20 text-[10px] tabular-nums text-slate-400"
+                  }
+                  title={
+                    person.overAllocated
+                      ? `Already booked past their contracted hours over the next ${availability.windowWeeks} weeks`
+                      : short
+                        ? `This line needs ${need}h but only ${Math.round(person.freeHours)}h are free over the next ${availability.windowWeeks} weeks`
+                        : `Free over the next ${availability.windowWeeks} weeks. A snapshot, not a booking — nothing here reserves anyone.`
+                  }
+                >
+                  {person.overAllocated
+                    ? "overbooked"
+                    : `${Math.round(person.freeHours)}h free`}
+                </span>
+              );
+            })()}
             {!readOnly && (
               <button
                 type="button"

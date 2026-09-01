@@ -6,6 +6,7 @@ import { db } from '@/server/db';
 import { estimates } from '@/server/db/schema';
 import { auditFinancialRead, canSeeFinancials, redactFinancials } from '@/server/lib/financial-access';
 import { writeAuditLog } from '@/server/services/audit.service';
+import { notifyStaffedUsers } from '@/server/services/estimate-staffing.service';
 import {
   applyDriverAnswers,
   approveEstimate,
@@ -257,6 +258,14 @@ export const estimatesRouter = router({
           entityId: input.id,
           metadata: { approved: true, totalDeliveryCost: breakdown.totalDeliveryCost },
         });
+        // Approval is irreversible and has already committed. Telling the team is
+        // worth doing but is not worth losing the approval over, so a failure here
+        // is logged and dropped rather than surfaced — same rule as the audit log.
+        try {
+          await notifyStaffedUsers(input.id, ctx.user.id);
+        } catch (err) {
+          console.error('[EstimateStaffing] Failed to notify staffed users:', err);
+        }
         return breakdown;
       })
     ),

@@ -34,6 +34,7 @@ import { catalogRouter } from './routers/catalog.router';
 import { sizingRouter } from './routers/sizing.router';
 import { serviceLinesRouter } from './routers/service-lines.router';
 import { estimatesRouter } from './routers/estimates.router';
+import { availabilityRouter } from './routers/availability.router';
 
 export const appRouter = router({
   contacts: contactRouter,
@@ -71,6 +72,7 @@ export const appRouter = router({
   sizing: sizingRouter,
   serviceLines: serviceLinesRouter,
   estimates: estimatesRouter,
+  availability: availabilityRouter,
 });
 
 export type AppRouter = typeof appRouter;
