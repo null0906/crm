@@ -53,6 +53,40 @@ export const dealRouter = router({
       });
     }),
 
+  // Every prospect matching the board's filters, for the Excel/CSV export on the
+  // Prospects page. Pages through listDeals so the same visibility rules apply.
+  exportDeals: protectedProcedure
+    .use(requirePermission('deals', 'export'))
+    .input(z.object({
+      pipelineId: z.string().uuid(),
+      limit: z.number().int().min(1).max(5000).default(5000),
+      search: z.string().optional(),
+      filters: filterConfigSchema.optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const rows: Record<string, unknown>[] = [];
+      let cursor: string | undefined;
+
+      while (rows.length < input.limit) {
+        const result = await dealService.listDeals(ctx.user!, {
+          pipelineId: input.pipelineId,
+          search: input.search,
+          filters: input.filters,
+          pagination: {
+            cursor,
+            limit: Math.min(500, input.limit - rows.length),
+          },
+        });
+
+        rows.push(...result.items);
+
+        if (!result.hasMore || !result.nextCursor) break;
+        cursor = result.nextCursor;
+      }
+
+      return { rows, truncated: rows.length >= input.limit };
+    }),
+
   getById: protectedProcedure
     .use(requirePermission('deals', 'read'))
     .input(z.object({ id: z.string().uuid() }))
