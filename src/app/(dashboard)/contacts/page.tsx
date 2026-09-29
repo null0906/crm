@@ -5,7 +5,7 @@ import {
   useReactTable, getCoreRowModel, flexRender,
   type ColumnDef, type RowSelectionState, type VisibilityState,
 } from '@tanstack/react-table';
-import { Plus, Search, Users, Download, Upload, Trash2, Pencil, Link2, ChevronDown, MessageCircle, PhoneCall, Mail, CalendarDays, StickyNote } from 'lucide-react';
+import { Plus, Search, Users, Upload, Trash2, Pencil, Link2, ChevronDown, MessageCircle, PhoneCall, Mail, CalendarDays, StickyNote } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,9 @@ import { toast } from 'sonner';
 import { PAGE_SIZES, CONTACT_SOURCES, CONTACT_STATUSES } from '@/lib/constants';
 import { SavedViewsBar } from '@/components/saved-views/SavedViewsBar';
 import { ImportWizard } from '@/components/import-export/ImportWizard';
-import { exportToCSV } from '@/lib/export-csv';
+import { CONTACT_EXPORT_COLUMNS, exportRecords, type ExportFormat } from '@/lib/record-exports';
+import { ExportMenu } from '@/components/import-export/ExportMenu';
+import { usePermissions } from '@/hooks/usePermissions';
 import { ColumnVisibilityMenu } from '@/components/shared/ColumnVisibilityMenu';
 import { getWhatsAppHref } from '@/lib/whatsapp';
 
@@ -154,6 +156,7 @@ export default function ContactsPage() {
 
   const debouncedSearch = useDebounce(search, 300);
   const utils = trpc.useUtils();
+  const { can } = usePermissions();
 
   const { data: usersData } = trpc.users.list.useQuery();
   const users = usersData ?? [];
@@ -193,6 +196,42 @@ export default function ContactsPage() {
     },
     { enabled: false }
   );
+
+  async function handleExport(format: ExportFormat) {
+    const { data: exportData, error } = await exportContactsQuery.refetch();
+    if (error || !exportData) {
+      toast.error('Export failed', { description: error?.message });
+      return;
+    }
+    const rows = exportData.rows;
+    const ownerUser = users.find((u) => u.id === ownerFilter);
+    const filterLabels = [
+      debouncedSearch && `Search: ${debouncedSearch}`,
+      statusFilter && `Status: ${statusFilter}`,
+      ownerFilter && `Owner: ${ownerUser ? `${ownerUser.firstName} ${ownerUser.lastName}` : ownerFilter}`,
+      sourceFilter && `Source: ${sourceFilter}`,
+      locationFilter && `Location contains: ${locationFilter}`,
+      cityFilter && `City contains: ${cityFilter}`,
+      countryFilter && `Country contains: ${countryFilter}`,
+      filterTags.length > 0 && `Tags: ${filterTags.map((tag) => tag.name).join(', ')}`,
+      dateFrom && `Created from: ${dateFrom}`,
+      dateTo && `Created to: ${dateTo}`,
+    ].filter((label): label is string => Boolean(label));
+
+    await exportRecords(format, CONTACT_EXPORT_COLUMNS, rows, {
+      title: hasActiveExportFilters ? 'Contacts (filtered)' : 'Contacts',
+      subtitle: `Exported ${formatDate(new Date())} · ${rows.length} contact${rows.length === 1 ? '' : 's'}`,
+      filters: filterLabels,
+      sheetName: 'Contacts',
+      filename: `${hasActiveExportFilters ? 'contacts-filtered' : 'contacts'}-${new Date().toISOString().slice(0, 10)}`,
+    });
+    toast.success(hasActiveExportFilters ? 'Filtered contacts exported' : 'Contacts exported', {
+      description: `${rows.length} contact${rows.length === 1 ? '' : 's'} downloaded`,
+    });
+    if (exportData.truncated) {
+      toast.warning('Export is limited to the first 5,000 contacts');
+    }
+  }
 
   const deleteContact = trpc.contacts.delete.useMutation({
     onSuccess: () => {
@@ -528,52 +567,14 @@ export default function ContactsPage() {
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <ColumnVisibilityMenu table={table} />
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={exportContactsQuery.isFetching}
-              onClick={async () => {
-                const { data: exportData } = await exportContactsQuery.refetch();
-                const rows = (exportData?.rows ?? contacts).map((c) => ({
-                  firstName: String(c.firstName ?? ''),
-                  lastName: String(c.lastName ?? ''),
-                  email: String(c.email ?? ''),
-                  secondaryEmail: String(c.secondaryEmail ?? ''),
-                  phone: String(c.phone ?? ''),
-                  mobile: String(c.mobile ?? ''),
-                  jobTitle: String(c.jobTitle ?? ''),
-                  department: String(c.department ?? ''),
-                  company: String(c.companyName ?? ''),
-                  status: String(c.status ?? ''),
-                  source: String(c.source ?? ''),
-                  leadScore: String(c.leadScore ?? ''),
-                  owner: `${String(c.ownerFirstName ?? '')} ${String(c.ownerLastName ?? '')}`.trim(),
-                  initialTouch: String(c.initialActivityType ?? ''),
-                  initialTouchAt: c.initialActivityAt ? formatDate(c.initialActivityAt as Date | string) : '',
-                  location: String(c.location ?? ''),
-                  city: String(c.city ?? ''),
-                  state: String(c.state ?? ''),
-                  postalCode: String(c.postalCode ?? ''),
-                  country: String(c.country ?? ''),
-                  linkedIn: String(c.linkedinUrl ?? ''),
-                  notes: String(c.description ?? ''),
-                  lastContacted: c.lastContactedAt ? formatDate(c.lastContactedAt as Date | string) : '',
-                  createdAt: c.createdAt ? formatDate(c.createdAt as Date | string) : '',
-                  updatedAt: c.updatedAt ? formatDate(c.updatedAt as Date | string) : '',
-                }));
-                exportToCSV(rows, hasActiveExportFilters ? 'contacts-filtered.csv' : 'contacts.csv', { forceTextColumns: ['phone', 'mobile', 'postalCode'] });
-                toast.success(hasActiveExportFilters ? 'Filtered contacts exported' : 'Contacts exported', {
-                  description: `${rows.length} contact${rows.length === 1 ? '' : 's'} downloaded`,
-                });
-                if (exportData?.truncated) {
-                  toast.warning('Export is limited to the first 5,000 contacts');
-                }
-              }}
-              title={hasActiveExportFilters ? 'Export contacts matching the current filters and search' : 'Export all contacts'}
-            >
-              <Download className="h-3.5 w-3.5" />
-              {exportContactsQuery.isFetching ? 'Exporting...' : hasActiveExportFilters ? 'Export Filtered' : 'Export'}
-            </Button>
+            {can('contacts', 'export') && (
+              <ExportMenu
+                busy={exportContactsQuery.isFetching}
+                label={hasActiveExportFilters ? 'Export Filtered' : 'Export'}
+                title={hasActiveExportFilters ? 'Export contacts matching the current filters and search' : 'Export all contacts'}
+                onExport={(format) => { void handleExport(format); }}
+              />
+            )}
             <Button
               size="sm"
               variant="outline"
