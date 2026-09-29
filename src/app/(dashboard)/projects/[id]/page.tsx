@@ -227,7 +227,7 @@ function TasksTab({ project }: { project: ProjectRecord }) {
 function TeamTab({ project }: { project: ProjectRecord }) {
   const utils = trpc.useUtils();
   const members = (project.members ?? []) as ProjectRecord[];
-  const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: users = [] } = trpc.users.assignable.useQuery();
   const [userId, setUserId] = React.useState('');
   const [role, setRole] = React.useState<'lead' | 'member' | 'reviewer' | 'consultant'>('member');
   const addMember = trpc.projects.addMember.useMutation({
@@ -333,7 +333,7 @@ export default function ProjectDetailPage() {
   const { data: session } = useSession();
   const currentRoleSlug = ((session?.user as Record<string, unknown> | undefined)?.role as Record<string, unknown> | undefined)?.slug;
   const { data: project, isLoading } = trpc.projects.getById.useQuery({ id: projectId }, { enabled: Boolean(projectId) });
-  const { data: users = [] } = trpc.users.list.useQuery(undefined, { enabled: currentRoleSlug === 'super_admin' });
+  const { data: users = [] } = trpc.users.assignable.useQuery(undefined, { enabled: currentRoleSlug === 'super_admin' });
   const utils = trpc.useUtils();
   const updateProject = trpc.projects.update.useMutation({
     onSuccess: () => {

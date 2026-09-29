@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { Bell, Check, CheckCheck, Trash2, X } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { formatRelative } from '@/lib/formatters';
@@ -18,7 +19,23 @@ const TYPE_ICONS: Record<string, string> = {
   task_completed: '✅',
   task_cancelled: '🚫',
   system: '🔔',
+  estimate_staffed: '🗓️',
 };
+
+/**
+ * Deep link for a notification, if it carries one.
+ *
+ * `metadata` is jsonb, so it is whatever was written at creation time and is
+ * validated nowhere. Anything that is not a site-relative path is ignored —
+ * this value ends up in an href, so an absolute or javascript: URL from a bad
+ * write would be an open redirect.
+ */
+function readActionUrl(metadata: unknown): string | null {
+  if (typeof metadata !== 'object' || metadata === null) return null;
+  const url = (metadata as Record<string, unknown>).actionUrl;
+  if (typeof url !== 'string') return null;
+  return url.startsWith('/') && !url.startsWith('//') ? url : null;
+}
 
 export function NotificationBell() {
   const utils = trpc.useUtils();
@@ -126,15 +143,10 @@ export function NotificationBell() {
                 <p className="text-sm text-[var(--color-text-3)]">No notifications yet</p>
               </div>
             ) : (
-              notifications.map((notif) => (
-                <div
-                  key={notif.id}
-                  className={`group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-[var(--color-surface-alt)] ${!notif.isRead ? 'bg-[var(--color-accent-soft)]' : ''}`}
-                >
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-surface-alt)] text-base">
-                    {TYPE_ICONS[notif.type] ?? '🔔'}
-                  </div>
-                  <div className="flex-1 min-w-0">
+              notifications.map((notif) => {
+                const actionUrl = readActionUrl(notif.metadata);
+                const summary = (
+                  <>
                     <p className={`text-sm ${!notif.isRead ? 'font-medium text-[var(--color-text-1)]' : 'text-[var(--color-text-2)]'}`}>
                       {notif.title}
                     </p>
@@ -142,6 +154,35 @@ export function NotificationBell() {
                       <p className="mt-0.5 line-clamp-2 text-xs text-[var(--color-text-2)]">{notif.body}</p>
                     )}
                     <p className="mt-1 font-mono text-xs text-[var(--color-text-3)]">{formatRelative(notif.createdAt)}</p>
+                  </>
+                );
+
+                return (
+                <div
+                  key={notif.id}
+                  className={`group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-[var(--color-surface-alt)] ${!notif.isRead ? 'bg-[var(--color-accent-soft)]' : ''}`}
+                >
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-surface-alt)] text-base">
+                    {TYPE_ICONS[notif.type] ?? '🔔'}
+                  </div>
+                  {/* Only the summary is a link. The mark-read and delete buttons sit
+                      outside it — nesting a button inside an anchor is invalid, and
+                      clicking one would navigate instead of doing what it says. */}
+                  <div className="flex-1 min-w-0">
+                    {actionUrl ? (
+                      <Link
+                        href={actionUrl}
+                        className="block focus:outline-none focus-visible:underline"
+                        onClick={() => {
+                          setOpen(false);
+                          if (!notif.isRead) markRead.mutate({ id: notif.id });
+                        }}
+                      >
+                        {summary}
+                      </Link>
+                    ) : (
+                      summary
+                    )}
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                     {!notif.isRead && (
@@ -165,7 +206,8 @@ export function NotificationBell() {
                     <div className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-[var(--color-accent)]" />
                   )}
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm';
-import { generateText, stepCountIs, type ModelMessage } from 'ai';
-import { createGroq } from '@ai-sdk/groq';
+import { type ModelMessage } from 'ai';
+import { LlmRateLimitError, runText } from '@/server/lib/llm';
 import { db as defaultDb } from '@/server/db';
 import { aiChatMessages, aiChatSessions } from '@/server/db/schema';
 import type { AiChatToolCall } from '@/server/db/schema/ai-chat';
@@ -28,25 +28,6 @@ export type AiChatResponse = {
 
 const friendlyError = 'I had trouble processing that query. Try rephrasing, or contact your admin.';
 const MAX_STEPS = Number(process.env.GROQ_MAX_TOOL_STEPS ?? 6);
-
-function getCandidateModels(): string[] {
-  // openai/gpt-oss-* models come first: they're OpenAI-trained specifically for the standard
-  // OpenAI-style structured tool-calling format, and are markedly more reliable at emitting
-  // well-formed tool calls on Groq than the Llama models, which are documented (both in our
-  // own testing and widely elsewhere) to sometimes emit malformed pseudo-XML function-call
-  // text that Groq's API then rejects as an invalid tool name.
-  const configuredModels = [
-    process.env.GROQ_MODEL,
-    ...(process.env.GROQ_FALLBACK_MODELS?.split(',') ?? []),
-    'openai/gpt-oss-120b',
-    'openai/gpt-oss-20b',
-    'llama-3.3-70b-versatile',
-  ]
-    .map((model) => model?.trim())
-    .filter((model): model is string => Boolean(model));
-
-  return Array.from(new Set(configuredModels));
-}
 
 export function buildSystemPrompt(user: SessionUser): string {
   return `
@@ -149,35 +130,27 @@ async function storeAssistantMessage(args: {
   return message!;
 }
 
-async function runAgent(params: { systemPrompt: string; messages: ModelMessage[]; tools: ReturnType<typeof createAiTools> }) {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    console.error('[AI Chat] GROQ_API_KEY is not configured');
-    throw new Error(friendlyError);
-  }
-
-  const groq = createGroq({ apiKey });
-  const candidateModels = getCandidateModels();
-  let lastError: unknown = null;
-
-  for (const modelName of candidateModels) {
-    try {
-      return await generateText({
-        model: groq(modelName),
-        system: params.systemPrompt,
-        messages: params.messages,
-        tools: params.tools,
-        stopWhen: stepCountIs(MAX_STEPS),
-        temperature: Number(process.env.GROQ_TEMPERATURE ?? 0.1),
-      });
-    } catch (error) {
-      lastError = error;
-      console.warn(`[AI Chat] Model ${modelName} failed, trying fallback if available:`, error);
-    }
-  }
-
-  console.error('[AI Chat] All model attempts failed:', lastError);
-  throw new Error(friendlyError);
+/**
+ * The provider call, the fallback chain and the rate limiter now live in
+ * `@/server/lib/llm`, so a second feature can use them without dragging the assistant's tool
+ * set along. Behaviour here is unchanged: same model order, same step cap, and the same 0.1
+ * temperature, which suits prose even though the shared default is 0.
+ */
+async function runAgent(params: {
+  systemPrompt: string;
+  messages: ModelMessage[];
+  tools: ReturnType<typeof createAiTools>;
+  userId: string;
+}) {
+  return runText({
+    purpose: 'chat',
+    userId: params.userId,
+    systemPrompt: params.systemPrompt,
+    messages: params.messages,
+    tools: params.tools,
+    maxSteps: MAX_STEPS,
+    temperature: Number(process.env.GROQ_TEMPERATURE ?? 0.1),
+  });
 }
 
 export async function handleMessage(
@@ -210,7 +183,7 @@ export async function handleMessage(
     const systemPrompt = buildSystemPrompt(user);
     const messages = toModelMessages(historyRows.reverse(), userMessage);
 
-    const result = await runAgent({ systemPrompt, messages, tools });
+    const result = await runAgent({ systemPrompt, messages, tools, userId: user.id });
 
     const toolCallLog: AiChatToolCall[] = result.toolResults.map((toolResult) => ({
       tool: toolResult.toolName,
@@ -268,15 +241,19 @@ export async function handleMessage(
   } catch (error) {
     console.error('[AI Chat] Failed to handle message:', error);
 
+    // Being throttled is not a failure the user should have to guess at — it is temporary
+    // and it has a wait time, unlike the generic error, which reads as "something is broken".
+    const content = error instanceof LlmRateLimitError ? error.message : friendlyError;
+
     if (userMessageStored) {
       try {
-        const message = await storeAssistantMessage({ db, sessionId, content: friendlyError });
+        const message = await storeAssistantMessage({ db, sessionId, content });
 
         return {
           message: {
             id: message.id,
             role: 'assistant',
-            content: friendlyError,
+            content,
             wasClarification: false,
             createdAt: message.createdAt,
           },
@@ -286,6 +263,6 @@ export async function handleMessage(
       }
     }
 
-    throw new Error(friendlyError);
+    throw new Error(content);
   }
 }

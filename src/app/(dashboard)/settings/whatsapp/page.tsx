@@ -40,7 +40,7 @@ function AddUserPanel({
   const [waName, setWaName] = useState('');
   const [crmUserId, setCrmUserId] = useState('');
 
-  const { data: crmUsers } = trpc.users.list.useQuery();
+  const { data: crmUsers } = trpc.users.assignable.useQuery();
   const addUser = trpc.whatsapp.addUser.useMutation({
     onSuccess: () => {
       toast.success('WhatsApp user added');

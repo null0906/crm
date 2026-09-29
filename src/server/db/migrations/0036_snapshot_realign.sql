@@ -1,0 +1,29 @@
+-- Snapshot realignment. Intentionally does nothing.
+--
+-- meta/_journal.json had 36 entries but meta/ held only 15 snapshots: migrations
+-- 0003-0015, 0017-0019 and 0031-0035 were hand-written and appended to the journal
+-- without a generated snapshot. drizzle-kit picks its diff baseline with
+-- `snapshots[snapshots.length - 1]`, so `drizzle-kit generate` was silently diffing the
+-- TypeScript schema against 0030 and re-emitting every change from 0031-0035 — DDL that
+-- is already applied everywhere. Committing that would have broken the next Railway
+-- deploy, since `railway.toml` starts with `npm run db:migrate`.
+--
+-- The generated statements were verified one by one against the live database: all 17
+-- objects (service_lines, sizing_driver_service_lines, estimates.team_sizing_mode /
+-- engagement_weeks / engagement_hours, effort_baselines.ideal_cost, the nullable
+-- estimate_team_lines.hours, and 7 check constraints) already existed. So there is no
+-- drift between the schema files and the migrations — only a missing snapshot.
+--
+-- Keeping the generated meta/0036_snapshot.json restores the diff chain (its prevId is
+-- 0030's id, and it captures all 61 tables), so future `generate` runs produce correct
+-- incremental migrations. The SQL body is emptied because the DDL is already applied.
+--
+-- Second trap found while doing this, worth knowing before you generate the next one:
+-- the migrator applies a migration only when its journal `when` is strictly greater than
+-- the newest created_at already in drizzle.__drizzle_migrations (pg-core/dialect.cjs:64).
+-- Migrations 0033-0035 were hand-written with synthetic timestamps spaced exactly one day
+-- apart, landing 0035 in the future (2026-09-01T06:35:50Z). drizzle-kit stamps new
+-- migrations with the real Date.now(), which sorted BEFORE that, so this migration was
+-- silently skipped on its first run - reported as success having done nothing. Its `when`
+-- was bumped to 0035 + 1s to restore ordering. Keep journal `when` values monotonic.
+SELECT 1;

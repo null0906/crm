@@ -64,7 +64,7 @@ interface LogDemoPanelProps {
 export function LogDemoPanel({ companyId, contactId, dealId, onSuccess, onCancel }: LogDemoPanelProps) {
   const utils = trpc.useUtils();
 
-  const { data: usersData = [] } = trpc.users.list.useQuery(undefined);
+  const { data: usersData = [] } = trpc.users.assignable.useQuery(undefined);
   const teamMembers = usersData as Array<Record<string, unknown>>;
 
   const createDemo = trpc.demoRecords.create.useMutation({

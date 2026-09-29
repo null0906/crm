@@ -128,6 +128,42 @@ export interface RolePermissions {
 }
 
 // Session user type
+// ---- Cost engine (Pillar 4) ----
+export type CostScope = 'default' | 'role' | 'employee';
+/**
+ * Support is deliberately absent: it is no longer a per-resource component but
+ * an ordinary cost line seeded onto each estimate, so an estimator can see and
+ * argue with it rather than inheriting it inside an opaque loaded rate.
+ * Seat resolves at employee scope only — it belongs to a person, not a role.
+ */
+export type CostComponent = 'base' | 'seat';
+export type GnrBasis = 'total' | 'labour_only';
+/** How a company-wide support default is applied to an estimate. */
+export type SupportBasis = 'engagement' | 'per_resource_hour';
+
+// ---- Effort catalog, sizing and estimates (Pillar 4) ----
+export type BaselineConfidence = 'low' | 'medium' | 'high';
+export type SizingValueType = 'select' | 'number';
+/** Whether a driver stretches the schedule, grows the team, or both. */
+export type SizingAppliesTo = 'hours' | 'team' | 'both';
+export type SizingComposition = 'multiplicative' | 'additive';
+export type EstimateStatus = 'draft' | 'approved' | 'superseded' | 'archived';
+/** Blended costs at role averages; named costs the specific people proposed. */
+export type CostingMode = 'blended' | 'named';
+/**
+ * Where a sizing driver's growth lands on an estimate.
+ *
+ * `fixed` keeps the baseline's headcount and puts the growth into hours per
+ * person — the team was shaped deliberately in the catalog, so sizing changes
+ * how much work it does rather than who is on it. `grow` lets the team axis
+ * add people, which is the older behaviour. Total effort is the same either way.
+ */
+export type TeamSizingMode = 'fixed' | 'grow';
+export type EstimateCostLineKind = 'non_labour' | 'custom';
+export type CostLineBasis = 'engagement' | 'per_resource_hour';
+/** How a returned scoping questionnaire reached us. Both are parsed in the browser. */
+export type ScopingSourceFormat = 'csv' | 'xlsx';
+
 export interface SessionUser {
   id: UUID;
   email: string;
@@ -135,6 +171,8 @@ export interface SessionUser {
   lastName: string;
   avatarUrl?: string | null;
   roleId: UUID;
+  /** Per-user financial entitlement (FR-X-05). Not derived from role. */
+  hasFinancialAccess: boolean;
   role: {
     id: UUID;
     name: string;

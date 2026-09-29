@@ -40,7 +40,7 @@ function AddUserPanel({
   const [teamsName, setTeamsName] = useState('');
   const [crmUserId, setCrmUserId] = useState('');
 
-  const { data: crmUsers } = trpc.users.list.useQuery();
+  const { data: crmUsers } = trpc.users.assignable.useQuery();
   const addUser = trpc.teams.addUser.useMutation({
     onSuccess: () => {
       toast.success('Teams user added');

@@ -1,30 +1,23 @@
 services:
   postgres:
-    image: postgres:16
+    # Matches the production major version on Railway. Keep them aligned:
+    # pg_dump refuses to read a server newer than itself, so a mismatch makes
+    # `npm run db:local:clone` impossible, and testing against a different
+    # major version hides behaviour differences until they reach production.
+    image: postgres:18
     container_name: seccomply_postgres
     environment:
       POSTGRES_DB: seccomply_crm
       POSTGRES_USER: crm_user
       POSTGRES_PASSWORD: crm_password
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "${POSTGRES_PORT:-5434}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # PG18+ stores data in a major-version subdirectory, so the mount goes
+      # at /var/lib/postgresql rather than /data. See docker-library/postgres#1259.
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U crm_user -d seccomply_crm"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: seccomply_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redisdata:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -44,5 +37,4 @@ services:
 
 volumes:
   pgdata:
-  redisdata:
   miniodata:

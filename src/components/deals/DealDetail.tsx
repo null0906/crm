@@ -7,6 +7,7 @@ import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { DetailSkeleton } from '@/components/shared/LoadingSkeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { EstimateListTab } from '@/components/estimates/EstimateListTab';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ActivityFeed } from '@/components/activities/ActivityFeed';
@@ -300,6 +301,7 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                 <TabsList>
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   {showProjectTab && <TabsTrigger value="project">Project</TabsTrigger>}
+                  <TabsTrigger value="estimate">Estimate</TabsTrigger>
                   <TabsTrigger value="activity">Activity</TabsTrigger>
                   <TabsTrigger value="demos">Demos</TabsTrigger>
                   <TabsTrigger value="tasks">Tasks</TabsTrigger>
@@ -486,6 +488,10 @@ export function DealDetail({ dealId, open, onClose, onDeleted }: DealDetailProps
                     </div>
                   </TabsContent>
                 )}
+
+                <TabsContent value="estimate" className="mt-4">
+                  <EstimateListTab dealId={dealId} />
+                </TabsContent>
 
                 <TabsContent value="activity" className="mt-4">
                   <ActivityFeed dealId={dealId} />

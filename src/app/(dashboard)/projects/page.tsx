@@ -332,7 +332,7 @@ export default function ProjectsPage() {
     onError: (err) => toast.error('Could not create project', { description: err.message }),
   });
   const { data: pipelines = [] } = trpc.pipelines.list.useQuery();
-  const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: users = [] } = trpc.users.assignable.useQuery();
   const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 500 } });
   const companies = (companiesData?.items ?? []) as ProjectRecord[];
   const activePipelineId = React.useMemo(() => {

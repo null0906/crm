@@ -148,6 +148,125 @@
       "when": 1784457941523,
       "tag": "0020_ai_chat_tool_calls",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787647061940,
+      "tag": "0021_cost_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1787654876078,
+      "tag": "0022_effort_catalog_estimates",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1787657620222,
+      "tag": "0023_margin_targets",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787729376832,
+      "tag": "0024_widen_margin_and_multiplier",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787732605192,
+      "tag": "0025_hourly_costing_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1787732630816,
+      "tag": "0026_hourly_costing_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1787732744090,
+      "tag": "0027_backfill_support_lines",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1787743666637,
+      "tag": "0028_support_lines_per_engagement",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1787744013441,
+      "tag": "0029_estimate_gnr_override",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1787812550590,
+      "tag": "0030_service_line_slugs",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1787898950590,
+      "tag": "0031_estimate_team_sizing_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787985350590,
+      "tag": "0032_service_line_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788071750590,
+      "tag": "0033_person_scoped_cost_rates",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788158150590,
+      "tag": "0034_iso27001_scoping_questions",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788244550590,
+      "tag": "0035_iso27001_sizing_drivers",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1788244551590,
+      "tag": "0036_snapshot_realign",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1788253341461,
+      "tag": "0037_estimate_scoping_sheet",
+      "breakpoints": true
     }
   ]
 }

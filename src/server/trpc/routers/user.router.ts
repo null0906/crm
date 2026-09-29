@@ -3,7 +3,7 @@ import { TRPCError } from '@trpc/server';
 import { router, protectedProcedure } from '../router';
 import { requirePermission } from '../middleware';
 import { db } from '@/server/db';
-import { users, roles } from '@/server/db/schema';
+import { users, roles, userDeliveryRoles, deliveryRoles } from '@/server/db/schema';
 import { eq, asc, ne } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { writeAuditLog } from '@/server/services/audit.service';
@@ -21,6 +21,9 @@ export const userRouter = router({
           phone: users.phone,
           status: users.status,
           roleId: users.roleId,
+          // Read live rather than from the JWT: sessions last 7 days, so a
+          // revoked entitlement must not keep working until the token expires.
+          hasFinancialAccess: users.hasFinancialAccess,
           preferences: users.preferences,
           createdAt: users.createdAt,
           role: {
@@ -39,7 +42,41 @@ export const userRouter = router({
       return user;
     }),
 
+  /**
+   * The colleague picker: owner and assignee dropdowns across contacts,
+   * companies, deals, projects and the chat integrations.
+   *
+   * Open to any authenticated user by design — choosing an owner is something
+   * every role does. It returns only what a picker needs, so `phone`, `status`,
+   * `role` and the financial entitlement are not readable by everyone.
+   */
+  assignable: protectedProcedure.query(async () => {
+    return db
+      .select({
+        id: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        avatarUrl: users.avatarUrl,
+      })
+      .from(users)
+      .where(ne(users.status, 'inactive'))
+      .orderBy(asc(users.firstName));
+  }),
+
+  /**
+   * The full administrative listing. Gated to match every mutation in this
+   * router — it was previously the only ungated procedure here, which let any
+   * authenticated user enumerate every colleague's phone number and role.
+   *
+   * Carries the delivery role too — what someone does on an engagement, as
+   * opposed to what they may do in the CRM. Two different questions, answered
+   * side by side on the Users page.
+   *
+   * Use `assignable` for dropdowns.
+   */
   list: protectedProcedure
+    .use(requirePermission('users', 'manage'))
     .query(async () => {
       return db
         .select({
@@ -51,15 +88,21 @@ export const userRouter = router({
           phone: users.phone,
           status: users.status,
           roleId: users.roleId,
+          hasFinancialAccess: users.hasFinancialAccess,
           role: {
             id: roles.id,
             name: roles.name,
             slug: roles.slug,
           },
+          deliveryRoleId: userDeliveryRoles.deliveryRoleId,
+          deliveryRoleName: deliveryRoles.name,
           createdAt: users.createdAt,
         })
         .from(users)
         .innerJoin(roles, eq(users.roleId, roles.id))
+        // Left, not inner: most people have no delivery role and must still be listed.
+        .leftJoin(userDeliveryRoles, eq(userDeliveryRoles.userId, users.id))
+        .leftJoin(deliveryRoles, eq(deliveryRoles.id, userDeliveryRoles.deliveryRoleId))
         .where(ne(users.status, 'inactive'))
         .orderBy(asc(users.firstName));
     }),

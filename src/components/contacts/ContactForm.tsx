@@ -35,7 +35,7 @@ export function ContactForm({ onSuccess, onCancel, defaultValues, compact = fals
   const [tags, setTags] = React.useState<{ id: string; name: string; color: string }[]>(existingTags ?? []);
   const [customFieldValues, setCustomFieldValues] = React.useState<Record<string, unknown>>({});
 
-  const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: users = [] } = trpc.users.assignable.useQuery();
   const { data: customFields = [] } = trpc.customFields.list.useQuery({ entityType: 'contact' });
   // Server-side filter, not a client-side filter of a generic company page — partners can
   // easily be pushed off a plain top-200-by-recency page by newer non-partner companies.

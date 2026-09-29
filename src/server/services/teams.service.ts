@@ -138,6 +138,7 @@ async function getAuthorizedUser(aadObjectId: string): Promise<{
         lastName: users.lastName,
         avatarUrl: users.avatarUrl,
         roleId: users.roleId,
+        hasFinancialAccess: users.hasFinancialAccess,
       },
       role: {
         id: roles.id,
@@ -161,6 +162,7 @@ async function getAuthorizedUser(aadObjectId: string): Promise<{
     lastName: record.user.lastName,
     avatarUrl: record.user.avatarUrl,
     roleId: record.user.roleId,
+    hasFinancialAccess: record.user.hasFinancialAccess,
     role: {
       id: record.role.id,
       name: record.role.name,

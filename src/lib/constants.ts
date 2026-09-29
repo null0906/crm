@@ -83,3 +83,12 @@ export const DASHBOARD_DATA_SOURCES = [
   { value: 'enterprise', label: 'Enterprise' },
   { value: 'partner', label: 'Partner' },
 ] as const;
+
+/**
+ * Hours in a working week, used to express an engagement's length in weeks.
+ *
+ * PRESENTATIONAL ONLY. Cost is hourly rate x hours x headcount and never passes
+ * through this number, so changing it moves no money — it only changes how long
+ * a given number of hours reads on screen.
+ */
+export const HOURS_PER_WEEK = 40;

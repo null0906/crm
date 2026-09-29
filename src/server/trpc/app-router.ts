@@ -29,6 +29,12 @@ import { complianceRouter } from './routers/compliance.router';
 import { onboardingRouter } from './routers/onboarding.router';
 import { personalTasksRouter } from './routers/personal-tasks.router';
 import { executiveOverviewRouter } from './routers/executive-overview.router';
+import { costModelRouter } from './routers/cost-model.router';
+import { catalogRouter } from './routers/catalog.router';
+import { sizingRouter } from './routers/sizing.router';
+import { serviceLinesRouter } from './routers/service-lines.router';
+import { estimatesRouter } from './routers/estimates.router';
+import { availabilityRouter } from './routers/availability.router';
 
 export const appRouter = router({
   contacts: contactRouter,
@@ -61,6 +67,12 @@ export const appRouter = router({
   onboarding: onboardingRouter,
   personalTasks: personalTasksRouter,
   executiveOverview: executiveOverviewRouter,
+  costModel: costModelRouter,
+  catalog: catalogRouter,
+  sizing: sizingRouter,
+  serviceLines: serviceLinesRouter,
+  estimates: estimatesRouter,
+  availability: availabilityRouter,
 });
 
 export type AppRouter = typeof appRouter;

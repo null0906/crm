@@ -132,6 +132,7 @@ export async function getActiveSessionUser(): Promise<SessionUser | null> {
       lastName: users.lastName,
       avatarUrl: users.avatarUrl,
       roleId: users.roleId,
+      hasFinancialAccess: users.hasFinancialAccess,
       role: {
         id: roles.id,
         name: roles.name,

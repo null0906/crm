@@ -14,6 +14,10 @@ import { DealDetail } from '@/components/deals/DealDetail';
 import { TagInput } from '@/components/tags/TagInput';
 import { ImportWizard } from '@/components/import-export/ImportWizard';
 import { BackfillDealLinksWizard } from '@/components/import-export/BackfillDealLinksWizard';
+import { ExportMenu } from '@/components/import-export/ExportMenu';
+import { usePermissions } from '@/hooks/usePermissions';
+import { DEAL_EXPORT_COLUMNS, dealStageSummarySheet, exportRecords, type ExportFormat } from '@/lib/record-exports';
+import { formatDate } from '@/lib/formatters';
 import { Input } from '@/components/ui/input';
 import { DEAL_SERVICE_OPTIONS, DEAL_STATUSES } from '@/lib/constants';
 import { toast } from 'sonner';
@@ -59,10 +63,12 @@ export default function DealsPage() {
   const [bulkStatus, setBulkStatus] = useState('');
   const [bulkTagsToAdd, setBulkTagsToAdd] = useState<{ id: string; name: string; color: string }[]>([]);
   const debouncedSearch = useDebounce(search, 300);
+  const { can } = usePermissions();
+  const [exporting, setExporting] = useState(false);
 
   const { data: allPipelines = [], isLoading: pipelinesLoading } = trpc.pipelines.list.useQuery();
   const pipelines = allPipelines.filter((p) => isVisibleProspectPipeline(p as Record<string, unknown>));
-  const { data: usersData } = trpc.users.list.useQuery();
+  const { data: usersData } = trpc.users.assignable.useQuery();
   const { data: contactsData } = trpc.contacts.list.useQuery({ pagination: { limit: 200 } });
   const { data: companiesData } = trpc.companies.list.useQuery({ pagination: { limit: 200 } });
   const users = usersData ?? [];
@@ -117,6 +123,56 @@ export default function DealsPage() {
   }, [selectedPipelineId, viewMode]);
 
   const stages: Stage[] = ((pipelineData?.stages as Stage[]) ?? []).sort((a, b) => a.position - b.position);
+
+  async function handleExport(format: ExportFormat) {
+    if (!selectedPipelineId) return;
+    setExporting(true);
+    try {
+      const { rows, truncated } = await utils.deals.exportDeals.fetch({
+        pipelineId: selectedPipelineId,
+        search: debouncedSearch || undefined,
+        filters: dealFilterConditions.length > 0 ? { conditions: dealFilterConditions, logic: 'AND' } : undefined,
+      });
+      const pipelineName = String(pipelineData?.name ?? pipelines.find((p) => String(p.id) === selectedPipelineId)?.name ?? 'Pipeline');
+      const nameOf = (list: Array<Record<string, unknown>>, id: string) => {
+        const match = list.find((item) => String(item.id) === id);
+        if (!match) return id;
+        return String(match.name ?? `${String(match.firstName ?? '')} ${String(match.lastName ?? '')}`.trim());
+      };
+      const owner = users.find((u) => u.id === ownerFilter);
+      const filterLabels = [
+        debouncedSearch && `Search: ${debouncedSearch}`,
+        ownerFilter && `Owner: ${owner ? `${owner.firstName} ${owner.lastName}` : ownerFilter}`,
+        statusFilter && `Status: ${statusFilter}`,
+        stageFilter && `Stage: ${stages.find((stage) => stage.id === stageFilter)?.name ?? stageFilter}`,
+        companyFilter && `Company: ${nameOf(companies, companyFilter)}`,
+        contactFilter && `Contact: ${nameOf(contacts, contactFilter)}`,
+        partnerFilter && `Referred by: ${nameOf(partnerCompanies, partnerFilter)}`,
+        serviceFilter && `Service: ${serviceFilter}`,
+        filterTags.length > 0 && `Tags: ${filterTags.map((tag) => tag.name).join(', ')}`,
+        dateFrom && `Created from: ${dateFrom}`,
+        dateTo && `Created to: ${dateTo}`,
+        delayedOnly && 'Delayed only',
+      ].filter((label): label is string => Boolean(label));
+
+      await exportRecords(format, DEAL_EXPORT_COLUMNS, rows, {
+        title: `${pipelineName} — Prospects`,
+        subtitle: `Exported ${formatDate(new Date())} · ${rows.length} prospect${rows.length === 1 ? '' : 's'}`,
+        filters: filterLabels,
+        sheetName: 'Prospects',
+        filename: `prospects-${pipelineName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${new Date().toISOString().slice(0, 10)}`,
+        extraSheets: [dealStageSummarySheet(stages, rows)],
+      });
+      toast.success('Prospects exported', {
+        description: `${rows.length} prospect${rows.length === 1 ? '' : 's'} downloaded`,
+      });
+      if (truncated) toast.warning('Export is limited to the first 5,000 prospects');
+    } catch (err) {
+      toast.error('Export failed', { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   function handleAddDeal(stageId: string) {
     setCreateStageId(stageId);
@@ -201,6 +257,13 @@ export default function DealsPage() {
             <Link2 className="w-4 h-4" />
             Re-link
           </Button>
+          {can('deals', 'export') && (
+            <ExportMenu
+              busy={exporting}
+              title="Export the prospects in this pipeline that match the current filters and search"
+              onExport={(format) => { void handleExport(format); }}
+            />
+          )}
           <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
             <Upload className="w-4 h-4" />
             Import

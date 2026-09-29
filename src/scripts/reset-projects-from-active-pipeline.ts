@@ -3,7 +3,40 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 
 loadEnvConfig(process.cwd());
 
+/**
+ * This script hard-deletes every row in projects, project_members, project_stage_history
+ * and project_tasks — with no WHERE clause, so soft-deleted rows go too — and then
+ * rebuilds from the active pipeline. Any project id not regenerated is gone permanently.
+ *
+ * That now reaches beyond this codebase. The Employee Ops platform stores CRM project ids
+ * in its own schema without a foreign key (deliberately: a cross-schema constraint would
+ * make deletes that used to succeed start failing), so a hard-deleted project leaves a
+ * dangling reference on the other side that nothing detects.
+ *
+ * Hence an explicit opt-in, matching the pattern in clone-production-to-local.sh.
+ */
+function assertConfirmed() {
+  if (process.env.CONFIRM_PROJECT_RESET === 'YES') return;
+
+  console.error(
+    [
+      'Refusing to reset projects without explicit confirmation.',
+      '',
+      'This DELETES ALL rows in projects, project_members, project_stage_history and',
+      'project_tasks — including soft-deleted ones — then rebuilds them from the active',
+      'pipeline. Project ids that are not regenerated are lost, and the Employee Ops',
+      'platform references those ids without a foreign key to protect them.',
+      '',
+      'Run with:',
+      '  CONFIRM_PROJECT_RESET=YES npm run reset:projects',
+    ].join('\n')
+  );
+  process.exit(1);
+}
+
 async function resetProjectsFromActivePipeline() {
+  assertConfirmed();
+
   const { db } = await import('@/server/db');
   const { deals, pipelines, projectMembers, projects, projectStageHistory, projectTasks } = await import('@/server/db/schema');
   const { createProjectFromDeal } = await import('@/server/services/project-sync.service');

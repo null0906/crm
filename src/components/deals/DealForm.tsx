@@ -46,7 +46,7 @@ export function DealForm({ pipelineId, stageId, onSuccess, onCancel, mode = 'cre
 
   const { data: pipelineData } = trpc.pipelines.getWithStages.useQuery({ id: pipelineId });
   const { data: customFields = [] } = trpc.customFields.list.useQuery({ entityType: 'deal' });
-  const { data: users = [] } = trpc.users.list.useQuery();
+  const { data: users = [] } = trpc.users.assignable.useQuery();
 
   const stages = pipelineData?.stages ?? [];
   const defaultStageId = stageId ?? stages[0]?.id ?? '';
