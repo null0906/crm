@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { router, protectedProcedure } from '../router';
+import { requirePermission } from '../middleware';
 import { filterConfigSchema, sortSchema } from '@/server/lib/validators';
 import * as contactService from '@/server/services/contact.service';
 import * as companyService from '@/server/services/company.service';
@@ -685,6 +686,7 @@ export const importRouter = router({
     }),
 
   exportContacts: protectedProcedure
+    .use(requirePermission('contacts', 'export'))
     .input(z.object({
       limit: z.number().int().min(1).max(5000).default(1000),
       search: z.string().optional(),

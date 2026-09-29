@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { SlideOverPanel } from '@/components/shared/SlideOverPanel';
+import { exportToXlsx } from '@/lib/export-xlsx';
 
 type TaskRow = Record<string, any>;
 type SummaryRow = Record<string, any>;
@@ -97,88 +98,31 @@ function downloadCsv(rows: TaskRow[], filename = `personal-task-report-${new Dat
 }
 
 async function downloadExcel(rows: TaskRow[], summary: SummaryRow[], meta: { title: string; period: string; filters: string[]; filename: string }) {
-  const ExcelJSModule = await import('exceljs');
-  const ExcelJS = (ExcelJSModule.default ?? ExcelJSModule) as typeof import('exceljs');
-  const details = reportRows(rows);
   const summaryRows = summary.map((row) => ({
     Member: `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim(),
     Total: row.total_tasks ?? 0,
     Completed: row.completed_tasks ?? 0,
-    Hours: Number(h(row.total_hours)),
-    ProjectHours: Number(h(row.project_hours)),
-    ProspectHours: Number(h(row.prospect_hours)),
-    InternalHours: Number(h(row.internal_hours)),
+    Hours: h(row.total_hours),
+    ProjectHours: h(row.project_hours),
+    ProspectHours: h(row.prospect_hours),
+    InternalHours: h(row.internal_hours),
   }));
-  const summaryData = summaryRows.length ? summaryRows : [{ Member: 'No matching members', Total: 0, Completed: 0, Hours: 0, ProjectHours: 0, ProspectHours: 0, InternalHours: 0 }];
-  const detailData = details.length ? details : [{ Member: 'No matching tasks', Task: '', Client: '', LinkedTo: '', Status: '', Hours: '', Started: '', Completed: '' }];
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'SecComply';
-  workbook.created = new Date();
+  const col = (key: string, width: number, type?: 'number') => ({ key, header: key, width, type });
 
-  function buildSheet(name: string, headers: string[], data: Record<string, unknown>[], widths: number[]) {
-    const sheet = workbook.addWorksheet(name, {
-      views: [{ state: 'frozen', ySplit: meta.filters.length + 5 }],
-      properties: { defaultRowHeight: 22 },
-    });
-    sheet.columns = headers.map((header, index) => ({ key: header, width: widths[index] ?? 18 }));
-    sheet.mergeCells(1, 1, 1, headers.length);
-    sheet.getCell(1, 1).value = meta.title;
-    sheet.getCell(1, 1).font = { name: 'Arial', size: 18, bold: true, color: { argb: 'FF1D4ED8' } };
-    sheet.getCell(1, 1).alignment = { vertical: 'middle' };
-    sheet.getRow(1).height = 30;
-
-    sheet.mergeCells(2, 1, 2, headers.length);
-    sheet.getCell(2, 1).value = meta.period;
-    sheet.getCell(2, 1).font = { name: 'Arial', size: 10, color: { argb: 'FF64748B' } };
-
-    meta.filters.forEach((filter, index) => {
-      const rowNumber = index + 3;
-      sheet.mergeCells(rowNumber, 1, rowNumber, headers.length);
-      const cell = sheet.getCell(rowNumber, 1);
-      cell.value = filter;
-      cell.font = { name: 'Arial', size: 10, color: { argb: 'FF3730A3' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
-      cell.border = { bottom: { style: 'thin', color: { argb: 'FFC7D2FE' } } };
-    });
-
-    const headerRowNumber = meta.filters.length + 4;
-    const headerRow = sheet.getRow(headerRowNumber);
-    headers.forEach((header, index) => {
-      const cell = headerRow.getCell(index + 1);
-      cell.value = header;
-      cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
-      cell.alignment = { vertical: 'middle', wrapText: true };
-      cell.border = { bottom: { style: 'thin', color: { argb: 'FF1D4ED8' } } };
-    });
-    headerRow.height = 24;
-
-    data.forEach((row, rowIndex) => {
-      const excelRow = sheet.getRow(headerRowNumber + rowIndex + 1);
-      headers.forEach((header, colIndex) => {
-        const cell = excelRow.getCell(colIndex + 1);
-        const value = row[header];
-        const numeric = ['Total', 'Completed', 'Hours', 'ProjectHours', 'ProspectHours', 'InternalHours'].includes(header);
-        cell.value = numeric && value !== '' ? Number(value) : String(value ?? '');
-        cell.font = { name: 'Arial', size: 10, color: { argb: 'FF111827' } };
-        cell.alignment = { vertical: 'top', wrapText: true };
-        cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } };
-        if (rowIndex % 2 === 1) {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-        }
-      });
-    });
-    sheet.autoFilter = {
-      from: { row: headerRowNumber, column: 1 },
-      to: { row: headerRowNumber, column: headers.length },
-    };
-  }
-
-  buildSheet('Summary', Object.keys(summaryData[0]!), summaryData, [26, 12, 14, 12, 16, 17, 16]);
-  buildSheet('Task Log', Object.keys(detailData[0]!), detailData, [22, 38, 24, 30, 14, 10, 18, 18]);
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  saveBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), meta.filename);
+  await exportToXlsx([
+    {
+      name: 'Summary',
+      columns: [col('Member', 26), col('Total', 12, 'number'), col('Completed', 14, 'number'), col('Hours', 12, 'number'), col('ProjectHours', 16, 'number'), col('ProspectHours', 17, 'number'), col('InternalHours', 16, 'number')],
+      rows: summaryRows,
+      emptyMessage: 'No matching members',
+    },
+    {
+      name: 'Task Log',
+      columns: [col('Member', 22), col('Task', 38), col('Client', 24), col('LinkedTo', 30), col('Status', 14), col('Hours', 10, 'number'), col('Started', 18), col('Completed', 18)],
+      rows: reportRows(rows),
+      emptyMessage: 'No matching tasks',
+    },
+  ], { title: meta.title, subtitle: meta.period, filters: meta.filters, filename: meta.filename });
 }
 
 const pdfStyles = StyleSheet.create({
